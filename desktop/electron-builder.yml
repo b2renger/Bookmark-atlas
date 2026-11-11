@@ -7,6 +7,7 @@ productName: Bookmark Atlas
 
 files:
   - main.js
+  - datafolder.js
   - assets/**
   - package.json
 

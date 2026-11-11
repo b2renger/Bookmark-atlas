@@ -392,3 +392,8 @@ def test_selection_batch_export_and_bundle_import_through_the_api(site):
         "POST", "/api/import-csv", {"filename": "x.json", "content": "{broken"}
     )
     assert code == 400 and "neither" in answer["error"]
+
+
+def test_state_names_the_data_folder(site):
+    state = site.call("GET", "/api/state")[1]
+    assert state["data_folder"] == str(site.db_path.resolve().parent)

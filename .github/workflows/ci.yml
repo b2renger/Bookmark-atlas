@@ -42,4 +42,5 @@ jobs:
       - name: Desktop shell syntax
         run: |
           node --check desktop/main.js
+          node --test desktop/datafolder.test.js
           node --check desktop/scripts/prepare-backend.mjs

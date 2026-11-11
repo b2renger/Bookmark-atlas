@@ -95,7 +95,8 @@
   .tagline { color: var(--muted); font-size: 12px; }
   [hidden] { display: none !important; }
   @media (max-width: 620px) { #summary { display: none; } header { gap: 12px; padding: 12px 16px; } main { padding: 16px; } }
-  code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13px; overflow-wrap: anywhere; }
+  section.card > p { margin: 0 0 12px; }
 </style>
 </head>
 <body>
@@ -210,6 +211,17 @@
     </section>
 
     <section class="card">
+      <h2>Where your data lives</h2>
+      <p class="help">Everything is in this one folder: your bookmarks, your grooming scripts, the
+        backups and the Notion token.</p>
+      <p><code id="data-folder"></code></p>
+      <p class="help">To move to another computer, copy this folder there, then pick it with the menu
+        <strong>Atlas &gt; Choose data folder…</strong>. The same menu moves your data to another place
+        on this computer, such as a synced drive. Because the folder holds your Notion token, do not
+        hand it to someone else: to share bookmarks, use Export selection.</p>
+    </section>
+
+    <section class="card">
       <h2>Import a file</h2>
       <p class="help">Two kinds of file: a CSV export of your table from Notion (••• menu, Export,
         CSV), or a bundle exported from another Atlas (“Export selection” in Bookmarks). No token
@@ -282,6 +294,7 @@ async function refreshState() {
   $("summary").textContent = s.bookmarks + " bookmarks · " + s.tags + " tags"
     + (s.pending_review ? " · " + s.pending_review + " to review" : "") + " · v" + state.version;
 
+  $("data-folder").textContent = state.data_folder;
   const n = state.notion;
   $("forget-token").hidden = !n.token_set || n.token_source === "environment";
   if (n.token_set && !$("token-note").textContent) {

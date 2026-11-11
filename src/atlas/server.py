@@ -76,6 +76,7 @@ class App:
         try:
             return {
                 "database": str(self.db_path),
+                "data_folder": str(self.db_path.resolve().parent),
                 "version": app_version(),
                 "status": status(conn),
                 "notion": {

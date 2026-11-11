@@ -8,12 +8,17 @@
 // Flags and environment, used by CI and for troubleshooting:
 //   --smoke-test            start, load the page, write a result file, exit
 //   ATLAS_SMOKE_OUT=<file>  where the smoke test writes its JSON result
-//   ATLAS_USER_DATA=<dir>   use another data folder than the default
+//   ATLAS_USER_DATA=<dir>   use another settings folder for the app itself
+//   ATLAS_DATA_DIR=<dir>    use this data folder, whatever was chosen
+//
+// The user's data (database, scripts, backups, token) is in one folder, the
+// "data folder", which the user can place anywhere: see datafolder.js.
 
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const datafolder = require('./datafolder.js');
 
 const SMOKE = process.argv.includes('--smoke-test');
 const RELEASES_URL = 'https://github.com/b2renger/Bookmark-atlas/releases/latest';
@@ -33,6 +38,50 @@ let manualCheck = false;
 const userData = () => app.getPath('userData');
 const logPath = () => path.join(userData(), 'backend.log');
 
+// Set once at start by settleDataFolder(); changing it restarts the app.
+let dataFolder = null;
+let dataFolderSource = 'default';
+
+/** Decide which data folder to use. Returns false if the app should quit. */
+function settleDataFolder() {
+    const found = datafolder.resolve({
+        override: process.env.ATLAS_DATA_DIR,
+        settingsDir: userData(),
+        defaultDir: userData(),
+    });
+    dataFolder = found.folder;
+    dataFolderSource = found.source;
+
+    if (found.source === 'chosen' && !datafolder.describe(dataFolder).exists) {
+        if (SMOKE) return false;
+        const choice = dialog.showMessageBoxSync({
+            type: 'warning',
+            buttons: ['Choose another folder…', 'Use the default folder', 'Quit'],
+            defaultId: 0,
+            cancelId: 2,
+            message: 'Your data folder is not available',
+            detail: `${dataFolder}\n\nIf it is on an external or network drive, connect it and start Bookmark Atlas again.`,
+        });
+        if (choice === 2) return false;
+        if (choice === 1) {
+            datafolder.writePointer(userData(), null);
+            dataFolder = userData();
+            dataFolderSource = 'default';
+        } else {
+            const picked = dialog.showOpenDialogSync({
+                title: 'Choose the data folder',
+                properties: ['openDirectory', 'createDirectory'],
+            });
+            if (!picked || !picked[0]) return false;
+            datafolder.writePointer(userData(), picked[0]);
+            dataFolder = picked[0];
+            dataFolderSource = 'chosen';
+        }
+    }
+    fs.mkdirSync(dataFolder, { recursive: true });
+    return true;
+}
+
 // ---- backend ---------------------------------------------------------------
 
 function backendCommand() {
@@ -43,7 +92,7 @@ function backendCommand() {
         ? path.join(base, 'python', 'python.exe')
         : path.join(base, 'python', 'bin', 'python3');
     const launcher = path.join(base, 'run_atlas.py');
-    const tail = ['--db', path.join(userData(), 'atlas.sqlite'), 'ui', '--port', '0', '--announce'];
+    const tail = ['--db', path.join(dataFolder, datafolder.DATABASE), 'ui', '--port', '0', '--announce'];
 
     if (fs.existsSync(bundled) && fs.existsSync(path.join(base, 'app', 'atlas'))) {
         // Isolated mode: the user's own Python settings cannot interfere.
@@ -70,9 +119,9 @@ function startBackend() {
             env: {
                 ...process.env,
                 ...spec.env,
-                // Settings and the Notion token live beside the database,
-                // in this app's own data folder.
-                ATLAS_CONFIG_DIR: userData(),
+                // The Notion token lives beside the database, so the data
+                // folder is complete on its own.
+                ATLAS_CONFIG_DIR: dataFolder,
                 ATLAS_APP_VERSION: app.getVersion(),
             },
             windowsHide: true,
@@ -140,6 +189,80 @@ function stopBackend() {
     }
 }
 
+/** Stop the backend and wait until its process is gone, so its files are closed. */
+function stopBackendAndWait(timeoutMs = 8000) {
+    return new Promise((resolve) => {
+        const child = backend;
+        if (!child) { resolve(); return; }
+        const timer = setTimeout(resolve, timeoutMs);
+        child.once('exit', () => { clearTimeout(timer); resolve(); });
+        stopBackend();
+    });
+}
+
+// ---- data folder -----------------------------------------------------------
+
+async function chooseDataFolder() {
+    if (dataFolderSource === 'override') {
+        dialog.showMessageBox(win, { type: 'info', message: 'The data folder is set by ATLAS_DATA_DIR and cannot be changed here.' });
+        return;
+    }
+    const pick = await dialog.showOpenDialog(win, {
+        title: 'Choose the data folder',
+        defaultPath: dataFolder,
+        buttonLabel: 'Choose',
+        properties: ['openDirectory', 'createDirectory'],
+    });
+    if (pick.canceled || !pick.filePaths[0]) return;
+    const target = pick.filePaths[0];
+    if (datafolder.samePlace(target, dataFolder)) {
+        dialog.showMessageBox(win, { type: 'info', message: 'That is already your data folder.' });
+        return;
+    }
+    const found = datafolder.describe(target);
+    if (!found.writable) {
+        dialog.showMessageBox(win, { type: 'warning', message: 'Bookmark Atlas cannot write in that folder.', detail: target });
+        return;
+    }
+
+    let copy = false;
+    if (found.hasCollection) {
+        const { response } = await dialog.showMessageBox(win, {
+            type: 'question',
+            buttons: ['Use that collection', 'Cancel'],
+            defaultId: 0,
+            cancelId: 1,
+            message: 'That folder already holds a collection',
+            detail: `Bookmark Atlas will restart and open the collection in:\n${target}\n\nYour current data is not touched. It stays in:\n${dataFolder}`,
+        });
+        if (response !== 0) return;
+    } else {
+        const { response } = await dialog.showMessageBox(win, {
+            type: 'question',
+            buttons: ['Copy my data there and use it', 'Start an empty collection there', 'Cancel'],
+            defaultId: 0,
+            cancelId: 2,
+            message: 'Use this folder for your data?',
+            detail: `${target}\n\nCopying keeps the original in place as a safety copy:\n${dataFolder}\nYou can delete it yourself once you have checked the new folder.\n\nBookmark Atlas will restart.`,
+        });
+        if (response === 2) return;
+        copy = response === 0;
+    }
+
+    quitting = true;                      // the backend stopping is expected
+    await stopBackendAndWait();
+    try {
+        if (copy) datafolder.copyData(dataFolder, target);
+        datafolder.writePointer(userData(), target);
+    } catch (error) {
+        // Nothing was switched: the pointer is written last, and a failed
+        // copy never touches the original.
+        dialog.showErrorBox('The data folder was not changed', `${error.message}\n\nBookmark Atlas will restart with the current folder.`);
+    }
+    app.relaunch();
+    app.exit(0);
+}
+
 // ---- window ----------------------------------------------------------------
 
 function isExternalWebLink(url) {
@@ -190,7 +313,8 @@ function buildMenu() {
                 { label: `Version ${app.getVersion()}`, enabled: false },
                 { label: 'Check for updates…', click: () => checkForUpdates(true) },
                 { type: 'separator' },
-                { label: 'Open data folder', click: () => shell.openPath(userData()) },
+                { label: 'Open data folder', click: () => shell.openPath(dataFolder) },
+                { label: 'Choose data folder…', click: () => chooseDataFolder() },
                 { type: 'separator' },
                 { role: 'quit' },
             ],
@@ -299,7 +423,7 @@ let smokeDone = false;
 function finishSmoke(result) {
     if (smokeDone) return;
     smokeDone = true;
-    const output = { ...result, version: app.getVersion(), packaged: app.isPackaged, url: backendUrl };
+    const output = { ...result, version: app.getVersion(), packaged: app.isPackaged, url: backendUrl, dataFolder };
     try {
         if (process.env.ATLAS_SMOKE_OUT) fs.writeFileSync(process.env.ATLAS_SMOKE_OUT, JSON.stringify(output, null, 2));
     } catch (error) { console.error('[smoke] could not write result:', error.message); }
@@ -318,7 +442,10 @@ async function runSmoke() {
                 '(document.getElementById("summary") || {}).textContent || ""');
             // The header is filled only after the page has called the API.
             if (last.includes('bookmarks') && last.includes(`v${app.getVersion()}`)) {
-                finishSmoke({ ok: true, summary: last, title: win.getTitle() });
+                // What the backend itself says its folder is, read from the page.
+                const shown = await win.webContents.executeJavaScript(
+                    '(document.getElementById("data-folder") || {}).textContent || ""');
+                finishSmoke({ ok: true, summary: last, title: win.getTitle(), dataFolderShown: shown });
                 return;
             }
         } catch (error) { last = `error: ${error.message}`; }
@@ -340,6 +467,12 @@ if (!SMOKE && !app.requestSingleInstanceLock()) {
 
     app.whenReady().then(async () => {
         if (SMOKE) setTimeout(() => finishSmoke({ ok: false, error: 'Smoke test timed out.' }), 90_000);
+        if (!settleDataFolder()) {
+            if (SMOKE) finishSmoke({ ok: false, error: 'The data folder is not available.' });
+            quitting = true;
+            app.quit();
+            return;
+        }
         try {
             backendUrl = await startBackend();
         } catch (error) {
