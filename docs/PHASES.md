@@ -12,8 +12,8 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 3 | Vectors, clusters and the e-means test | v0.3.0 | done |
 | 4 | Map view | v0.4.0 | done |
 | 5 | Saved views and snapshots | v0.5.0 | done |
-| 6 | Self-organising map and pearl tree | | next |
-| 7 | Links and tendencies | | |
+| 6 | Self-organising map and pearl tree | v0.6.0 | done, drag and drop, merge and split left out |
+| 7 | Links and tendencies | | next |
 
 ## Phase 0: scaffolding
 
@@ -122,3 +122,26 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   the sender's view.
 - **Left for later:** comparing two snapshots, a read-only web page export of
   the map, notes attached to single bookmarks.
+
+## Phase 6: self-organising map and pearl tree
+
+- **Grid tab.** A self-organising map trained in NumPy (batch training, started
+  from the two main directions of the data, so the same collection gives the
+  same grid). About a dozen bookmarks per cell. Disc area is the number of
+  bookmarks; each cell is named after its most telling tag.
+- **The grid answers a different question from the map:** the map shows which
+  bookmarks are alike, the grid shows where the collection is dense and which
+  themes border which.
+- **Tree tab.** Three levels: families (close topics joined by Ward's method),
+  topics (the clusters), parts (a topic of 24 or more is split again). Shown
+  as pearls you open, with a path back.
+- **The tree is data you can edit:** rename a family, topic or part; move a
+  topic to another family. Edits are stored and travel in snapshots. Building
+  the tree again starts over.
+- **Colour still means state, not topic:** on the grid, green marks cells with
+  a search match and orange the share of a cell that is selected.
+- **Checked on the real collection:** 8 x 11 grid in 0.2 s, no empty cell, 95%
+  of bookmarks have their two closest cells side by side; the tree gives 4
+  families for 16 topics, in 0.5 s.
+- **Left out:** drag and drop, merging and splitting by hand, a grid for a
+  filtered part of the collection.

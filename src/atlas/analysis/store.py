@@ -405,6 +405,211 @@ def map_data(conn: sqlite3.Connection, cluster_run_id: str | None = None) -> dic
     }
 
 
+def grid_run(conn: sqlite3.Connection) -> dict:
+    """Train a self-organising map and store which cell each bookmark falls in."""
+    from atlas.analysis import som
+
+    np = require_numpy()
+    ids, matrix, model = load_vectors(conn)
+    matrix = leading(matrix)
+    rows, cols = som.grid_shape(len(ids))
+    weights = som.train(matrix, rows, cols)
+    cells = som.assign(matrix, weights)
+    metrics = som.errors(matrix, weights, rows, cols)
+    run_id = uuid.uuid4().hex
+    params = {"rows": rows, "cols": cols, "vectors": model, "bookmarks": len(ids)}
+    try:
+        conn.execute("DELETE FROM runs WHERE kind = 'som'")
+        conn.execute(
+            "INSERT INTO runs (id, created_at, kind, algorithm, params, app_version, metrics) "
+            "VALUES (?, ?, 'som', 'batch-som', ?, ?, ?)",
+            (run_id, now_iso(), json.dumps(params), __version__, json.dumps(metrics)),
+        )
+        conn.executemany(
+            "INSERT INTO run_items (run_id, bookmark_id, cluster, x, y) VALUES (?, ?, ?, ?, ?)",
+            [
+                (run_id, ids[i], int(cells[i]), float(cells[i] % cols), float(cells[i] // cols))
+                for i in range(len(ids))
+            ],
+        )
+        conn.execute(
+            "INSERT INTO run_artifacts (run_id, name, data) VALUES (?, 'som_weights', ?)",
+            (run_id, np.asarray(weights, dtype="<f4").tobytes()),
+        )
+    except BaseException:
+        conn.rollback()
+        raise
+    conn.commit()
+    return grid_data(conn)
+
+
+def grid_data(conn: sqlite3.Connection) -> dict:
+    """The grid as drawn: for each cell its size, telling tags and a few titles."""
+    from atlas.analysis.tree import telling_tags
+
+    run = conn.execute(
+        "SELECT * FROM runs WHERE kind = 'som' ORDER BY created_at DESC, rowid DESC LIMIT 1"
+    ).fetchone()
+    live = conn.execute("SELECT COUNT(*) FROM bookmarks WHERE deleted_at IS NULL").fetchone()[0]
+    if run is None:
+        return {"grid": None, "cells": [], "missing": live}
+    params = json.loads(run["params"])
+    members: dict[int, list[str]] = {}
+    titles: dict[str, str] = {}
+    for row in conn.execute(
+        "SELECT ri.bookmark_id, ri.cluster, b.title, b.url FROM run_items ri "
+        "JOIN bookmarks b ON b.id = ri.bookmark_id "
+        "WHERE ri.run_id = ? AND b.deleted_at IS NULL ORDER BY b.id",
+        (run["id"],),
+    ):
+        members.setdefault(row["cluster"], []).append(row["bookmark_id"])
+        titles[row["bookmark_id"]] = row["title"] or row["url"]
+    _, _, _, tags = _documents(conn)
+    overall = Counter(tag for names in tags.values() for tag in names)
+    placed = sum(len(ids) for ids in members.values())
+    cells = []
+    for number in range(params["rows"] * params["cols"]):
+        ids = members.get(number, [])
+        top = telling_tags(tags, ids, overall, max(placed, 1)) if ids else []
+        cells.append(
+            {
+                "cell": number,
+                "row": number // params["cols"],
+                "col": number % params["cols"],
+                "size": len(ids),
+                "tags": top,
+                "samples": [titles[b] for b in ids[:4]],
+                "ids": ids,
+            }
+        )
+    return {
+        "grid": {
+            "run_id": run["id"],
+            "rows": params["rows"],
+            "cols": params["cols"],
+            "created_at": run["created_at"],
+            **json.loads(run["metrics"] or "{}"),
+        },
+        "cells": cells,
+        "missing": live - placed,
+    }
+
+
+def tree_run(conn: sqlite3.Connection, cluster_run_id: str | None = None) -> dict:
+    """Build the topic tree from a clustering run and store it."""
+    from atlas.analysis import tree
+
+    np = require_numpy()
+    cluster_run_id = cluster_run_id or latest_run_id(conn)
+    if cluster_run_id is None:
+        cluster_run_id = cluster_run(conn)["run_id"]
+    described = describe_run(conn, cluster_run_id, samples=0)
+    ids, matrix, _ = load_vectors(conn)
+    matrix = leading(matrix, described["params"].get("dims_used", CLUSTER_DIMS))
+    membership = dict(
+        conn.execute(
+            "SELECT bookmark_id, cluster FROM run_items WHERE run_id = ?", (cluster_run_id,)
+        )
+    )
+    keep = [i for i, bookmark_id in enumerate(ids) if bookmark_id in membership]
+    if not keep:
+        raise ValueError("This clustering no longer matches the collection. Cluster again first.")
+    ids = [ids[i] for i in keep]
+    matrix = matrix[keep]
+    labels = np.array([membership[b] for b in ids])
+    centroids = {int(n): matrix[labels == n].mean(axis=0) for n in np.unique(labels)}
+    _, _, _, tags = _documents(conn)
+    built = tree.build(
+        ids,
+        matrix,
+        labels,
+        centroids,
+        tags,
+        {item["cluster"]: item["label"] for item in described["clusters"]},
+    )
+    run_id = uuid.uuid4().hex
+    try:
+        conn.execute("DELETE FROM runs WHERE kind = 'tree'")
+        conn.execute(
+            "INSERT INTO runs (id, created_at, kind, algorithm, params, app_version) "
+            "VALUES (?, ?, 'tree', 'ward+k-means', ?, ?)",
+            (
+                run_id,
+                now_iso(),
+                json.dumps({"cluster_run": cluster_run_id, "bookmarks": len(ids)}),
+                __version__,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO run_artifacts (run_id, name, data) VALUES (?, 'tree', ?)",
+            (run_id, json.dumps(built, ensure_ascii=False).encode("utf-8")),
+        )
+    except BaseException:
+        conn.rollback()
+        raise
+    conn.commit()
+    return tree_data(conn)
+
+
+def _tree_row(conn: sqlite3.Connection):
+    return conn.execute(
+        "SELECT r.id, r.created_at, r.params, a.data FROM runs r JOIN run_artifacts a "
+        "ON a.run_id = r.id AND a.name = 'tree' WHERE r.kind = 'tree' "
+        "ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1"
+    ).fetchone()
+
+
+def tree_data(conn: sqlite3.Connection) -> dict:
+    row = _tree_row(conn)
+    if row is None:
+        return {"tree": None}
+    live = {r[0] for r in conn.execute("SELECT id FROM bookmarks WHERE deleted_at IS NULL")}
+    built = json.loads(bytes(row["data"]).decode("utf-8"))
+
+    def prune(node: dict) -> int:
+        """Drop deleted bookmarks and recount, so the tree matches the list."""
+        if node.get("children"):
+            for child in node["children"]:
+                prune(child)
+        if "ids" in node:
+            node["ids"] = [b for b in node["ids"] if b in live]
+            node["size"] = len(node["ids"])
+        else:
+            node["size"] = sum(child["size"] for child in node.get("children", []))
+        return node["size"]
+
+    prune(built)
+    return {
+        "tree": built,
+        "run_id": row["id"],
+        "created_at": row["created_at"],
+        "cluster_run": json.loads(row["params"]).get("cluster_run"),
+        "missing": len(live) - built["size"],
+    }
+
+
+def edit_tree(conn: sqlite3.Connection, action: str, **kwargs) -> dict:
+    """Rename a node or move a topic; the stored tree is updated in place."""
+    from atlas.analysis import tree
+
+    row = _tree_row(conn)
+    if row is None:
+        raise ValueError("There is no tree yet.")
+    built = json.loads(bytes(row["data"]).decode("utf-8"))
+    if action == "rename":
+        tree.rename(built, str(kwargs.get("node") or ""), kwargs.get("name"))
+    elif action == "move":
+        tree.move_topic(built, str(kwargs.get("node") or ""), str(kwargs.get("family") or ""))
+    else:
+        raise ValueError("Unknown tree edit.")
+    conn.execute(
+        "UPDATE run_artifacts SET data = ? WHERE run_id = ? AND name = 'tree'",
+        (json.dumps(built, ensure_ascii=False).encode("utf-8"), row["id"]),
+    )
+    conn.commit()
+    return tree_data(conn)
+
+
 def compare(
     conn: sqlite3.Connection,
     ks: list[int] | None = None,

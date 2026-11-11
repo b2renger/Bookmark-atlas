@@ -410,6 +410,8 @@ Each phase ends with something usable and a short written check.
 - Self-organising map grid: density, dominant tags, neighbouring themes.
 - Pearl tree: hierarchical clusters as nested collections; drag, rename, merge
   and split; edits stored per run.
+- Done in v0.6.0, with rename and move. Drag and drop, merge and split by hand
+  are left for later.
 
 ### Phase 7: links and tendencies
 

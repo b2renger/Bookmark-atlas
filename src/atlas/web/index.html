@@ -27,7 +27,8 @@
   header { display: flex; align-items: center; gap: 24px; padding: 14px 24px;
     border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
   header h1 { font-size: 17px; margin: 0; letter-spacing: .01em; }
-  nav { display: flex; gap: 4px; }
+  nav { display: flex; gap: 4px; min-width: 0; overflow-x: auto; }
+  nav button { white-space: nowrap; }
   nav button { background: none; border: 0; color: var(--muted); padding: 6px 12px; border-radius: 6px;
     font: inherit; cursor: pointer; }
   nav button[aria-current="page"] { background: var(--chip); color: var(--ink); font-weight: 600; }
@@ -101,6 +102,32 @@
   .viewrow strong { overflow-wrap: anywhere; }
   textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
     color: var(--ink); font: inherit; min-height: 60px; resize: vertical; }
+  #gridwrap { overflow-x: auto; background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  #gridcells { display: grid; gap: 2px; }
+  .cell { background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 2px 4px; font: inherit; color: var(--ink);
+    cursor: pointer; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+  .cell:hover, .cell[aria-pressed="true"] { border-color: var(--line); background: var(--panel); }
+  .cell .disc { height: 56px; display: flex; align-items: center; justify-content: center; }
+  .cell .disc i { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--viz-focus); }
+  .cell .disc i b { display: block; border-radius: 50%; background: var(--viz-selected); box-shadow: 0 0 0 2px var(--viz-surface); }
+  .cell .disc i.match { background: var(--viz-match); }
+  .cell .disc i.none { background: var(--viz-neutral); }
+  .cell span { font-size: 11px; line-height: 1.25; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cell span.n { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 14px 0 6px; font-size: 14px; }
+  .crumbs span { color: var(--muted); }
+  .pearls { display: flex; flex-wrap: wrap; gap: 18px 14px; align-items: flex-start; margin: 16px 0 6px; }
+  .pearl { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); cursor: pointer; width: 150px;
+    display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .pearl .orb { height: 124px; display: flex; align-items: center; justify-content: center; }
+  .pearl .orb i { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--chip);
+    border: 2px solid var(--line); font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .pearl:hover .orb i, .pearl:focus-visible .orb i { border-color: var(--accent); }
+  .pearl .name { font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+  .pearl .kind { font-size: 11px; color: var(--muted); }
+  #tree-items { margin: 8px 0 0; padding-left: 18px; }
+  #tree-items li { overflow-wrap: anywhere; margin-bottom: 3px; }
+  #tree-items a { color: var(--ink); }
   .clgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .clcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
   .clcard h3 { font-size: 15px; margin: 0 0 2px; overflow-wrap: anywhere; }
@@ -138,6 +165,8 @@
     <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
     <button id="tab-map">Map</button>
     <button id="tab-clusters">Clusters</button>
+    <button id="tab-grid">Grid</button>
+    <button id="tab-tree">Tree</button>
     <button id="tab-views">Views</button>
     <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
@@ -226,6 +255,43 @@
       <div class="note" id="cl-note"></div>
     </section>
     <div class="clgrid" id="cl-grid"></div>
+  </div>
+
+  <div id="view-grid" hidden>
+    <section class="card">
+      <h2>Grid</h2>
+      <p class="help">The collection laid out on a grid (a self-organising map). Every bookmark sits
+        in one cell, and neighbouring cells hold related bookmarks. A larger disc means more
+        bookmarks, so the grid shows where your collection is dense and which themes border
+        which. Each cell is named after its most telling tag.</p>
+      <div class="maptools">
+        <button class="action primary" id="grid-run">Draw the grid</button>
+        <div class="grow"><label for="grid-search">Highlight</label>
+          <input type="search" id="grid-search" placeholder="Words to find on the grid"></div>
+      </div>
+      <div id="gridwrap" hidden><div id="gridcells"></div></div>
+      <div class="legend" id="grid-legend"></div>
+      <div class="note muted" id="grid-note"></div>
+    </section>
+    <section class="card" id="griddetail" hidden></section>
+  </div>
+
+  <div id="view-tree" hidden>
+    <section class="card">
+      <h2>Topic tree</h2>
+      <p class="help">Topics that are close are gathered into families, and large topics are split
+        into smaller ones. Open a pearl to go inside it. Names can be changed and a topic can be
+        moved to another family; nothing is recomputed when you do.</p>
+      <div class="row">
+        <button class="action primary" id="tree-run">Build the tree</button>
+        <span class="tagline" id="tree-from"></span>
+      </div>
+      <div class="crumbs" id="tree-path"></div>
+      <div id="tree-here"></div>
+      <div class="pearls" id="tree-pearls"></div>
+      <ul id="tree-items"></ul>
+      <div class="note muted" id="tree-note"></div>
+    </section>
   </div>
 
   <div id="view-views" hidden>
@@ -402,8 +468,8 @@ let currentView = "bookmarks";
 let lastWorkView = "bookmarks";   // what "Save view" captures
 function showView(name) {
   currentView = name;
-  if (["bookmarks", "map", "clusters"].includes(name)) lastWorkView = name;
-  for (const view of ["bookmarks", "map", "clusters", "views", "grooming", "settings"]) {
+  if (["bookmarks", "map", "clusters", "grid", "tree"].includes(name)) lastWorkView = name;
+  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "views", "grooming", "settings"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -871,14 +937,15 @@ let clusterFilter = null;    // { key: "<run id>:<number>", label }
 let selectionFilter = null;  // array of bookmark IDs, frozen when the filter was set
 
 function setClusterFilter(filter) {
-  clusterFilter = filter; selectionFilter = null;
+  clusterFilter = filter; selectionFilter = null; selectionFilterLabel = null;
   $("filterrow").hidden = !filter;
   if (filter) $("filtertext").textContent = "Cluster: " + filter.label;
 }
-function setSelectionFilter(ids) {
-  selectionFilter = ids; clusterFilter = null;
+let selectionFilterLabel = null;   // set when the filter comes from a grid cell or a tree node
+function setSelectionFilter(ids, label) {
+  selectionFilter = ids; clusterFilter = null; selectionFilterLabel = (ids && label) || null;
   $("filterrow").hidden = !ids;
-  if (ids) $("filtertext").textContent = "Selection: " + ids.length + (ids.length === 1 ? " bookmark" : " bookmarks");
+  if (ids) $("filtertext").textContent = (label || "Selection") + ": " + ids.length + (ids.length === 1 ? " bookmark" : " bookmarks");
 }
 $("filterclear").onclick = () => { setClusterFilter(null); loadBookmarks(true).catch(() => {}); };
 $("sel-show").onclick = () => { setSelectionFilter([...selection]); $("search").value = ""; showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
@@ -944,6 +1011,193 @@ $("cl-delete").onclick = async () => {
   catch (error) { note("cl-note", error.message, "bad"); }
 };
 
+/* ---- grid (self-organising map) ---- */
+
+const grid = { data: null, picked: null, matches: null };
+
+function plural(n) { return n + (n === 1 ? " bookmark" : " bookmarks"); }
+
+function showIds(ids, label) {
+  setSelectionFilter(ids, label);
+  $("search").value = ""; showView("bookmarks"); loadBookmarks(true).catch(() => {});
+}
+
+function drawGrid() {
+  const data = grid.data;
+  const holder = $("gridcells");
+  holder.replaceChildren();
+  $("gridwrap").hidden = !(data && data.grid);
+  $("grid-legend").replaceChildren();
+  if (!data || !data.grid) { note("grid-note", "No grid yet. Press Draw the grid to make one.", "muted"); $("griddetail").hidden = true; return; }
+  holder.style.gridTemplateColumns = "repeat(" + data.grid.cols + ", minmax(78px, 1fr))";
+  const largest = Math.max(1, ...data.cells.map((c) => c.size));
+  let anySelected = false, matched = 0;
+  for (const cell of data.cells) {
+    const selected = cell.ids.filter((id) => selection.has(id)).length;
+    const hits = grid.matches ? cell.ids.filter((id) => grid.matches.has(id)).length : 0;
+    anySelected = anySelected || selected > 0; matched += hits;
+    const size = Math.max(cell.size ? 6 : 0, Math.round(52 * Math.sqrt(cell.size / largest)));
+    const disc = el("i");
+    disc.style.width = disc.style.height = size + "px";
+    if (grid.matches) disc.className = hits ? "match" : "none";
+    if (selected) {
+      const inner = el("b");
+      const d = Math.max(4, Math.round(size * Math.sqrt(selected / cell.size)) - (selected < cell.size ? 4 : 0));
+      inner.style.width = inner.style.height = d + "px";
+      disc.append(inner);
+    }
+    const button = el("button", { className: "cell", type: "button" }, [
+      el("div", { className: "disc" }, [disc]),
+      el("span", { className: "n", textContent: String(cell.size) }),
+      el("span", { textContent: cell.tags[0] || "—" })]);
+    button.title = plural(cell.size) + (cell.tags.length ? " · " + cell.tags.join(", ") : "")
+      + (hits ? " · " + hits + " matching" : "") + (selected ? " · " + selected + " selected" : "");
+    button.setAttribute("aria-label", "Row " + (cell.row + 1) + ", column " + (cell.col + 1) + ": " + button.title);
+    button.setAttribute("aria-pressed", grid.picked === cell.cell ? "true" : "false");
+    button.onclick = () => { grid.picked = cell.cell; drawGrid(); gridDetail(cell); };
+    holder.append(button);
+  }
+  const legend = [["--viz-focus", "disc area = number of bookmarks in the cell"]];
+  if (grid.matches) { legend[0] = ["--viz-match", "cells with a match (" + matched + " bookmarks)"]; legend.push(["--viz-neutral", "cells without"]); }
+  if (anySelected) legend.push(["--viz-selected", "share of the cell that is selected"]);
+  for (const [colour, text] of legend) {
+    const dot = el("i"); dot.style.background = "var(" + colour + ")";
+    $("grid-legend").append(el("span", {}, [dot, text]));
+  }
+  note("grid-note", data.grid.rows + " × " + data.grid.cols + " cells. "
+    + Math.round(100 * (1 - data.grid.topographic_error)) + "% of bookmarks have their two closest cells side by side"
+    + " (the higher, the more the neighbourhoods can be trusted)."
+    + (data.missing > 0 ? " " + plural(data.missing) + " arrived since and are not placed; draw the grid again to include them." : ""), "muted");
+}
+
+function gridDetail(cell) {
+  const holder = $("griddetail");
+  const show = el("button", { className: "action", textContent: "Show in the list" });
+  show.onclick = () => showIds(cell.ids, "Grid cell “" + (cell.tags[0] || "unnamed") + "”");
+  const allIn = cell.ids.length > 0 && cell.ids.every((id) => selection.has(id));
+  const pick = el("button", { className: "action", textContent: allIn ? "Remove from selection" : "Add to selection" });
+  pick.onclick = () => { for (const id of cell.ids) { if (allIn) selection.delete(id); else selection.add(id); } refreshSelection(); drawGrid(); gridDetail(cell); };
+  holder.replaceChildren(
+    el("h2", { textContent: cell.tags.join(" · ") || "Empty cell" }),
+    el("div", { className: "tagline", textContent: plural(cell.size) + " · row " + (cell.row + 1) + ", column " + (cell.col + 1) }),
+    el("ul", { className: "sum" }, cell.samples.map((s) => el("li", { textContent: s }))),
+    el("div", { className: "row" }, cell.size ? [show, pick] : []));
+  holder.hidden = false;
+}
+
+async function loadGrid() { grid.data = await api("GET", "/api/grid"); grid.picked = null; $("griddetail").hidden = true; drawGrid(); }
+$("grid-run").onclick = () => busy($("grid-run"), async () => {
+  try { grid.data = await api("POST", "/api/grid", {}); grid.picked = null; $("griddetail").hidden = true; drawGrid(); }
+  catch (error) { note("grid-note", error.message, "bad"); }
+});
+let gridSearchTimer = null;
+$("grid-search").oninput = () => {
+  clearTimeout(gridSearchTimer);
+  gridSearchTimer = setTimeout(async () => {
+    const q = $("grid-search").value.trim();
+    try { grid.matches = q ? new Set((await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent(q))).ids) : null; drawGrid(); }
+    catch (error) { note("grid-note", error.message, "bad"); }
+  }, 250);
+};
+
+/* ---- topic tree ---- */
+
+const tree = { data: null, path: [] };   // path: node IDs from below the root to the open node
+
+function nodeIds(node) { return node.ids ? node.ids : node.children.flatMap(nodeIds); }
+function treeNode() {
+  let node = tree.data.tree; const trail = [node];
+  for (const id of tree.path) {
+    const next = node.children.find((child) => child.id === id);
+    if (!next) break;
+    node = next; trail.push(node);
+  }
+  tree.path = trail.slice(1).map((n) => n.id);
+  return trail;
+}
+
+async function drawTree() {
+  const data = tree.data;
+  for (const id of ["tree-path", "tree-here", "tree-pearls", "tree-items"]) $(id).replaceChildren();
+  $("tree-from").textContent = "";
+  if (!data || !data.tree) { note("tree-note", "No tree yet. Press Build the tree to make one from the latest clustering.", "muted"); return; }
+  $("tree-from").textContent = "Built " + new Date(data.created_at).toLocaleString() + ". Building again starts from the latest clustering and forgets your changes.";
+  const trail = treeNode();
+  const node = trail[trail.length - 1];
+  trail.forEach((step, index) => {
+    if (index) $("tree-path").append(el("span", { textContent: "›" }));
+    if (index === trail.length - 1) $("tree-path").append(el("strong", { textContent: step.name }));
+    else { const link = el("button", { className: "linkish", textContent: step.name }); link.onclick = () => { tree.path = tree.path.slice(0, index); drawTree(); }; $("tree-path").append(link); }
+  });
+  const ids = nodeIds(node);
+  const acts = [];
+  const show = el("button", { className: "linkish", textContent: "show in the list" });
+  show.onclick = () => showIds(ids, "Tree: " + node.name);
+  const pick = el("button", { className: "linkish", textContent: "add to selection" });
+  pick.onclick = () => { for (const id of ids) selection.add(id); refreshSelection(); note("tree-note", plural(ids.length) + " added to the selection (" + selection.size + " selected).", "good"); };
+  acts.push(show, pick);
+  const edit = async (body) => {
+    try { tree.data = await api("POST", "/api/tree/edit", body); await drawTree(); }
+    catch (error) { note("tree-note", error.message, "bad"); }
+  };
+  if (node.kind !== "root") {
+    const rename = el("button", { className: "linkish", textContent: "rename" });
+    rename.onclick = () => {
+      const input = el("input", { type: "text", value: node.name, maxLength: 120 });
+      input.setAttribute("aria-label", "Name");
+      let done = false;
+      const save = () => { if (done) return; done = true; if (input.value.trim() && input.value.trim() !== node.name) edit({ action: "rename", node: node.id, name: input.value }); else drawTree(); };
+      input.onkeydown = (event) => { if (event.key === "Enter") save(); if (event.key === "Escape") { done = true; drawTree(); } };
+      input.onblur = save;
+      rename.replaceWith(input); input.focus(); input.select();
+    };
+    acts.push(rename);
+  }
+  const line = el("div", { className: "selrow" }, [el("span", { className: "tagline", textContent: plural(node.size) }), ...acts]);
+  if (node.kind === "topic") {
+    const families = data.tree.children.filter((family) => family.id !== trail[1].id);
+    if (families.length) {
+      const select = el("select", {}, [el("option", { value: "", textContent: "Move to another family…" }),
+        ...families.map((family) => el("option", { value: family.id, textContent: family.name }))]);
+      select.setAttribute("aria-label", "Move this topic to another family");
+      select.onchange = () => { if (!select.value) return; const target = select.value; tree.path = [target, node.id]; edit({ action: "move", node: node.id, family: target }); };
+      line.append(select);
+    }
+  }
+  $("tree-here").append(line);
+  const largest = Math.max(1, ...node.children.map((child) => child.size));
+  for (const child of node.children) {
+    const orb = el("i", { textContent: String(child.size) });
+    const d = Math.round(44 + 76 * Math.sqrt(child.size / largest));
+    orb.style.width = orb.style.height = d + "px";
+    const pearl = el("button", { className: "pearl", type: "button" }, [el("div", { className: "orb" }, [orb]),
+      el("span", { className: "name", textContent: child.name }),
+      el("span", { className: "kind", textContent: ({ family: "family", topic: "topic", subtopic: "part" })[child.kind]
+        + (child.children.length ? " · " + child.children.length + " inside" : "") })]);
+    pearl.onclick = () => { tree.path.push(child.id); note("tree-note", "", "muted"); drawTree(); };
+    $("tree-pearls").append(pearl);
+  }
+  if (!node.children.length && ids.length) {
+    try {
+      const listed = await api("POST", "/api/bookmarks/list", { ids, limit: 100, offset: 0 });
+      if (trail[trail.length - 1] !== treeNode().pop()) return;
+      for (const item of listed.items) {
+        const href = safeLink(item.url);
+        $("tree-items").append(el("li", {}, [href
+          ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title || item.url })
+          : el("span", { textContent: item.title || item.url })]));
+      }
+    } catch (error) { note("tree-note", error.message, "bad"); }
+  }
+  if (data.missing > 0) note("tree-note", plural(data.missing) + " arrived since and are not in the tree; cluster again, then build the tree again.", "muted");
+}
+
+async function loadTree() { tree.data = await api("GET", "/api/tree"); await drawTree(); }
+$("tree-run").onclick = () => busy($("tree-run"), async () => {
+  try { tree.data = await api("POST", "/api/tree", {}); tree.path = []; note("tree-note", "", "muted"); await drawTree(); }
+  catch (error) { note("tree-note", error.message, "bad"); }
+});
+
 /* ---- saved views and snapshots ---- */
 
 function captureView() {
@@ -952,7 +1206,8 @@ function captureView() {
     search: $("search").value.trim(),
     cluster: clusterFilter,
     selection: [...selection],
-    selection_filter: !!selectionFilter,
+    selection_filter: !!selectionFilter && !selectionFilterLabel,
+    tree_path: tree.path.slice(),
     clusters_run: $("cl-runs").value || null,
     map: { focus: map.focus, scale: map.scale, tx: map.tx, ty: map.ty, search: $("map-search").value.trim(), clusters_run: $("map-clusters").value || null },
   };
@@ -975,11 +1230,13 @@ async function restoreView(state) {
   showView(state.tab);
   if (state.tab === "map") await loadMap(state.map.clusters_run || undefined);
   else if (state.tab === "clusters") await loadClusters(state.clusters_run || undefined);
+  else if (state.tab === "grid") await loadGrid();
+  else if (state.tab === "tree") { tree.path = state.tree_path || []; await loadTree(); }
   await loadBookmarks(true);
 }
 
 function describeCurrent() {
-  const parts = ["the " + ({ bookmarks: "list", map: "map", clusters: "clusters" })[lastWorkView]];
+  const parts = ["the " + ({ bookmarks: "list", map: "map", clusters: "clusters", grid: "grid", tree: "topic tree" })[lastWorkView]];
   if ($("search").value.trim()) parts.push("the search “" + $("search").value.trim() + "”");
   if (clusterFilter) parts.push("the filter on “" + clusterFilter.label + "”");
   if (selection.size) parts.push(selection.size + " selected bookmarks");
@@ -1247,11 +1504,12 @@ function refreshSelection() {
   const n = selection.size;
   // After a delete the selection is empty, but its result and Undo must stay visible.
   // The bar serves the list and the map; it sits above both.
-  $("selbar").hidden = (n === 0 && !keepNote) || !["bookmarks", "map"].includes(currentView);
+  $("selbar").hidden = (n === 0 && !keepNote) || !["bookmarks", "map", "grid"].includes(currentView);
   // Sticky over the long list; in place above the map, where it would cover the tools.
-  $("selbar").style.position = currentView === "map" ? "static" : "";
+  $("selbar").style.position = currentView === "bookmarks" ? "" : "static";
   $("sel-show").hidden = n === 0;
   if (typeof drawMap === "function") drawMap();
+  if (currentView === "grid" && typeof drawGrid === "function" && grid.data) drawGrid();
   $("sel-actions").hidden = n === 0;
   if (!n) { $("sel-count").textContent = "Nothing selected"; $("sel-all").hidden = true; if (!keepNote) note("sel-note", "", "muted"); return; }
   keepNote = false;
@@ -1343,6 +1601,8 @@ $("tab-settings").onclick = () => showView("settings");
 $("tab-views").onclick = () => { showView("views"); loadViews().catch((e) => note("view-note-msg", e.message, "bad")); };
 $("tab-map").onclick = () => { showView("map"); loadMap($("map-clusters").value || undefined).catch((e) => note("map-note", e.message, "bad")); };
 $("tab-clusters").onclick = () => { showView("clusters"); loadClusters().catch((e) => note("cl-note", e.message, "bad")); };
+$("tab-grid").onclick = () => { showView("grid"); loadGrid().catch((e) => note("grid-note", e.message, "bad")); };
+$("tab-tree").onclick = () => { showView("tree"); loadTree().catch((e) => note("tree-note", e.message, "bad")); };
 $("tab-grooming").onclick = () => { showView("grooming"); loadGrooming().catch((e) => note("scripts-note", e.message, "bad")); };
 
 document.querySelector("main").prepend($("selbar"));

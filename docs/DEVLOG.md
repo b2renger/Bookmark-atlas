@@ -4,6 +4,55 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: v0.5.0 published; phase 6, grid and topic tree
+
+**Published:** v0.5.0 (the third smoke test, opening a snapshot in the
+packaged app, passed).
+
+**Works**
+
+- `atlas.analysis.som`: batch self-organising map. Grid size from the number
+  of bookmarks (3x4 up to 16x20). Two quality figures are stored with the
+  run: quantization error and topographic error.
+- `atlas.analysis.tree`: families by Ward's method on cluster centres (about
+  the square root of the number of topics), sub-topics by k-means inside
+  topics of 24 bookmarks or more, names from telling tags.
+- Stored as runs of kind `som` and `tree`; one of each is kept. No schema
+  change: cells go in `run_items`, the tree is a JSON artifact.
+- Routes `/api/grid`, `/api/tree`, `/api/tree/edit`. Tabs **Grid** and
+  **Tree**. Saved views remember these tabs and the place in the tree.
+- A filter coming from a grid cell or a tree node is shown by name in the
+  list ("Grid cell ...", "Tree: ...").
+
+**Decisions**
+
+- Grid discs encode size by area; colour is kept for state (match, selected),
+  as on the map.
+- The tree is drawn as pearls to open, one level at a time, with a path. It
+  reads well at 4 to 6 items per level and needs no layout algorithm.
+- Tree edits change the stored tree only. They do not touch clusters, tags or
+  bookmarks, so they need no journal.
+- A flaky map test was loosened: bookmark IDs are random, so row order and
+  the toy layout vary between runs.
+
+**Verified how**
+
+- 7 new Python tests (grid repeatable, groups kept together on synthetic
+  data, every bookmark placed once, tree covers everything, edits keep the
+  counts right, deleted bookmarks leave both, both survive a partial
+  snapshot).
+- Browser run on the real collection, light and dark: draw the grid, open a
+  cell, select it, highlight a search, open it in the list; build the tree,
+  open a family and a topic, rename, move to another family, list a part,
+  reload and find the edits kept.
+
+**Not done**
+
+- Drag and drop, merge and split by hand in the tree.
+- Grid of a filtered subset; choice of grid size.
+
+**Next:** phase 7, links and tendencies.
+
 ## 2026-11-11: v0.4.0 published; phase 5, saved views and snapshots
 
 **Published:** v0.4.0.

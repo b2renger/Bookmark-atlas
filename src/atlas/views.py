@@ -9,7 +9,7 @@ import uuid
 from atlas.db import now_iso
 
 MAX_STATE_BYTES = 2_000_000
-TABS = ("bookmarks", "map", "clusters")
+TABS = ("bookmarks", "map", "clusters", "grid", "tree")
 
 
 def _clean_state(state) -> dict:
@@ -41,6 +41,7 @@ def _clean_state(state) -> dict:
     focus = map_state.get("focus")
     return {
         "tab": tab,
+        "tree_path": [item for item in ids(state.get("tree_path")) if len(item) <= 20][:4],
         "search": text(state.get("search")),
         "cluster": {"key": text(cluster.get("key"), 100), "label": text(cluster.get("label"), 200)}
         if cluster and cluster.get("key")

@@ -13,9 +13,9 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 ## Status
 
-Phase 5 of 7. Import (Notion or CSV), browse, groom the collection with
-scripts, group it into topic clusters, explore it on a map, save views and
-share snapshots. The self-organising map, the pearl tree and tendencies come
+Phase 6 of 7. Import (Notion or CSV), browse, groom the collection with
+scripts, group it into topic clusters, explore it on a map, on a grid and as a
+tree of topics, save views and share snapshots. Links and tendencies come
 next. The e-means test is done: see
 [docs/reports/e-means-test.md](docs/reports/e-means-test.md).
 
@@ -76,6 +76,15 @@ to highlight matches, Shift+drag to select an area.
 In **Clusters**, group the collection by topic. Each cluster shows its telling
 tags and a few bookmarks; rename it, or "show bookmarks" to work on it in the
 list.
+
+The **Grid** is a self-organising map: every bookmark sits in one cell,
+neighbouring cells hold related bookmarks, and a larger disc means more
+bookmarks. It shows where the collection is dense. Click a cell to read it,
+select it or open it in the list.
+
+The **Tree** gathers close topics into families and splits large topics into
+parts. Open a pearl to go inside; rename anything; move a topic to another
+family.
 
 In **Views**, save where you are under a name and come back to it later, or
 export a **snapshot**: one file with bookmarks, clusters, map and views that

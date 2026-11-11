@@ -205,6 +205,57 @@ class App:
         finally:
             conn.close()
 
+    def grid_show(self) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            return store.grid_data(conn)
+        finally:
+            conn.close()
+
+    def grid_new(self) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            return store.grid_run(conn)
+        finally:
+            conn.close()
+
+    def tree_show(self) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            return store.tree_data(conn)
+        finally:
+            conn.close()
+
+    def tree_new(self, body: dict) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            return store.tree_run(conn, body.get("cluster_run") or None)
+        finally:
+            conn.close()
+
+    def tree_edit(self, body: dict) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            return store.edit_tree(
+                conn,
+                str(body.get("action") or ""),
+                node=body.get("node"),
+                name=body.get("name"),
+                family=body.get("family"),
+            )
+        finally:
+            conn.close()
+
     def views_list(self) -> dict:
         conn = self._conn()
         try:
@@ -548,6 +599,11 @@ def make_handler(app: App):
                 ("POST", "/api/map"): lambda: app.map_new(self._body()),
                 ("GET", "/api/bookmarks/item"): lambda: app.bookmark_item(parse_qs(url.query)),
                 ("POST", "/api/bookmarks/list"): lambda: app.bookmarks_listed(self._body()),
+                ("GET", "/api/grid"): lambda: app.grid_show(),
+                ("POST", "/api/grid"): lambda: app.grid_new(),
+                ("GET", "/api/tree"): lambda: app.tree_show(),
+                ("POST", "/api/tree"): lambda: app.tree_new(self._body()),
+                ("POST", "/api/tree/edit"): lambda: app.tree_edit(self._body()),
                 ("GET", "/api/views"): lambda: app.views_list(),
                 ("GET", "/api/views/item"): lambda: app.view_get(parse_qs(url.query)),
                 ("POST", "/api/views"): lambda: app.view_save(self._body()),
