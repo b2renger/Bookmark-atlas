@@ -1,0 +1,9 @@
+﻿Name,Date,Description,Keywords,Platform,URL
+Paper Lantern Renderer,"March 3, 2026 4:12 PM (GMT+1)","An invented path tracer for paper lanterns, used here as test data.","Rendering, Path Tracing, Open Source",Website,https://www.example.org/lantern/?utm_source=newsletter
+Lantern thread,"June 14, 2026 2:00 AM (GMT+2)",A made-up post announcing the renderer.,"Rendering, Announcement",Twitter,https://x.com/example_dev/status/2030000000000000001?s=20
+Lantern thread (again),"June 20, 2026 9:30 AM (GMT+2)",The same made-up post saved a second time through the old domain.,"rendering, Duplicate",,https://twitter.com/Example_Dev/status/2030000000000000001/photo/1
+lantern-core,"January 9, 2026 1:00 AM (GMT+1)",Fictional repository holding the renderer core.,"Open Source, C++",GitHub,https://github.com/Example-Org/Lantern-Core
+Lantern talk,"October 2, 2025 6:45 PM (GMT+2)",An imaginary conference talk about the renderer.,"Talk, Rendering",YouTube,https://m.youtube.com/watch?v=abc123XYZ_0&t=42s
+Undated note,,A row without a date.,Misc,,https://example.net/notes/undated
+No link,"May 1, 2026 10:00 AM (GMT+2)",A row whose URL is missing.,Misc,,
+Not a link,"May 1, 2026 10:05 AM (GMT+2)",A row whose URL is not a web address.,Misc,,mailto:someone@example.org

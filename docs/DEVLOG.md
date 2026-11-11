@@ -4,6 +4,48 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: phase 1, CSV import
+
+**Works**
+
+- `atlas import-csv <file>` with `--dry-run` and `--column field=header`.
+- Rows are matched to bookmarks by normalised URL. New links become bookmarks;
+  links already known are stored as source records and never overwrite
+  anything.
+- Importing the same file twice writes nothing.
+- A bookmark deleted locally stays deleted when its link is imported again.
+- A whole file is one transaction: it all succeeds or nothing is written.
+
+**Checked on the real export (962 rows)**
+
+- 956 bookmarks created, 6 rows recognised as duplicates and held for review.
+  Three of them have identical URLs. The other three were only found through
+  normalisation: a tracking parameter, a YouTube share parameter, and the same
+  X post under two account paths. All six are true duplicates.
+- 439 dates have no time of day and were left empty on purpose.
+- A second import reported 962 rows already imported and created nothing.
+
+**Decided**
+
+- Exact duplicates collapse at import, because the normalised URL is the only
+  key a CSV row has. The first row creates the bookmark; later rows for the
+  same link are kept as pending source records. Their tags are not merged in
+  automatically.
+- A date with a time of day goes to `saved_at` (source `date_column`). A date
+  without one is ambiguous (save day or publication day), so both date fields
+  stay empty and the original value remains in the source record for the
+  `split-dates` script.
+- `platform` is not filled at import. It is the job of `derive-platform`.
+- Tags are stored exactly as written. Normalising them is grooming.
+- URL rules so far: scheme, `www.`, fragment, trailing slash and tracking
+  parameters are ignored; twitter.com is x.com; an X post is identified by its
+  ID alone; a YouTube video by its `v` parameter; GitHub owner and repository
+  names are case-insensitive.
+
+**Next**
+
+- `atlas export` and `atlas status`, then the Notion sync.
+
 ## 2026-11-11: phase 0, scaffolding
 
 **Works**
