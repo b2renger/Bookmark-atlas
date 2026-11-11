@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install pytest ruff
+      - run: python -m pip install pytest ruff tzdata
       - run: ruff check .
       - run: python -m pytest -q
 
@@ -136,6 +136,13 @@ jobs:
           fi
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             {
+              # What is new, written at the end of each phase.
+              if [[ -f "docs/releases/$GITHUB_REF_NAME.md" ]]; then
+                cat "docs/releases/$GITHUB_REF_NAME.md"
+                echo ""
+                echo "---"
+                echo ""
+              fi
               echo "**Windows:** download \`Bookmark-Atlas-Setup-${GITHUB_REF_NAME#v}-windows-x64.exe\` and run it."
               echo ""
               echo "The installer is not signed, so Windows shows \"Windows protected your PC\" the first time: choose **More info**, then **Run anyway**."

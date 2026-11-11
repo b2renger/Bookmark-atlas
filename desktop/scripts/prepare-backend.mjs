@@ -88,7 +88,15 @@ async function main() {
     for (const name of ['test', 'idlelib', 'tkinter', 'turtledemo', 'lib2to3']) removeIfPresent(path.join(lib, name));
     for (const name of ['tcl', 'include', 'libs', 'share']) removeIfPresent(path.join(pythonDir, name));
 
-    // 3. The atlas package.
+    // 3. Time zone database. Windows has none that Python can read, and Notion
+    //    dates may name a zone.
+    const pythonExe = process.platform === 'win32'
+        ? path.join(pythonDir, 'python.exe')
+        : path.join(pythonDir, 'bin', 'python3');
+    execFileSync(pythonExe, ['-I', '-m', 'pip', 'install', '--no-warn-script-location', '--disable-pip-version-check', 'tzdata'], { stdio: 'inherit' });
+    execFileSync(pythonExe, ['-I', '-c', 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Paris")'], { stdio: 'inherit' });
+
+    // 4. The atlas package.
     const appDir = path.join(backend, 'app');
     removeIfPresent(appDir);
     fs.cpSync(source, path.join(appDir, 'atlas'), {
@@ -96,7 +104,7 @@ async function main() {
         filter: (src) => !src.includes('__pycache__'),
     });
 
-    // 4. Prove the result runs before anything gets packaged.
+    // 5. Prove the result runs before anything gets packaged.
     const python = process.platform === 'win32'
         ? path.join(pythonDir, 'python.exe')
         : path.join(pythonDir, 'bin', 'python3');

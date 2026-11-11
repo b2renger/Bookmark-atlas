@@ -20,6 +20,26 @@ EXPORT_FIELDS = [
 ]
 
 
+def search_clause(text: str | None) -> tuple[str, list]:
+    """WHERE clause and parameters for live bookmarks matching a search text."""
+    where, params = "deleted_at IS NULL", []
+    text = (text or "").strip()
+    if text:
+        like = f"%{text}%"
+        where += (
+            " AND (title LIKE ? OR summary LIKE ? OR url LIKE ? OR platform LIKE ? OR id IN ("
+            "SELECT bookmark_id FROM bookmark_tags JOIN tags ON tags.id = tag_id "
+            "WHERE name LIKE ?))"
+        )
+        params = [like, like, like, like, like]
+    return where, params
+
+
+def matching_ids(conn: sqlite3.Connection, text: str | None) -> list[str]:
+    where, params = search_clause(text)
+    return [row[0] for row in conn.execute(f"SELECT id FROM bookmarks WHERE {where}", params)]
+
+
 def export_bookmarks(conn: sqlite3.Connection, *, include_deleted: bool = False) -> list[dict]:
     """Curated bookmarks, oldest first, each with its tags as a sorted list."""
     tags: dict[str, list[str]] = {}

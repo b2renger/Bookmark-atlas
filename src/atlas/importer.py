@@ -177,8 +177,12 @@ def import_record(
     external_edited_at: str | None = None,
     saved_at: str | None = None,
     saved_source: str | None = None,
+    extra: dict | None = None,
 ) -> None:
     """Apply the import rules to one record. Raises ValueError on a bad URL.
+
+    ``extra`` gives curated fields a new bookmark starts with (platform,
+    publication date), for records that already carry them.
 
     ``saved_at`` is a save time known from the source itself (a Notion page's
     creation time). Without it, a date with a time of day is used.
@@ -242,6 +246,8 @@ def import_record(
     # 2. A link we already hold.
     bookmark = find_bookmark(conn, url_normalized)
     if bookmark is not None:
+        if source == "atlas":
+            saved_at = None  # a shared copy says nothing about when *this* user saved it
         known = conn.execute(
             "SELECT 1 FROM source_records WHERE bookmark_id = ? AND content_hash = ?",
             (bookmark["id"], digest),
@@ -279,7 +285,8 @@ def import_record(
     now = now_iso()
     conn.execute(
         "INSERT INTO bookmarks (id, url, url_normalized, domain, title, summary, "
-        "saved_at, saved_source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "saved_at, saved_source, platform, published_at, published_source, created_at, "
+        "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             bookmark_id,
             url.strip(),
@@ -289,6 +296,9 @@ def import_record(
             (summary or "").strip() or None,
             saved_at,
             saved_source if saved_at else None,
+            (extra or {}).get("platform") or None,
+            (extra or {}).get("published_at") or None,
+            (extra or {}).get("published_source") or None,
             now,
             now,
         ),

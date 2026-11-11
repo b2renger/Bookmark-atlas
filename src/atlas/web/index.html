@@ -71,6 +71,12 @@
   .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .toolbar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+  #selbar { position: sticky; top: 58px; z-index: 1; background: var(--chip); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  .selrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 6px; }
+  .selrow input[type=text], .selrow select { width: auto; flex: 1 1 150px; max-width: 260px; background: var(--panel); }
+  #selbar .note { margin-top: 2px; }
+  td.pick, th.pick { width: 28px; padding-right: 0; }
   .script { border-top: 1px solid var(--line); padding: 16px 0; }
   .script:first-child { border-top: 0; padding-top: 4px; }
   .script h3 { font-size: 15px; margin: 0 0 2px; }
@@ -109,6 +115,23 @@
       <div class="toolbar">
         <input type="search" id="search" placeholder="Search titles, summaries, links and tags" aria-label="Search bookmarks">
         <span class="count" id="count"></span>
+      </div>
+      <div id="selbar" hidden>
+        <div class="selrow">
+          <strong id="sel-count"></strong>
+          <button class="linkish" id="sel-all" hidden></button>
+          <button class="linkish" id="sel-clear">clear</button>
+        </div>
+        <div class="selrow" id="sel-actions">
+          <input type="text" id="sel-add" placeholder="Tag to add" aria-label="Tag to add" list="sel-known">
+          <datalist id="sel-known"></datalist>
+          <button class="action" id="sel-add-go">Add tag</button>
+          <select id="sel-remove" aria-label="Tag to remove"></select>
+          <button class="action" id="sel-remove-go">Remove tag</button>
+          <button class="action" id="sel-export">Export selection</button>
+          <button class="action" id="sel-delete">Delete</button>
+        </div>
+        <div class="note" id="sel-note"></div>
       </div>
       <div id="list"></div>
       <div class="row" style="justify-content:center; margin-top:14px">
@@ -187,14 +210,14 @@
     </section>
 
     <section class="card">
-      <h2>Import a CSV file</h2>
-      <p class="help">An export of your table from Notion (••• menu, Export, CSV) can be imported
-        directly, without a token. Links already in the collection are not duplicated, so a CSV
-        import and a Notion import can be combined.</p>
+      <h2>Import a file</h2>
+      <p class="help">Two kinds of file: a CSV export of your table from Notion (••• menu, Export,
+        CSV), or a bundle exported from another Atlas (“Export selection” in Bookmarks). No token
+        needed. Links already in the collection are not duplicated.</p>
       <div class="row">
         <div class="grow">
           <label for="csv-file">File</label>
-          <input type="file" id="csv-file" accept=".csv,text/csv">
+          <input type="file" id="csv-file" accept=".csv,.json,text/csv,application/json">
         </div>
         <button class="action" id="preview-csv" disabled>Preview</button>
         <button class="action primary" id="run-csv" disabled>Import file</button>
@@ -359,7 +382,7 @@ function showCsvReport(report) {
     ["Rows read", report.rows, ""],
     ["Bookmarks created", report.created, ""],
     ["Already imported", report.unchanged, ""],
-    ["Same link as an existing bookmark", report.pending, "kept for review, not merged"],
+    ["Same link as an existing bookmark", report.pending, "kept aside; Grooming > Merge duplicates folds them in"],
     ["Deleted here, left deleted", report.tombstoned, ""],
     ["Dates without a time of day", report.date_only, "left for the date clean-up script"],
     ["Unreadable dates", report.unreadable_dates, ""],
@@ -591,7 +614,17 @@ async function loadBookmarks(reset) {
     let body = holder.querySelector("tbody");
     if (!body) {
       body = el("tbody");
+      const pickAll = el("input", { type: "checkbox", id: "pick-all" });
+      pickAll.setAttribute("aria-label", "Select all shown");
+      pickAll.onchange = () => {
+        for (const box of holder.querySelectorAll("td.pick input")) {
+          box.checked = pickAll.checked;
+          if (pickAll.checked) selection.add(box.dataset.id); else selection.delete(box.dataset.id);
+        }
+        refreshSelection();
+      };
       holder.append(el("table", { className: "list" }, [el("thead", {}, [el("tr", {}, [
+        el("th", { className: "pick" }, [pickAll]),
         el("th", { textContent: "Bookmark" }), el("th", { textContent: "Site" }), el("th", { textContent: "Saved" }),
         el("th", { textContent: "Published" })])]), body]));
     }
@@ -603,7 +636,11 @@ async function loadBookmarks(reset) {
       const cell = el("td", {}, [title]);
       if (item.summary) cell.append(el("div", { className: "sum", textContent: item.summary }));
       if (item.tags.length) cell.append(el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))));
-      body.append(el("tr", {}, [cell, el("td", { className: "nowrap", textContent: item.platform && item.platform !== "Website" ? item.platform : item.domain }),
+      const pick = el("input", { type: "checkbox", checked: selection.has(item.id) });
+      pick.dataset.id = item.id;
+      pick.setAttribute("aria-label", "Select " + (item.title || item.url));
+      pick.onchange = () => { if (pick.checked) selection.add(item.id); else selection.delete(item.id); refreshSelection(); };
+      body.append(el("tr", {}, [el("td", { className: "pick" }, [pick]), cell, el("td", { className: "nowrap", textContent: item.platform && item.platform !== "Website" ? item.platform : item.domain }),
         el("td", { className: "nowrap", textContent: item.saved_at ? item.saved_at.slice(0, 10) : "—" }),
         el("td", { className: "nowrap", textContent: item.published_at ? item.published_at.slice(0, 10) : "—" })]));
     }
@@ -611,7 +648,100 @@ async function loadBookmarks(reset) {
   }
   $("count").textContent = total ? shown + " of " + total : "";
   $("more").hidden = shown >= total;
+  refreshSelection();
 }
+
+/* ---- selection and batch edits ---- */
+
+const selection = new Set();
+let tagsTimer = null;
+let keepNote = false;
+
+function refreshSelection() {
+  const n = selection.size;
+  // After a delete the selection is empty, but its result and Undo must stay visible.
+  $("selbar").hidden = n === 0 && !keepNote;
+  $("sel-actions").hidden = n === 0;
+  if (!n) { $("sel-count").textContent = "Nothing selected"; $("sel-all").hidden = true; if (!keepNote) note("sel-note", "", "muted"); return; }
+  keepNote = false;
+  $("sel-count").textContent = n + (n === 1 ? " bookmark selected" : " bookmarks selected");
+  const q = $("search").value.trim();
+  $("sel-all").hidden = n >= total;
+  $("sel-all").textContent = "select all " + total + (q ? " matching" : "");
+  const all = $("pick-all");
+  if (all) { const boxes = [...document.querySelectorAll("td.pick input")]; all.checked = boxes.length > 0 && boxes.every((b) => b.checked); }
+  clearTimeout(tagsTimer);
+  tagsTimer = setTimeout(async () => {
+    if (!selection.size) return;
+    try {
+      const tags = (await api("POST", "/api/bookmarks/tags", { ids: [...selection] })).tags;
+      const select = $("sel-remove");
+      select.replaceChildren(el("option", { value: "", textContent: tags.length ? "Tag to remove…" : "No tags in selection" }));
+      for (const tag of tags) select.append(el("option", { value: tag.name, textContent: tag.name + " (" + tag.count + ")" }));
+    } catch (error) { /* the bar still works without the list */ }
+  }, 250);
+}
+
+async function batch(button, body, describe) {
+  await busy(button, async () => {
+    try {
+      const done = await api("POST", "/api/bookmarks/batch", { ids: [...selection], ...body });
+      const result = done.result;
+      const holder = $("sel-note");
+      holder.className = "note good";
+      if (!result.applied) { holder.textContent = "Nothing to change: the selection already was that way."; return; }
+      const undo = el("button", { className: "linkish", textContent: "Undo" });
+      undo.onclick = async () => {
+        try { await api("POST", "/api/groom/undo", { run_id: result.run_id }); note("sel-note", "Undone.", "muted"); await refreshState(); await loadBookmarks(true); }
+        catch (error) { note("sel-note", error.message, "bad"); }
+      };
+      holder.replaceChildren(describe(result) + " ", undo);
+      if (body.delete) { selection.clear(); keepNote = true; }
+      await refreshState(); await loadBookmarks(true);
+    } catch (error) { note("sel-note", error.message, "bad"); }
+  });
+}
+
+$("sel-add-go").onclick = () => {
+  const tag = $("sel-add").value.trim();
+  if (!tag) { note("sel-note", "Type the tag to add.", "bad"); return; }
+  batch($("sel-add-go"), { add_tags: [tag] }, (r) => "Tag “" + tag + "” added to " + r.groups + (r.groups === 1 ? " bookmark." : " bookmarks.")).then(() => { $("sel-add").value = ""; });
+};
+$("sel-add").onkeydown = (event) => { if (event.key === "Enter") $("sel-add-go").click(); };
+$("sel-remove-go").onclick = () => {
+  const tag = $("sel-remove").value;
+  if (!tag) { note("sel-note", "Choose the tag to remove.", "bad"); return; }
+  batch($("sel-remove-go"), { remove_tags: [tag] }, (r) => "Tag “" + tag + "” removed from " + r.groups + (r.groups === 1 ? " bookmark." : " bookmarks."));
+};
+let deleteArmed = false;
+$("sel-delete").onclick = () => {
+  if (!deleteArmed) {
+    deleteArmed = true; $("sel-delete").textContent = "Confirm delete";
+    setTimeout(() => { deleteArmed = false; $("sel-delete").textContent = "Delete"; }, 4000);
+    return;
+  }
+  deleteArmed = false;
+  batch($("sel-delete"), { delete: true }, (r) => r.groups + (r.groups === 1 ? " bookmark" : " bookmarks") + " deleted.").then(() => { $("sel-delete").textContent = "Delete"; });
+};
+$("sel-clear").onclick = () => { keepNote = false; selection.clear(); for (const box of document.querySelectorAll("td.pick input")) box.checked = false; refreshSelection(); };
+$("sel-all").onclick = async () => {
+  try {
+    const ids = (await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent($("search").value.trim()))).ids;
+    for (const id of ids) selection.add(id);
+    for (const box of document.querySelectorAll("td.pick input")) box.checked = selection.has(box.dataset.id);
+    refreshSelection();
+  } catch (error) { note("sel-note", error.message, "bad"); }
+};
+$("sel-export").onclick = () => busy($("sel-export"), async () => {
+  try {
+    const data = await api("POST", "/api/bookmarks/export", { ids: [...selection] });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const link = el("a", { href: URL.createObjectURL(blob), download: "atlas-" + data.count + "-bookmarks-" + data.exported_at.slice(0, 10) + ".atlas.json" });
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    note("sel-note", data.count + " bookmarks exported. The file can be imported in another Atlas from Settings.", "good");
+  } catch (error) { note("sel-note", error.message, "bad"); }
+});
 
 let searchTimer = null;
 $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadBookmarks(true).catch(() => {}), 200); };

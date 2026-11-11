@@ -194,6 +194,13 @@ def test_extract_copes_with_empty_values_and_unmapped_fields():
 
 
 def test_extract_applies_a_separate_time_zone():
+    # Needs a time zone database: the system's, or the tzdata package on Windows.
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        ZoneInfo("Europe/Paris")
+    except ZoneInfoNotFoundError:
+        pytest.skip("no time zone database on this machine")
     page = make_page("p", "T", "https://example.org")
     page["properties"]["Date"]["date"] = {
         "start": "2026-07-04T18:00:00",

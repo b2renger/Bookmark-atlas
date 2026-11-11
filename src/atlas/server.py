@@ -29,8 +29,8 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from atlas import __version__, db, groom, settings
-from atlas.exporter import status
+from atlas import __version__, batch, bundle, db, groom, settings
+from atlas.exporter import matching_ids, search_clause, status
 from atlas.importer import import_csv_stream
 from atlas.notion import NotionClient, NotionError
 from atlas.notion_sync import guess_property_map, select_data_source, selected, sync
@@ -135,18 +135,67 @@ class App:
     def import_csv(self, body: dict) -> dict:
         content = body.get("content")
         if not isinstance(content, str) or not content.strip():
-            raise ValueError("Choose a CSV file first.")
+            raise ValueError("Choose a file first.")
+        content = content.lstrip("\ufeff")
+        dry_run = bool(body.get("dry_run"))
         conn = self._conn()
         try:
-            report = import_csv_stream(
-                conn,
-                io.StringIO(content.lstrip("\ufeff"), newline=""),
-                dry_run=bool(body.get("dry_run")),
-                name=str(body.get("filename") or "the file"),
-            )
+            if content.lstrip().startswith("{"):
+                # A bundle shared from another Atlas, not a CSV export.
+                try:
+                    data = json.loads(content)
+                except json.JSONDecodeError:
+                    raise ValueError("This file is neither a CSV export nor a bundle.") from None
+                report = bundle.import_bundle(conn, data, dry_run=dry_run)
+            else:
+                report = import_csv_stream(
+                    conn,
+                    io.StringIO(content, newline=""),
+                    dry_run=dry_run,
+                    name=str(body.get("filename") or "the file"),
+                )
             data = asdict(report)
             data["skipped"] = [{"id": str(key), "reason": why} for key, why in report.skipped]
             return {"report": data, "status": status(conn)}
+        finally:
+            conn.close()
+
+    def bookmark_ids(self, query: dict) -> dict:
+        conn = self._conn()
+        try:
+            return {"ids": matching_ids(conn, (query.get("q") or [""])[0])}
+        finally:
+            conn.close()
+
+    def selection_tags(self, body: dict) -> dict:
+        conn = self._conn()
+        try:
+            return {"tags": batch.tag_counts(conn, body.get("ids"))}
+        finally:
+            conn.close()
+
+    def batch_edit(self, body: dict) -> dict:
+        conn = self._conn()
+        try:
+            result = batch.apply_batch(
+                conn,
+                body.get("ids"),
+                add_tags=body.get("add_tags") or [],
+                remove_tags=body.get("remove_tags") or [],
+                delete=bool(body.get("delete")),
+                db_path=self.db_path,
+            )
+            return {"result": result, "status": status(conn)}
+        finally:
+            conn.close()
+
+    def export_selection(self, body: dict) -> dict:
+        ids = body.get("ids")
+        if ids is not None and (not isinstance(ids, list) or not ids):
+            raise ValueError("Select at least one bookmark.")
+        conn = self._conn()
+        try:
+            return bundle.export_bundle(conn, None if ids is None else [str(i) for i in ids])
         finally:
             conn.close()
 
@@ -213,15 +262,7 @@ class App:
         text = (query.get("q") or [""])[0].strip()
         limit = max(1, min(int((query.get("limit") or ["100"])[0]), 500))
         offset = max(0, int((query.get("offset") or ["0"])[0]))
-        where, params = "deleted_at IS NULL", []
-        if text:
-            like = f"%{text}%"
-            where += (
-                " AND (title LIKE ? OR summary LIKE ? OR url LIKE ? OR id IN ("
-                "SELECT bookmark_id FROM bookmark_tags JOIN tags ON tags.id = tag_id "
-                "WHERE name LIKE ?))"
-            )
-            params = [like, like, like, like]
+        where, params = search_clause(text)
         conn = self._conn()
         try:
             total = conn.execute(
@@ -319,6 +360,10 @@ def make_handler(app: App):
                 ("POST", "/api/notion/select"): lambda: app.select(self._body()),
                 ("POST", "/api/notion/sync"): lambda: app.sync(self._body()),
                 ("POST", "/api/import-csv"): lambda: app.import_csv(self._body()),
+                ("GET", "/api/bookmarks/ids"): lambda: app.bookmark_ids(parse_qs(url.query)),
+                ("POST", "/api/bookmarks/tags"): lambda: app.selection_tags(self._body()),
+                ("POST", "/api/bookmarks/batch"): lambda: app.batch_edit(self._body()),
+                ("POST", "/api/bookmarks/export"): lambda: app.export_selection(self._body()),
                 ("GET", "/api/groom/scripts"): lambda: app.groom_scripts(),
                 ("GET", "/api/groom/history"): lambda: app.groom_history(),
                 ("POST", "/api/groom/preview"): lambda: app.groom_preview(self._body()),

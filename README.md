@@ -21,6 +21,7 @@ token yet.** It is tested against a stand-in built from Notion's documentation.
 Use Preview before the first import and report what it shows. The CSV import
 has been checked on a real 962-row export.
 
+- Summary of each phase: [docs/PHASES.md](docs/PHASES.md)
 - Where development stands: [docs/DEVLOG.md](docs/DEVLOG.md)
 - Where it is going: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
@@ -49,6 +50,10 @@ In **Settings** you can load data two ways, and combine them:
 - **Import a CSV file**: an export of the table from Notion. No token needed.
 - **Notion**: connect with a token, pick the table, import. Later imports only
   fetch rows edited since.
+
+In **Bookmarks**, tick rows (or "select all matching" a search) to add or
+remove a tag, delete, or **export the selection** as a file another Atlas user
+can import from Settings.
 
 Then clean it in **Grooming**: merge duplicates, merge tag spellings, set
 platforms and fix dates. Every script shows a preview first, makes a backup

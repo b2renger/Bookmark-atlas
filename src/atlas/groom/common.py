@@ -45,6 +45,14 @@ def resolve_tag(conn: sqlite3.Connection, name: str) -> str:
 def record_fields(conn: sqlite3.Connection, record: sqlite3.Row) -> dict:
     """Title, URL, summary, tags and date text of a source record, whatever its origin."""
     raw = json.loads(record["raw"])
+    if record["source"] == "atlas":  # a shared bundle: fields are already named
+        return {
+            "title": raw.get("title"),
+            "url": raw.get("url"),
+            "summary": raw.get("summary"),
+            "tags": list(raw.get("tags") or []),
+            "date_text": None,
+        }
     if record["source"] == "notion":
         from atlas.notion_sync import extract, selected
 

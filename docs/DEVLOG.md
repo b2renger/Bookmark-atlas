@@ -4,6 +4,66 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: batch edits, sharing, first green build
+
+**Works**
+
+- Bookmarks tab: a checkbox per row, "select all N matching", then add a tag,
+  remove a tag, delete, or export the selection. Each batch is one journaled
+  run with an Undo link, and appears in the Grooming history.
+- Bundles: `Export selection` downloads a `.atlas.json` file. Settings >
+  Import a file accepts it (as well as CSV). Command line:
+  `atlas export --format bundle [--search TEXT]`, `atlas import-bundle FILE`.
+- Release notes are read from `docs/releases/<tag>.md`; phase summaries are in
+  `docs/PHASES.md`.
+
+**The build works**
+
+- The trial run of the release workflow succeeded on GitHub (run 43098751858):
+  tests, Windows installer (138 MB), and the smoke test of the packaged app,
+  which reported `0 bookmarks · 0 tags · v0.0.0-dev.2` from the real page.
+- In that run the bundled Python reached the real Notion API and got the
+  expected 401 for a made-up token: network, TLS and certificates work in the
+  shipped runtime. This is the first real contact with Notion.
+- The earlier "startup failure" and the long queue were on GitHub's side.
+
+**Found by CI on Windows**
+
+- Windows has no time zone database Python can read, so a Notion date naming a
+  zone lost its offset. The installer now bundles the `tzdata` package and the
+  build checks that a named zone resolves.
+
+**Checked in Chrome on the real export**
+
+- Search "gaussian splatting", select all 121 matching, add a tag (121
+  changed), undo (0 left), remove a tag, export (121 bookmarks, 80 kB), delete
+  one with the two-click confirm, undo. A second, empty Atlas imported the
+  exported file: 121 bookmarks created.
+- That run found a bug, now fixed: after a delete the result line and its Undo
+  link vanished with the selection.
+
+**Decided**
+
+- A bundle is JSON with curated fields only. It does not carry the sender's
+  save dates: for the receiver a shared bookmark is saved at import time
+  (source `shared_import`). Publication dates travel.
+- A shared link the receiver already has is kept aside like any duplicate;
+  `merge-duplicates` folds its tags in. It never changes the receiver's title,
+  summary or dates.
+- Hand edits use the grooming engine, so there is one journal and one undo.
+- Package version follows the release: 0.2.0.
+
+**Known gaps**
+
+- The installer is 138 MB. The Python part can shrink (pip and unused modules
+  are still inside).
+- Selection is by tick or by search. There is no filter by tag, platform or
+  date yet; that comes with the views.
+
+**Next**
+
+- Tag `v0.2.0`. Then phase 3: embeddings and the e-means test.
+
 ## 2026-11-11: phase 2, grooming
 
 **Works**

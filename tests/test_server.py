@@ -249,7 +249,7 @@ def test_csv_import_through_the_api(site):
 
 def test_csv_import_errors_are_messages(site):
     code, answer = site.call("POST", "/api/import-csv", {})
-    assert code == 400 and "Choose a CSV file" in answer["error"]
+    assert code == 400 and "Choose a file" in answer["error"]
     code, answer = site.call(
         "POST",
         "/api/import-csv",
@@ -259,7 +259,9 @@ def test_csv_import_errors_are_messages(site):
 
 
 def test_state_reports_the_app_version(site, monkeypatch):
-    assert site.call("GET", "/api/state")[1]["version"] == "0.1.0"
+    import atlas
+
+    assert site.call("GET", "/api/state")[1]["version"] == atlas.__version__
     monkeypatch.setenv("ATLAS_APP_VERSION", "9.9.9")
     assert site.call("GET", "/api/state")[1]["version"] == "9.9.9"
 
@@ -346,3 +348,47 @@ def test_grooming_through_the_api(site):
     assert site.call("POST", "/api/groom/undo", {"run_id": runs[0]["run_id"]})[0] == 400
     assert site.call("POST", "/api/groom/preview", {"script": "nope"})[0] == 400
     assert (site.db_path.parent / "backups").is_dir()
+
+
+def test_selection_batch_export_and_bundle_import_through_the_api(site):
+    conn = db.open_ready(site.db_path)
+    import_csv(conn, FIXTURE)
+    conn.close()
+
+    ids = site.call("GET", "/api/bookmarks/ids?q=lantern")[1]["ids"]
+    assert len(ids) == 4 and len(site.call("GET", "/api/bookmarks/ids")[1]["ids"]) == 5
+    names = [t["name"] for t in site.call("POST", "/api/bookmarks/tags", {"ids": ids})[1]["tags"]]
+    assert names[0] == "Rendering"
+
+    code, answer = site.call(
+        "POST", "/api/bookmarks/batch", {"ids": ids, "add_tags": ["Lantern project"]}
+    )
+    assert code == 200 and answer["result"]["groups"] == 4
+    run_id = answer["result"]["run_id"]
+    assert site.call("GET", "/api/bookmarks?q=Lantern%20project")[1]["total"] == 4
+    assert site.call("POST", "/api/bookmarks/batch", {"ids": ids, "add_tags": ["a,b"]})[0] == 400
+    assert site.call("POST", "/api/bookmarks/batch", {"ids": [], "add_tags": ["x"]})[0] == 400
+
+    code, shared = site.call("POST", "/api/bookmarks/export", {"ids": ids[:2]})
+    assert code == 200 and shared["count"] == 2 and shared["format"] == "bookmark-atlas-bundle"
+    assert site.call("POST", "/api/bookmarks/export", {"ids": []})[0] == 400
+
+    assert site.call("POST", "/api/groom/undo", {"run_id": run_id})[0] == 200
+    assert site.call("GET", "/api/bookmarks?q=Lantern%20project")[1]["total"] == 0
+
+    # The same import card takes a bundle: here, one new link and one already present.
+    shared["bookmarks"].append(
+        {"url": "https://example.org/brand-new", "title": "Brand new", "tags": ["Shared"]}
+    )
+    code, answer = site.call(
+        "POST", "/api/import-csv", {"filename": "x.atlas.json", "content": json.dumps(shared)}
+    )
+    assert code == 200 and answer["report"]["created"] == 1 and answer["status"]["bookmarks"] == 6
+    code, answer = site.call(
+        "POST", "/api/import-csv", {"filename": "x.json", "content": '{"nope": 1}'}
+    )
+    assert code == 400 and "not a Bookmark Atlas bundle" in answer["error"]
+    code, answer = site.call(
+        "POST", "/api/import-csv", {"filename": "x.json", "content": "{broken"}
+    )
+    assert code == 400 and "neither" in answer["error"]

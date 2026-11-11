@@ -427,10 +427,38 @@ def apply(
         raise GroomError("The collection changed since the preview. Preview again, then apply.")
     exclude = exclude or set()
     accepted = [change for change in changes if change.group not in exclude]
+    return apply_changes(
+        conn,
+        accepted,
+        label=script.name,
+        version=script.version,
+        params=cleaned,
+        db_path=db_path,
+        skipped_groups=len(exclude & {change.group for change in changes}),
+    )
+
+
+def apply_changes(
+    conn: sqlite3.Connection,
+    accepted: list[Change],
+    *,
+    label: str,
+    version: str = "1",
+    params: dict | None = None,
+    db_path: Path | str | None = None,
+    skipped_groups: int = 0,
+) -> dict:
+    """Write a list of changes as one journaled, undoable run. All or nothing.
+
+    Scripts go through ``apply``; edits made by hand in the interface come
+    straight here, so they get the same backup, journal and undo.
+    """
+    for change in accepted:
+        _validate(change)
     if not accepted:
         return {"run_id": None, "applied": 0, "groups": 0, "backup": None}
 
-    backup = backup_database(conn, db_path, script.name) if db_path is not None else None
+    backup = backup_database(conn, db_path, label) if db_path is not None else None
     run_id = uuid.uuid4().hex
     now = now_iso()
     groups = len({change.group for change in accepted})
@@ -440,15 +468,15 @@ def apply(
             "summary) VALUES (?, ?, ?, ?, ?, 'applied', ?)",
             (
                 run_id,
-                script.name,
-                script.version,
-                json.dumps(cleaned, ensure_ascii=False),
+                label,
+                version,
+                json.dumps(params or {}, ensure_ascii=False),
                 now,
                 json.dumps(
                     {
                         "changes": len(accepted),
                         "groups": groups,
-                        "skipped_groups": len(exclude & {c.group for c in changes}),
+                        "skipped_groups": skipped_groups,
                         "backup": backup.name if backup else None,
                     }
                 ),

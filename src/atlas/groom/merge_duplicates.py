@@ -10,8 +10,9 @@ NAME = "merge-duplicates"
 TITLE = "Merge duplicates"
 DESCRIPTION = """
 Two things count as duplicates. First, rows that were imported for a link the
-collection already had: the import kept them aside. Second, two bookmarks whose
-links turn out to point to the same page.
+collection already had, from your table or from a bundle someone shared: the
+import kept them aside. Second, two bookmarks whose links turn out to point to
+the same page.
 
 In both cases one bookmark is kept. It gains the tags of the others, keeps the
 earliest save date, and the others are marked as merged into it. Titles and
@@ -29,9 +30,9 @@ def _held_aside(conn, changes):
     """Pending records that are a second row for a bookmark, not an edit of its own row."""
     for record in conn.execute(
         "SELECT r.* FROM source_records r JOIN bookmarks b ON b.id = r.bookmark_id "
-        "WHERE r.pending = 1 AND b.deleted_at IS NULL AND EXISTS ("
+        "WHERE r.pending = 1 AND b.deleted_at IS NULL AND (r.source = 'atlas' OR EXISTS ("
         "  SELECT 1 FROM source_records o WHERE o.bookmark_id = r.bookmark_id "
-        "  AND o.source = r.source AND o.id != r.id) ORDER BY r.id"
+        "  AND o.source = r.source AND o.id != r.id)) ORDER BY r.id"
     ).fetchall():
         bookmark = conn.execute(
             "SELECT * FROM bookmarks WHERE id = ?", (record["bookmark_id"],)

@@ -68,12 +68,59 @@ def _cmd_import_csv(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_import_bundle(args: argparse.Namespace) -> int:
+    import json
+
+    from atlas.bundle import import_bundle
+
+    try:
+        data = json.loads(Path(args.file).read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError:
+        raise ValueError(f"{args.file} is not a Bookmark Atlas bundle.") from None
+    conn = db.open_ready(args.db)
+    try:
+        report = import_bundle(conn, data, dry_run=args.dry_run)
+    finally:
+        conn.close()
+    print(("Dry run, nothing written: " if report.dry_run else "Imported ") + str(args.file))
+    for label_, count in (
+        ("bookmarks in the bundle", report.rows),
+        ("bookmarks created", report.created),
+        ("already imported", report.unchanged),
+        ("links you already had", report.pending),
+        ("deleted here, left deleted", report.tombstoned),
+        ("entries skipped", len(report.skipped)),
+    ):
+        if count or label_ in ("bookmarks in the bundle", "bookmarks created"):
+            print(f"  {label_:<30}{count:>6}")
+    for number, reason in report.skipped[:20]:
+        print(f"    entry {number}: {reason}")
+    return 0
+
+
 def _cmd_export(args: argparse.Namespace) -> int:
-    from atlas.exporter import export_bookmarks, write_csv, write_json
+    from atlas.exporter import export_bookmarks, matching_ids, write_csv, write_json
 
     conn = db.open_ready(args.db)
     try:
+        if args.format == "bundle":
+            import json
+
+            from atlas.bundle import export_bundle
+
+            ids = matching_ids(conn, args.search) if args.search else None
+            data = export_bundle(conn, ids)
+            text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+            if args.output:
+                Path(args.output).write_text(text, encoding="utf-8")
+                print(f"Wrote a bundle of {data['count']} bookmarks to {args.output}.")
+            else:
+                sys.stdout.write(text)
+            return 0
         rows = export_bookmarks(conn, include_deleted=args.include_deleted)
+        if args.search:
+            keep = set(matching_ids(conn, args.search))
+            rows = [row for row in rows if row["id"] in keep]
     finally:
         conn.close()
 
@@ -430,8 +477,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     import_csv.set_defaults(func=_cmd_import_csv)
 
-    export = commands.add_parser("export", help="write the bookmarks as CSV or JSON")
-    export.add_argument("--format", choices=["csv", "json"], default="csv")
+    import_bundle = commands.add_parser(
+        "import-bundle", help="import a bundle shared by another Atlas user"
+    )
+    import_bundle.add_argument("file", type=Path)
+    import_bundle.add_argument("--dry-run", action="store_true", help="report without writing")
+    import_bundle.set_defaults(func=_cmd_import_bundle)
+
+    export = commands.add_parser("export", help="write the bookmarks as CSV, JSON or a bundle")
+    export.add_argument(
+        "--format",
+        choices=["csv", "json", "bundle"],
+        default="csv",
+        help="bundle is the format to share with another Atlas user",
+    )
+    export.add_argument("--search", help="only bookmarks matching this text")
     export.add_argument(
         "-o", "--output", type=Path, help="file to write (default: standard output)"
     )

@@ -1,0 +1,61 @@
+# Phase summaries
+
+One short summary per phase, written when the phase is published. Details are
+in [DEVLOG.md](DEVLOG.md); the road ahead is in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+
+| Phase | Subject | Release | State |
+| --- | --- | --- | --- |
+| 0 | Scaffolding | v0.2.0 | done |
+| 1 | Local store and import | v0.2.0 | done, Notion token import untried with a real token |
+| 2 | Grooming, batch edits, sharing | v0.2.0 | done, four planned scripts still to write |
+| 3 | Embeddings and the e-means test | | next |
+| 4 | Map view | | |
+| 5 | Saved views and snapshots | | |
+| 6 | Self-organising map and pearl tree | | |
+| 7 | Links and tendencies | | |
+
+## Phase 0: scaffolding
+
+- A Python package, `atlas`, with a command line. Standard library only.
+- One SQLite file holds everything; schema changes are numbered migrations.
+- Tests and lint run on every push, on Linux and Windows.
+
+## Phase 1: local store and import
+
+- **Atlas is the reference.** Notion and CSV files are ways in. What arrives is
+  kept untouched beside the curated bookmark and never overwrites it.
+- **Import rules:** a new link becomes a bookmark; a known link is kept aside
+  for review; a deleted bookmark stays deleted; importing twice changes
+  nothing.
+- **Links are compared after normalisation** (x.com and twitter.com, tracking
+  parameters, YouTube and GitHub variants).
+- **Notion:** token stored outside the database, list of tables, guessed
+  column mapping, incremental sync. Tested against a stand-in only.
+- **Desktop app:** Electron shell with a bundled Python, unsigned Windows
+  installer, self-update from GitHub Releases. The release workflow starts the
+  packaged app before publishing it.
+- **Checked on the real export:** 962 rows give 956 bookmarks and 6 duplicates.
+
+## Phase 2: grooming, batch edits, sharing
+
+- **Scripts propose, the app writes.** Preview, pick groups, apply. A backup is
+  made first, every change is journaled, any run can be undone exactly.
+- **Five scripts:** merge duplicates, merge tag spellings, platform from the
+  link, publication date of X posts, dates without a time.
+- **Your own scripts** go in a folder beside the database and get the same
+  safety net. See [GROOMING.md](GROOMING.md).
+- **Batch edits:** select bookmarks (or everything matching a search), add or
+  remove a tag, delete. Each batch is one undoable run.
+- **Sharing:** export a selection as a bundle file; another user imports it.
+  A bundle holds links, titles, summaries, tags, platform and publication
+  date, and nothing else.
+- **Checked on the real export:** 66 tag spellings merged, all 956 platforms
+  set, all 489 X posts dated, 133 other dates stored; undoing everything
+  returns the exact starting state.
+- **What the data taught:** a Date without a time is the publication day on X
+  rows (304 of 306 match the post ID). On other rows it comes from the tagging
+  tool and is not reliable.
+- **Left for later:** similar-title duplicates, tag synonyms, publication
+  dates fetched from the platforms, dead-link check, review screen for rows
+  edited in Notion.
