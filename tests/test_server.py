@@ -298,3 +298,51 @@ def test_announce_prints_a_machine_readable_address(tmp_path):
     finally:
         process.terminate()
         process.wait(timeout=5)
+
+
+def test_grooming_through_the_api(site):
+    conn = db.open_ready(site.db_path)
+    import_csv(conn, FIXTURE)
+    conn.close()
+
+    code, answer = site.call("GET", "/api/groom/scripts")
+    assert code == 200 and answer["problems"] == []
+    assert [s["name"] for s in answer["scripts"]][:2] == ["merge-duplicates", "normalize-tags"]
+    assert answer["user_folder"].endswith("scripts")
+
+    code, seen = site.call("POST", "/api/groom/preview", {"script": "derive-platform"})
+    assert code == 200 and seen["changes"] == 5 and seen["groups_total"] == 4
+    assert site.call("GET", "/api/groom/history")[1]["runs"] == []
+
+    # Applying needs the preview's fingerprint, and honours unticked groups.
+    assert site.call("POST", "/api/groom/apply", {"script": "derive-platform"})[0] == 400
+    code, answer = site.call(
+        "POST", "/api/groom/apply", {"script": "derive-platform", "fingerprint": "stale"}
+    )
+    assert code == 400 and "Preview again" in answer["error"]
+    code, answer = site.call(
+        "POST",
+        "/api/groom/apply",
+        {
+            "script": "derive-platform",
+            "fingerprint": seen["fingerprint"],
+            "exclude": ["platform:X"],
+        },
+    )
+    assert code == 200 and answer["result"]["applied"] == 4
+    assert answer["status"]["without_platform"] == 1
+
+    items = site.call("GET", "/api/bookmarks?q=lantern-core")[1]["items"]
+    assert items[0]["platform"] == "GitHub"
+
+    runs = site.call("GET", "/api/groom/history")[1]["runs"]
+    assert len(runs) == 1 and runs[0]["status"] == "applied" and runs[0]["changes"] == 4
+    code, answer = site.call("POST", "/api/groom/undo", {"run_id": runs[0]["run_id"]})
+    assert (
+        code == 200
+        and answer["result"]["reverted"] == 4
+        and answer["status"]["without_platform"] == 5
+    )
+    assert site.call("POST", "/api/groom/undo", {"run_id": runs[0]["run_id"]})[0] == 400
+    assert site.call("POST", "/api/groom/preview", {"script": "nope"})[0] == 400
+    assert (site.db_path.parent / "backups").is_dir()

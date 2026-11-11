@@ -13,9 +13,8 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 ## Status
 
-Phase 1 of 7. A first usable build exists: connect Notion or load a CSV export,
-import, and browse the result. Grooming, clustering and the visual views come
-next.
+Phase 2 of 7. Import (Notion or CSV), browse, and groom the collection with
+scripts. Clustering and the visual views come next.
 
 **The Notion import has not been run against the real Notion API with a real
 token yet.** It is tested against a stand-in built from Notion's documentation.
@@ -50,6 +49,11 @@ In **Settings** you can load data two ways, and combine them:
 - **Import a CSV file**: an export of the table from Notion. No token needed.
 - **Notion**: connect with a token, pick the table, import. Later imports only
   fetch rows edited since.
+
+Then clean it in **Grooming**: merge duplicates, merge tag spellings, set
+platforms and fix dates. Every script shows a preview first, makes a backup
+before writing, and can be undone. You can add your own scripts: see
+[docs/GROOMING.md](docs/GROOMING.md).
 
 ### Connect Notion
 
@@ -104,6 +108,10 @@ atlas sync --dry-run
 atlas sync                              # --full reads the whole table again
 atlas status
 atlas export --format json -o bookmarks.json
+atlas groom list                        # grooming scripts
+atlas groom preview normalize-tags      # what it would change
+atlas groom apply normalize-tags
+atlas groom undo last
 atlas doctor                            # check the installation and Notion access
 ```
 

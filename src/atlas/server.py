@@ -29,7 +29,7 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from atlas import __version__, db, settings
+from atlas import __version__, db, groom, settings
 from atlas.exporter import status
 from atlas.importer import import_csv_stream
 from atlas.notion import NotionClient, NotionError
@@ -150,6 +150,65 @@ class App:
         finally:
             conn.close()
 
+    def groom_scripts(self) -> dict:
+        scripts, problems = groom.load_scripts(self.db_path)
+        return {
+            "scripts": [script.info() for script in scripts.values()],
+            "problems": problems,
+            "user_folder": str(groom.user_scripts_dir(self.db_path)),
+        }
+
+    def _script(self, body: dict):
+        params = body.get("params") or {}
+        if not isinstance(params, dict):
+            raise ValueError("params must be an object.")
+        return groom.get_script(str(body.get("script") or ""), self.db_path), params
+
+    def groom_preview(self, body: dict) -> dict:
+        script, params = self._script(body)
+        conn = self._conn()
+        try:
+            return groom.preview(conn, script, params)
+        finally:
+            conn.close()
+
+    def groom_apply(self, body: dict) -> dict:
+        script, params = self._script(body)
+        mark = body.get("fingerprint")
+        if not isinstance(mark, str) or not mark:
+            raise ValueError("Preview the script before applying it.")
+        exclude = body.get("exclude") or []
+        if not isinstance(exclude, list):
+            raise ValueError("exclude must be a list.")
+        conn = self._conn()
+        try:
+            result = groom.apply(
+                conn,
+                script,
+                params,
+                expected_fingerprint=mark,
+                exclude={str(key) for key in exclude},
+                db_path=self.db_path,
+            )
+            return {"result": result, "status": status(conn)}
+        finally:
+            conn.close()
+
+    def groom_history(self) -> dict:
+        conn = self._conn()
+        try:
+            return {"runs": groom.history(conn)}
+        finally:
+            conn.close()
+
+    def groom_undo(self, body: dict) -> dict:
+        conn = self._conn()
+        try:
+            result = groom.undo(conn, str(body.get("run_id") or ""), db_path=self.db_path)
+            return {"result": result, "status": status(conn)}
+        finally:
+            conn.close()
+
     def bookmarks(self, query: dict) -> dict:
         text = (query.get("q") or [""])[0].strip()
         limit = max(1, min(int((query.get("limit") or ["100"])[0]), 500))
@@ -169,7 +228,8 @@ class App:
                 f"SELECT COUNT(*) FROM bookmarks WHERE {where}", params
             ).fetchone()[0]
             rows = conn.execute(
-                f"SELECT id, url, title, summary, domain, saved_at, published_at FROM bookmarks "
+                f"SELECT id, url, title, summary, domain, platform, saved_at, published_at "
+                f"FROM bookmarks "
                 f"WHERE {where} ORDER BY saved_at IS NULL, saved_at DESC, created_at DESC, id "
                 "LIMIT ? OFFSET ?",
                 [*params, limit, offset],
@@ -259,6 +319,11 @@ def make_handler(app: App):
                 ("POST", "/api/notion/select"): lambda: app.select(self._body()),
                 ("POST", "/api/notion/sync"): lambda: app.sync(self._body()),
                 ("POST", "/api/import-csv"): lambda: app.import_csv(self._body()),
+                ("GET", "/api/groom/scripts"): lambda: app.groom_scripts(),
+                ("GET", "/api/groom/history"): lambda: app.groom_history(),
+                ("POST", "/api/groom/preview"): lambda: app.groom_preview(self._body()),
+                ("POST", "/api/groom/apply"): lambda: app.groom_apply(self._body()),
+                ("POST", "/api/groom/undo"): lambda: app.groom_undo(self._body()),
             }
             route = routes.get((method, url.path))
             if route is None:

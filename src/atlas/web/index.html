@@ -71,6 +71,22 @@
   .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .toolbar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+  .script { border-top: 1px solid var(--line); padding: 16px 0; }
+  .script:first-child { border-top: 0; padding-top: 4px; }
+  .script h3 { font-size: 15px; margin: 0 0 2px; }
+  .script p { color: var(--muted); margin: 0 0 10px; max-width: 75ch; }
+  .script .params { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 10px; }
+  .script .params label { display: flex; gap: 6px; align-items: center; font-weight: 400; margin: 0; }
+  .script .params select { width: auto; }
+  .groups { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; max-height: 420px; overflow: auto; }
+  .group { display: flex; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .group:last-child { border-bottom: 0; }
+  .group .gt { font-weight: 600; overflow-wrap: anywhere; }
+  .group ul { margin: 2px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .group li { overflow-wrap: anywhere; }
+  .linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+  table.runs td, table.runs th { padding: 7px 10px; }
+  .tagline { color: var(--muted); font-size: 12px; }
   [hidden] { display: none !important; }
   @media (max-width: 620px) { #summary { display: none; } header { gap: 12px; padding: 12px 16px; } main { padding: 16px; } }
   code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
@@ -81,6 +97,7 @@
   <h1>Bookmark Atlas</h1>
   <nav>
     <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
+    <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
   </nav>
   <div id="summary"></div>
@@ -97,6 +114,21 @@
       <div class="row" style="justify-content:center; margin-top:14px">
         <button class="action" id="more" hidden>Show more</button>
       </div>
+    </section>
+  </div>
+
+  <div id="view-grooming" hidden>
+    <section class="card">
+      <h2>Clean the collection</h2>
+      <p class="help">Each script proposes changes. Preview shows them without writing anything;
+        untick what you do not want, then apply. A backup is made before every run, and any run can
+        be undone from the history below. The order shown is a good order to run them in.</p>
+      <div id="scripts"></div>
+      <div class="note muted" id="scripts-note"></div>
+    </section>
+    <section class="card">
+      <h2>History</h2>
+      <div id="history"></div>
     </section>
   </div>
 
@@ -212,7 +244,7 @@ async function busy(button, work) {
 }
 
 function showView(name) {
-  for (const view of ["bookmarks", "settings"]) {
+  for (const view of ["bookmarks", "grooming", "settings"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -407,6 +439,136 @@ async function runSync(button, dryRun) {
 $("preview-sync").onclick = () => runSync($("preview-sync"), true);
 $("run-sync").onclick = () => runSync($("run-sync"), false);
 
+/* ---- grooming ---- */
+
+const previews = {};  // script name -> last preview
+
+function readParams(script) {
+  const params = {};
+  for (const spec of script.params) {
+    const input = $("param-" + script.name + "-" + spec.name);
+    params[spec.name] = spec.type === "bool" ? input.checked : input.value;
+  }
+  return params;
+}
+
+function renderPreview(script, holder) {
+  const seen = previews[script.name];
+  holder.replaceChildren();
+  if (!seen) return;
+  if (!seen.changes) {
+    holder.append(el("div", { className: "note good", textContent: "Nothing to do: the collection is already clean for this script." }));
+    return;
+  }
+  const count = el("span", {});
+  const boxes = [];
+  const refresh = () => {
+    const kept = boxes.filter((b) => b.checked).length + (seen.groups_total - seen.groups.length);
+    count.textContent = kept + " of " + seen.groups_total + " groups selected";
+    apply.disabled = kept === 0;
+    apply.textContent = "Apply " + kept + (kept === 1 ? " group" : " groups");
+  };
+  const all = el("button", { className: "linkish", textContent: "all" });
+  const none = el("button", { className: "linkish", textContent: "none" });
+  all.onclick = () => { boxes.forEach((b) => { b.checked = true; }); refresh(); };
+  none.onclick = () => { boxes.forEach((b) => { b.checked = false; }); refresh(); };
+  holder.append(el("div", { className: "note muted" }, [
+    seen.changes + " changes proposed. ", count, " · select ", all, " / ", none]));
+
+  const list = el("div", { className: "groups" });
+  for (const group of seen.groups) {
+    const box = el("input", { type: "checkbox", checked: true });
+    box.dataset.key = group.key;
+    box.onchange = refresh;
+    box.setAttribute("aria-label", "Include " + group.title);
+    boxes.push(box);
+    const lines = el("ul", {}, group.lines.slice(0, 5).map((line) => el("li", { textContent: line })));
+    if (group.lines.length > 5) lines.append(el("li", { textContent: "… and " + (group.lines.length - 5) + " more" }));
+    list.append(el("div", { className: "group" }, [box, el("div", {}, [el("div", { className: "gt", textContent: group.title }), lines])]));
+  }
+  holder.append(list);
+  if (seen.groups_total > seen.groups.length) {
+    holder.append(el("div", { className: "note muted", textContent: "Showing the first " + seen.groups.length
+      + " groups. The other " + (seen.groups_total - seen.groups.length) + " are included when you apply." }));
+  }
+  const apply = el("button", { className: "action primary" });
+  const result = el("div", { className: "note" });
+  apply.onclick = () => busy(apply, async () => {
+    const exclude = boxes.filter((b) => !b.checked).map((b) => b.dataset.key);
+    try {
+      const done = await api("POST", "/api/groom/apply", { script: script.name, params: seen.params, fingerprint: seen.fingerprint, exclude });
+      delete previews[script.name];
+      holder.replaceChildren(el("div", { className: "note good", textContent: "Applied " + done.result.applied
+        + " changes in " + done.result.groups + " groups. A backup was made first; this run can be undone below." }));
+      await refreshState(); await loadHistory(); loadBookmarks(true).catch(() => {});
+    } catch (error) { result.textContent = error.message; result.className = "note bad"; }
+  });
+  holder.append(el("div", { className: "row" }, [apply]), result);
+  refresh();
+}
+
+async function loadGrooming() {
+  const data = await api("GET", "/api/groom/scripts");
+  const holder = $("scripts");
+  holder.replaceChildren();
+  data.scripts.forEach((script, index) => {
+    const params = el("div", { className: "params" });
+    for (const spec of script.params) {
+      const id = "param-" + script.name + "-" + spec.name;
+      if (spec.type === "bool") {
+        params.append(el("label", {}, [el("input", { type: "checkbox", id, checked: !!spec.default }), spec.label || spec.name]));
+      } else if (spec.type === "choice") {
+        const select = el("select", { id });
+        for (const choice of spec.choices) select.append(el("option", { value: choice.value, textContent: choice.label, selected: choice.value === spec.default }));
+        params.append(el("label", {}, [spec.label || spec.name, select]));
+      } else {
+        params.append(el("label", {}, [spec.label || spec.name, el("input", { type: "text", id, value: spec.default == null ? "" : String(spec.default) })]));
+      }
+    }
+    const area = el("div", {});
+    const button = el("button", { className: "action", textContent: "Preview" });
+    button.onclick = () => busy(button, async () => {
+      try {
+        previews[script.name] = await api("POST", "/api/groom/preview", { script: script.name, params: readParams(script) });
+        renderPreview(script, area);
+      } catch (error) { area.replaceChildren(el("div", { className: "note bad", textContent: error.message })); }
+    });
+    params.onchange = () => { delete previews[script.name]; area.replaceChildren(); };
+    const heading = el("h3", {}, [el("span", { className: "step", textContent: String(index + 1) }), script.title,
+      script.builtin ? "" : el("span", { className: "tagline", textContent: "  your script" })]);
+    holder.append(el("div", { className: "script" }, [heading, el("p", { textContent: script.description }),
+      script.params.length ? params : "", el("div", { className: "row" }, [button]), area]));
+  });
+  let text = "Your own scripts go in " + data.user_folder + " and appear here.";
+  for (const problem of data.problems) text += " Could not load " + problem.file + ": " + problem.error + ".";
+  note("scripts-note", text, data.problems.length ? "bad" : "muted");
+  await loadHistory();
+}
+
+async function loadHistory() {
+  const runs = (await api("GET", "/api/groom/history")).runs;
+  const holder = $("history");
+  if (!runs.length) { holder.replaceChildren(el("div", { className: "note muted", textContent: "No run yet." })); return; }
+  const body = el("tbody");
+  for (const run of runs) {
+    const cell = el("td", {});
+    if (run.status === "applied") {
+      const button = el("button", { className: "action", textContent: "Undo" });
+      button.onclick = () => busy(button, async () => {
+        try {
+          await api("POST", "/api/groom/undo", { run_id: run.run_id });
+          for (const key of Object.keys(previews)) delete previews[key];
+          await refreshState(); await loadGrooming(); loadBookmarks(true).catch(() => {});
+        } catch (error) { cell.replaceChildren(el("span", { className: "note bad", textContent: error.message })); }
+      });
+      cell.append(button);
+    } else { cell.textContent = "undone"; cell.className = "nowrap"; }
+    body.append(el("tr", {}, [el("td", { className: "nowrap", textContent: new Date(run.started_at).toLocaleString() }),
+      el("td", { textContent: run.script }), el("td", { className: "nowrap", textContent: run.changes + " changes" }), cell]));
+  }
+  holder.replaceChildren(el("table", { className: "list runs" }, [body]));
+}
+
 /* ---- bookmarks ---- */
 
 function safeLink(url) {
@@ -430,7 +592,8 @@ async function loadBookmarks(reset) {
     if (!body) {
       body = el("tbody");
       holder.append(el("table", { className: "list" }, [el("thead", {}, [el("tr", {}, [
-        el("th", { textContent: "Bookmark" }), el("th", { textContent: "Site" }), el("th", { textContent: "Saved" })])]), body]));
+        el("th", { textContent: "Bookmark" }), el("th", { textContent: "Site" }), el("th", { textContent: "Saved" }),
+        el("th", { textContent: "Published" })])]), body]));
     }
     for (const item of data.items) {
       const href = safeLink(item.url);
@@ -440,8 +603,9 @@ async function loadBookmarks(reset) {
       const cell = el("td", {}, [title]);
       if (item.summary) cell.append(el("div", { className: "sum", textContent: item.summary }));
       if (item.tags.length) cell.append(el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))));
-      body.append(el("tr", {}, [cell, el("td", { className: "nowrap", textContent: item.domain }),
-        el("td", { className: "nowrap", textContent: item.saved_at ? item.saved_at.slice(0, 10) : "—" })]));
+      body.append(el("tr", {}, [cell, el("td", { className: "nowrap", textContent: item.platform && item.platform !== "Website" ? item.platform : item.domain }),
+        el("td", { className: "nowrap", textContent: item.saved_at ? item.saved_at.slice(0, 10) : "—" }),
+        el("td", { className: "nowrap", textContent: item.published_at ? item.published_at.slice(0, 10) : "—" })]));
     }
     shown += data.items.length;
   }
@@ -454,6 +618,7 @@ $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeou
 $("more").onclick = () => loadBookmarks(false);
 $("tab-bookmarks").onclick = () => showView("bookmarks");
 $("tab-settings").onclick = () => showView("settings");
+$("tab-grooming").onclick = () => { showView("grooming"); loadGrooming().catch((e) => note("scripts-note", e.message, "bad")); };
 
 (async () => {
   try {

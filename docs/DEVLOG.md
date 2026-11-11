@@ -4,6 +4,75 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: phase 2, grooming
+
+**Works**
+
+- Grooming engine: preview, select groups, apply with backup and journal, undo.
+- Five built-in scripts: `merge-duplicates`, `normalize-tags`,
+  `derive-platform`, `published-from-x-id`, `split-dates`.
+- User scripts: any `.py` file in the `scripts` folder beside the database,
+  same contract, same safety net. Documented in `docs/GROOMING.md`.
+- Command line: `atlas groom list|preview|apply|undo|history`.
+- Interface: a Grooming tab with the scripts, their parameters, the preview
+  with a checkbox per group, Apply, and a history with Undo. The bookmark list
+  now shows platform and publication date.
+
+**Checked on the real 962-row export**
+
+| Script | Result |
+| --- | --- |
+| merge-duplicates | 6 held rows folded in, 20 changes |
+| normalize-tags | 66 spellings merged into 63 tags; 2,368 tags become 2,310 |
+| derive-platform | all 956 named: X 489, GitHub 182, Website 179, GitHub Pages 38, Hugging Face 33, YouTube 27, others 8 |
+| published-from-x-id | all 489 X posts dated |
+| split-dates | 133 date-only values stored as publication dates |
+
+- Undoing all five runs returned the database to exactly its starting state
+  (compared by hash over bookmarks, tags, aliases and pending flags).
+- Running every script a second time found nothing to do.
+- Of the 306 X posts whose Date has no time of day, 304 fall on the same UTC
+  day as the time encoded in the post ID. That settles what a date-only value
+  means on X rows: the publication day.
+- The Grooming tab was driven in Chrome on the same data: preview, untick two
+  tag groups, apply, change a parameter, undo. No page errors.
+
+**Decided**
+
+- Scripts only propose. The engine does all writing, so preview, backup,
+  journal and undo work the same for built-in and user scripts.
+- A proposal has a fingerprint. Apply recomputes it and refuses if it differs
+  from the previewed one, so what is written is what was shown.
+- Changes are accepted or rejected per group, not per line.
+- Every write is conditional on the old value; one mismatch aborts the run.
+- A merged tag becomes an alias. Imports follow aliases, so a merged spelling
+  does not come back.
+- `merge-duplicates` tells a duplicate row from an edited row by this rule: a
+  pending record is a duplicate only if the bookmark has another record from
+  the same source.
+- Backups go to `backups/` beside the database; the ten most recent are kept.
+- After grooming, 438 bookmarks still have no save date. Those are the
+  date-only rows; the save date will come from Notion's page creation time at
+  the first Notion sync.
+
+**Caveats**
+
+- Publication dates taken from the Date column on non-X rows were written by
+  the tagging tool and are not verified. 63 of the 133 say 2024, and a few are
+  implausible (a 2025-era plugin dated 2018). Their source is recorded as
+  `date_column`, so a later script that asks GitHub, Hugging Face and YouTube
+  can replace exactly those.
+- `normalize-tags` does not merge synonyms ("3DGS", "Gaussian Splatting",
+  "3D Gaussian Splatting"). That needs a review-first script.
+- Not built yet from the plan's list: `dedupe-similar`, `merge-tag-synonyms`,
+  `fetch-published-dates`, `check-links`, and a review screen for rows edited
+  in Notion.
+
+**Next**
+
+- Get a build through GitHub Actions and tag `v0.1.0`.
+- Phase 3: embeddings and the e-means test.
+
 ## 2026-11-11: desktop app, installer and self-update
 
 **Works (written, verified only as far as stated below)**
