@@ -137,6 +137,9 @@ jobs:
           $env:ATLAS_USER_DATA = Join-Path $env:RUNNER_TEMP 'atlas-settings'
           $custom = Join-Path $env:RUNNER_TEMP 'My Atlas data'
           New-Item -ItemType Directory -Force -Path $env:ATLAS_USER_DATA | Out-Null
+          # The folder must exist: a chosen folder that is missing is treated as an
+          # unplugged drive, and the app refuses to start an empty collection.
+          New-Item -ItemType Directory -Force -Path $custom | Out-Null
           # Written the way the app writes it when a folder is chosen in the menu.
           @{ dataFolder = $custom } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM (Join-Path $env:ATLAS_USER_DATA 'location.json')
           $process = Start-Process -FilePath 'desktop\dist\win-unpacked\Bookmark Atlas.exe' -ArgumentList '--smoke-test' -PassThru
