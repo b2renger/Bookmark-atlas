@@ -1,11 +1,14 @@
 # Build the Windows installer and, on a version tag, publish it to GitHub
 # Releases, where installed copies find their updates.
 #
-#   push a tag vX.Y.Z   -> test, build, smoke-test, publish release vX.Y.Z
-#   "Run workflow"      -> test, build, smoke-test; the installer is attached
-#                          to the run as an artifact and nothing is published
+#   "Run workflow" with a version (0.3.0) -> test, build, smoke-test, then
+#                          publish release v0.3.0; the tag is created here
+#   push a tag vX.Y.Z   -> same, for a tag made by hand
+#   "Run workflow" with the version left empty -> test, build, smoke-test; the
+#                          installer is attached to the run, nothing published
 #
-# The app version comes from the tag, so cutting a release is only a tag.
+# The app version comes from the version given, so cutting a release is one
+# click in the Actions tab (it works from a phone).
 # Builds are unsigned (no paid certificate), like ComfyQ and LlmOnLan.
 
 name: release
@@ -14,6 +17,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, like 0.3.0. Leave empty for a trial build.'
+        required: false
+        default: ''
 
 # Needed to create the release and upload to it.
 permissions:
@@ -49,13 +57,22 @@ jobs:
         id: version
         shell: bash
         run: |
+          asked="${{ github.event.inputs.version }}"
+          asked="${asked#v}"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
+          elif [[ -n "$asked" ]]; then
+            version="$asked"
+          else
+            version=""
+          fi
+          if [[ -n "$version" ]]; then
             if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Tag $GITHUB_REF_NAME is not of the form vX.Y.Z" >&2
+              echo "Version '$version' is not of the form X.Y.Z" >&2
               exit 1
             fi
             echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "tag=v$version" >> "$GITHUB_OUTPUT"
           else
             version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
             echo "publish=false" >> "$GITHUB_OUTPUT"
@@ -127,6 +144,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           shopt -s nullglob
           files=(desktop/dist/*.exe desktop/dist/*.blockmap desktop/dist/latest.yml)
@@ -134,22 +152,23 @@ jobs:
             echo "latest.yml is missing: installed copies could not update." >&2
             exit 1
           fi
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
             {
               # What is new, written at the end of each phase.
-              if [[ -f "docs/releases/$GITHUB_REF_NAME.md" ]]; then
-                cat "docs/releases/$GITHUB_REF_NAME.md"
+              if [[ -f "docs/releases/$TAG.md" ]]; then
+                cat "docs/releases/$TAG.md"
                 echo ""
                 echo "---"
                 echo ""
               fi
-              echo "**Windows:** download \`Bookmark-Atlas-Setup-${GITHUB_REF_NAME#v}-windows-x64.exe\` and run it."
+              echo "**Windows:** download \`Bookmark-Atlas-Setup-${TAG#v}-windows-x64.exe\` and run it."
               echo ""
               echo "The installer is not signed, so Windows shows \"Windows protected your PC\" the first time: choose **More info**, then **Run anyway**."
               echo ""
               echo "Once installed, the app updates itself from these releases. Your bookmarks stay in your user data folder and are kept across updates and uninstalls."
             } > "$RUNNER_TEMP/notes.md"
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+            # Creates the tag on the commit that was built, if it does not exist yet.
+            gh release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA"
           fi
           echo "Uploading ${#files[@]} file(s): ${files[*]}"
-          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          gh release upload "$TAG" "${files[@]}" --clobber

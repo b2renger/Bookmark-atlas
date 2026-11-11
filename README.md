@@ -131,10 +131,11 @@ in a window and updates itself with electron-updater, the same way ComfyQ and
 LlmOnLan do. The installer bundles a standalone Python, so users install
 nothing else.
 
-- **Release:** push a tag `vX.Y.Z`. `.github/workflows/release.yml` runs the
-  tests, builds the installer, starts the packaged app to check it works, and
-  publishes it with the update manifest. The version comes from the tag.
-- **Trial build:** run the workflow by hand from the Actions tab. The installer
+- **Release:** in the Actions tab, run the `release` workflow and type a
+  version such as `0.3.0`. It runs the tests, builds the installer, starts the
+  packaged app to check it works, creates the tag and publishes the release
+  with the update manifest. Pushing a tag `vX.Y.Z` does the same.
+- **Trial build:** run the workflow with the version left empty. The installer
   is attached to the run and nothing is published.
 - Self-update reads public GitHub Releases, so it needs the repository to stay
   public.
