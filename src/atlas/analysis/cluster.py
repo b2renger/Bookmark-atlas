@@ -87,7 +87,7 @@ def fit(
     algorithm: str = "k-means",
     seed: int = 0,
     epochs: int | None = None,
-    restarts: int = 3,
+    restarts: int = 10,
 ):
     """Cluster the rows of ``x`` into ``k`` groups.
 

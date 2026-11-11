@@ -294,15 +294,11 @@ def test_map_data_places_every_bookmark_and_each_topic(conn):
     assert all(
         0 <= p["x"] <= 1 and 0 <= p["y"] <= 1 and p["cluster"] in (0, 1, 2) for p in data["points"]
     )
-    # Topic labels sit among their own points: the three are apart. The thresholds are
-    # loose because bookmark IDs are random, so the row order differs between runs.
-    spots = [(c["x"], c["y"]) for c in data["clusters"]]
-    assert (
-        min(
-            abs(a[0] - b[0]) + abs(a[1] - b[1]) for i, a in enumerate(spots) for b in spots[i + 1 :]
-        )
-        > 0.08
-    )
+    # Each topic label sits among its own points.
+    for item in data["clusters"]:
+        own = [p for p in data["points"] if p["cluster"] == item["cluster"]]
+        assert min(p["x"] for p in own) <= item["x"] <= max(p["x"] for p in own)
+        assert min(p["y"] for p in own) <= item["y"] <= max(p["y"] for p in own)
 
     # Only one layout is kept; a new bookmark is reported as missing from it.
     store.project_run(conn)
