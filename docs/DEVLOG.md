@@ -4,6 +4,57 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: phase 1, Notion connection and sync
+
+**Works**
+
+- `atlas notion token`: asks for the token, checks it with Notion, stores it.
+- `atlas notion tables`: lists the tables shared with the connection.
+- `atlas notion select <id>`: chooses the table and guesses which column feeds
+  which field (overridable with `--column`).
+- `atlas sync [--full] [--dry-run]`: imports rows. The first run reads the
+  whole table; later runs ask only for rows edited since the last one.
+
+**Tested how**
+
+- Against an in-memory fake of the Notion API (`tests/fake_notion.py`) whose
+  answers follow the reference documentation read on 2026-11-11.
+- **Not yet run against the real Notion API.** No token was available. The
+  first real run is the actual test, and `--dry-run` exists for it.
+
+**Decided**
+
+- The token never goes into the database. Lookup order: `NOTION_TOKEN`
+  environment variable, system keychain if the optional `keyring` package is
+  installed, otherwise `secrets.json` in the user's configuration folder,
+  created readable by the owner only.
+- A token is checked with Notion before it is stored.
+- Schema v1 was edited in place: `source_records.raw_hash` became
+  `content_hash`, a hash of the mapped fields (URL, title, summary, sorted
+  tags, parsed date). No database existed outside development, so no migration
+  was written. From now on schema changes are new migration files.
+- The content hash is what makes CSV-then-Notion work: a Notion page whose
+  content equals a row already imported from CSV is linked quietly, with
+  nothing to review.
+- Rows are matched by Notion page ID first, then by normalised URL.
+- A row edited in Notion updates its source record and waits for review. The
+  bookmark is not touched.
+- For Notion rows, `saved_at` is the page creation time (source
+  `notion_created`). An empty `saved_at` on an existing bookmark is filled the
+  same way and journaled in `changes`; a filled one is never replaced.
+- The sync report says on how many rows the page creation time matches the
+  Date column. That number tells whether creation time can be trusted as the
+  save time (see "Not yet verified" in the plan).
+- Rows in Notion's trash are ignored for now. Detecting removals is left for a
+  later `--full` pass.
+- If Notion says a listing is incomplete, the sync fails and writes nothing.
+- Requests are spaced 0.35 s apart; 429, 503 and 529 answers are retried after
+  the `Retry-After` delay, up to five attempts.
+
+**Next**
+
+- A first interface: Settings with the token field and table picker.
+
 ## 2026-11-11: phase 1, export and status
 
 **Works**

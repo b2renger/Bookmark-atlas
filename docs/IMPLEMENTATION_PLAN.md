@@ -152,7 +152,7 @@ CREATE TABLE source_records (
   fetched_at    TEXT NOT NULL,
   external_edited_at TEXT,
   raw           TEXT NOT NULL,         -- JSON exactly as received
-  raw_hash      TEXT NOT NULL,         -- detects an unchanged record on re-import
+  content_hash  TEXT NOT NULL,         -- hash of the mapped fields; same hash = no news
   pending       INTEGER NOT NULL DEFAULT 0,  -- upstream change awaiting review
   UNIQUE (source, external_id)
 );
@@ -275,9 +275,11 @@ clusters.
 3. Match with a tombstone (deleted or merged locally): the record is stored,
    the bookmark stays deleted. Deleted duplicates do not come back.
 4. Match with a live bookmark: the record is stored. Local fields are never
-   overwritten. If the upstream content changed since the last fetch, the
-   record is marked `pending` and shown in a review list where the user accepts
-   or ignores each change.
+   overwritten. If the record says something no earlier record of that
+   bookmark said, it is marked `pending` and shown in a review list where the
+   user accepts or ignores each change. Identical content arriving from a new
+   source (the Notion page behind a row first imported from CSV) is linked
+   without review. An empty save date may be filled from the source.
 5. Notion sync is incremental: filter on `last_edited_time` on or after the
    high-water mark, follow the cursor, stay under 3 requests per second, sleep
    on 429, commit the mark only when the whole run succeeds.

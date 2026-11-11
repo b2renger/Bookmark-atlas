@@ -2,11 +2,13 @@
 
 Import rules (see docs/IMPLEMENTATION_PLAN.md, section 5):
 
-1. A record is matched to a bookmark by normalised URL.
+1. A record is matched to a bookmark by its external ID (a Notion page ID)
+   when it has one, otherwise by normalised URL.
 2. No match: a new bookmark is created from the record.
 3. Match with a deleted bookmark: the record is stored, nothing comes back.
-4. Match with a live bookmark: the record is stored and marked pending for
-   review. Curated fields are never overwritten.
+4. Match with a live bookmark: the record is stored. If it says something no
+   earlier record of that bookmark said, it is marked pending for review.
+   Curated fields are never overwritten; an empty save date may be filled.
 
 Whatever happens, the record is kept exactly as received in
 ``source_records``. Importing the same content again changes nothing.
@@ -41,11 +43,13 @@ class ImportReport:
     rows: int = 0
     created: int = 0
     unchanged: int = 0  # same content already imported
-    pending: int = 0  # matched a live bookmark, stored for review
+    linked: int = 0  # known content arriving from a new source, attached quietly
+    pending: int = 0  # new content for a live bookmark, stored for review
     tombstoned: int = 0  # matched a deleted bookmark, stays deleted
     date_only: int = 0  # dates without a time of day, left for split-dates
     unreadable_dates: int = 0
-    skipped: list[tuple[int, str]] = field(default_factory=list)  # (row number, reason)
+    filled_saved_at: int = 0  # empty save dates filled from the source
+    skipped: list[tuple[int | str, str]] = field(default_factory=list)  # (row or ID, reason)
     dry_run: bool = False
 
 
@@ -75,11 +79,7 @@ def resolve_columns(headers: list[str], overrides: dict[str, str] | None = None)
     return mapping
 
 
-def _hash(raw: str) -> str:
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _split_tags(text: str | None) -> list[str]:
+def split_tags(text: str | None) -> list[str]:
     seen, tags = set(), []
     for part in (text or "").split(","):
         name = part.strip()
@@ -87,6 +87,26 @@ def _split_tags(text: str | None) -> list[str]:
             seen.add(name)
             tags.append(name)
     return tags
+
+
+def content_hash(
+    url: str, title: str | None, summary: str | None, tags: list[str], date_text: str | None
+) -> str:
+    """Hash of what a record says, independent of where it came from.
+
+    A CSV row and the Notion page it was exported from should hash the same:
+    tag order is ignored and dates are compared as parsed values.
+    """
+    parsed = parse_date(date_text)
+    content = {
+        "url": url.strip(),
+        "title": (title or "").strip(),
+        "summary": (summary or "").strip(),
+        "tags": sorted(set(tags)),
+        "date": parsed.iso if parsed else (date_text or "").strip(),
+    }
+    encoded = json.dumps(content, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _tag_id(conn: sqlite3.Connection, name: str) -> int:
@@ -103,6 +123,15 @@ def _tag_id(conn: sqlite3.Connection, name: str) -> int:
     return row["id"]
 
 
+def _survivor(conn: sqlite3.Connection, row: sqlite3.Row | None) -> sqlite3.Row | None:
+    """Follow ``merged_into`` to the bookmark that absorbed this one."""
+    seen = set()
+    while row is not None and row["merged_into"] is not None and row["id"] not in seen:
+        seen.add(row["id"])
+        row = conn.execute("SELECT * FROM bookmarks WHERE id = ?", (row["merged_into"],)).fetchone()
+    return row
+
+
 def find_bookmark(conn: sqlite3.Connection, url_normalized: str) -> sqlite3.Row | None:
     """Bookmark a normalised URL belongs to, following merges to the survivor.
 
@@ -113,20 +142,24 @@ def find_bookmark(conn: sqlite3.Connection, url_normalized: str) -> sqlite3.Row 
         "ORDER BY deleted_at IS NOT NULL, created_at LIMIT 1",
         (url_normalized,),
     ).fetchone()
-    seen = set()
-    while row is not None and row["merged_into"] is not None and row["id"] not in seen:
-        seen.add(row["id"])
-        row = conn.execute("SELECT * FROM bookmarks WHERE id = ?", (row["merged_into"],)).fetchone()
-    return row
+    return _survivor(conn, row)
 
 
-def _store_record(conn, bookmark_id, source, raw, raw_hash, pending, external_id=None):
+def _fill_saved_at(conn, report, bookmark, saved_at, saved_source) -> None:
+    """Fill an empty save date. Never replaces one, and is journaled."""
+    if not saved_at or bookmark["saved_at"] is not None or bookmark["deleted_at"] is not None:
+        return
+    now = now_iso()
     conn.execute(
-        "INSERT INTO source_records "
-        "(bookmark_id, source, external_id, fetched_at, raw, raw_hash, pending) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (bookmark_id, source, external_id, now_iso(), raw, raw_hash, int(pending)),
+        "UPDATE bookmarks SET saved_at = ?, saved_source = ?, updated_at = ? WHERE id = ?",
+        (saved_at, saved_source, now, bookmark["id"]),
     )
+    conn.execute(
+        "INSERT INTO changes (entity, entity_id, field, old_value, new_value, applied_at) "
+        "VALUES ('bookmark', ?, 'saved_at', NULL, ?, ?)",
+        (bookmark["id"], saved_at, now),
+    )
+    report.filled_saved_at += 1
 
 
 def import_record(
@@ -140,29 +173,97 @@ def import_record(
     summary: str | None,
     tags: list[str],
     date_text: str | None,
+    external_id: str | None = None,
+    external_edited_at: str | None = None,
+    saved_at: str | None = None,
+    saved_source: str | None = None,
 ) -> None:
-    """Apply the import rules to one record. Raises ValueError on a bad URL."""
+    """Apply the import rules to one record. Raises ValueError on a bad URL.
+
+    ``saved_at`` is a save time known from the source itself (a Notion page's
+    creation time). Without it, a date with a time of day is used.
+    """
     url_normalized = normalize_url(url)
     raw_json = json.dumps(raw, ensure_ascii=False, sort_keys=True)
-    raw_hash = _hash(raw_json)
+    digest = content_hash(url, title, summary, tags, date_text)
 
+    def store(bookmark_id: str, pending: bool) -> None:
+        conn.execute(
+            "INSERT INTO source_records (bookmark_id, source, external_id, fetched_at, "
+            "external_edited_at, raw, content_hash, pending) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                bookmark_id,
+                source,
+                external_id,
+                now_iso(),
+                external_edited_at,
+                raw_json,
+                digest,
+                int(pending),
+            ),
+        )
+
+    # 1. A record we already hold, recognised by its external ID.
+    if external_id is not None:
+        record = conn.execute(
+            "SELECT * FROM source_records WHERE source = ? AND external_id = ?",
+            (source, external_id),
+        ).fetchone()
+        if record is not None:
+            if record["content_hash"] == digest:
+                report.unchanged += 1
+                return
+            bookmark = _survivor(
+                conn,
+                conn.execute(
+                    "SELECT * FROM bookmarks WHERE id = ?", (record["bookmark_id"],)
+                ).fetchone(),
+            )
+            deleted = bookmark["deleted_at"] is not None
+            conn.execute(
+                "UPDATE source_records SET bookmark_id = ?, raw = ?, content_hash = ?, "
+                "fetched_at = ?, external_edited_at = ?, pending = ? WHERE id = ?",
+                (
+                    bookmark["id"],
+                    raw_json,
+                    digest,
+                    now_iso(),
+                    external_edited_at,
+                    int(not deleted),
+                    record["id"],
+                ),
+            )
+            if deleted:
+                report.tombstoned += 1
+            else:
+                report.pending += 1
+            return
+
+    # 2. A link we already hold.
     bookmark = find_bookmark(conn, url_normalized)
     if bookmark is not None:
-        already = conn.execute(
-            "SELECT 1 FROM source_records WHERE source = ? AND raw_hash = ? AND bookmark_id = ?",
-            (source, raw_hash, bookmark["id"]),
+        known = conn.execute(
+            "SELECT 1 FROM source_records WHERE bookmark_id = ? AND content_hash = ?",
+            (bookmark["id"], digest),
         ).fetchone()
-        if already:
+        if known and external_id is None:
             report.unchanged += 1
-        elif bookmark["deleted_at"] is not None:
-            _store_record(conn, bookmark["id"], source, raw_json, raw_hash, pending=False)
+            return
+        if bookmark["deleted_at"] is not None:
+            store(bookmark["id"], pending=False)
             report.tombstoned += 1
+        elif known:
+            # Same content from a new source, such as the Notion page behind
+            # a row first imported from CSV: attach it, nothing to review.
+            store(bookmark["id"], pending=False)
+            report.linked += 1
         else:
-            _store_record(conn, bookmark["id"], source, raw_json, raw_hash, pending=True)
+            store(bookmark["id"], pending=True)
             report.pending += 1
+        _fill_saved_at(conn, report, bookmark, saved_at, saved_source)
         return
 
-    saved_at = saved_source = None
+    # 3. A new link.
     parsed = parse_date(date_text)
     if parsed is None:
         if date_text and date_text.strip():
@@ -171,7 +272,7 @@ def import_record(
         # Could be a save date or a publication date: the split-dates
         # grooming script decides, from the source record.
         report.date_only += 1
-    else:
+    elif saved_at is None:
         saved_at, saved_source = parsed.iso, "date_column"
 
     bookmark_id = uuid.uuid4().hex
@@ -187,7 +288,7 @@ def import_record(
             (title or "").strip() or None,
             (summary or "").strip() or None,
             saved_at,
-            saved_source,
+            saved_source if saved_at else None,
             now,
             now,
         ),
@@ -197,7 +298,7 @@ def import_record(
             "INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)",
             (bookmark_id, _tag_id(conn, name)),
         )
-    _store_record(conn, bookmark_id, source, raw_json, raw_hash, pending=False)
+    store(bookmark_id, pending=False)
     report.created += 1
 
 
@@ -232,7 +333,7 @@ def import_csv(
                         url=url,
                         title=row.get(mapping.get("title", "")),
                         summary=row.get(mapping.get("summary", "")),
-                        tags=_split_tags(row.get(mapping.get("tags", ""))),
+                        tags=split_tags(row.get(mapping.get("tags", ""))),
                         date_text=row.get(mapping.get("date", "")),
                     )
                 except ValueError as error:

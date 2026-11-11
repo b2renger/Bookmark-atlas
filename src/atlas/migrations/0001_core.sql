@@ -31,13 +31,13 @@ CREATE TABLE source_records (
   fetched_at         TEXT NOT NULL,
   external_edited_at TEXT,
   raw                TEXT NOT NULL,    -- JSON exactly as received
-  raw_hash           TEXT NOT NULL,    -- detects an unchanged record on re-import
+  content_hash       TEXT NOT NULL,    -- hash of the mapped fields; same hash = no news
   pending            INTEGER NOT NULL DEFAULT 0,  -- upstream content awaiting review
   UNIQUE (source, external_id)
 );
 
 CREATE INDEX source_records_bookmark ON source_records(bookmark_id);
-CREATE INDEX source_records_hash ON source_records(source, raw_hash);
+CREATE INDEX source_records_hash ON source_records(bookmark_id, content_hash);
 
 CREATE TABLE tags (
   id       INTEGER PRIMARY KEY,
