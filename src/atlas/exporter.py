@@ -70,7 +70,10 @@ def status(conn: sqlite3.Connection) -> dict:
         "deleted": one("SELECT COUNT(*) FROM bookmarks WHERE deleted_at IS NOT NULL"),
         "source_records": one("SELECT COUNT(*) FROM source_records"),
         "pending_review": one("SELECT COUNT(*) FROM source_records WHERE pending"),
-        "tags": one("SELECT COUNT(*) FROM tags WHERE alias_of IS NULL"),
+        "tags": one(
+            "SELECT COUNT(DISTINCT tag_id) FROM bookmark_tags JOIN bookmarks ON id = bookmark_id "
+            f"WHERE {live}"
+        ),
         "tags_used_once": one(
             "SELECT COUNT(*) FROM (SELECT tag_id FROM bookmark_tags "
             "GROUP BY tag_id HAVING COUNT(*) = 1)"

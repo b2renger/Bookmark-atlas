@@ -297,6 +297,113 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def _groom_params(items) -> dict:
+    params = {}
+    for item in items or []:
+        name, separator, value = item.partition("=")
+        if not separator or not name:
+            raise ValueError(f"--param expects name=value, got {item!r}.")
+        params[name] = value
+    return params
+
+
+def _cmd_groom_list(args: argparse.Namespace) -> int:
+    from atlas import groom
+
+    scripts, problems = groom.load_scripts(args.db)
+    for script in scripts.values():
+        origin = "" if script.builtin else "  (yours)"
+        print(f"{script.name:<22}{script.title}{origin}")
+        for spec in script.params:
+            print(f"{'':<22}  --param {spec['name']}=…  {spec.get('label', '')}")
+    for problem in problems:
+        print(f"could not load {problem['file']}: {problem['error']}", file=sys.stderr)
+    print(f"\nYour own scripts go in {groom.user_scripts_dir(args.db)}")
+    return 0
+
+
+def _print_groups(result: dict, limit: int) -> None:
+    for group in result["groups"][:limit]:
+        print(f"  {group['title']}")
+        for line in group["lines"][:6]:
+            print(f"      {line}")
+        if len(group["lines"]) > 6:
+            print(f"      … and {len(group['lines']) - 6} more")
+    hidden = result["groups_total"] - min(limit, len(result["groups"]))
+    if hidden > 0:
+        print(f"  … and {hidden} more groups")
+
+
+def _cmd_groom_preview(args: argparse.Namespace) -> int:
+    from atlas import groom
+
+    conn = db.open_ready(args.db)
+    try:
+        script = groom.get_script(args.script, args.db)
+        result = groom.preview(conn, script, _groom_params(args.param), limit=args.show)
+    finally:
+        conn.close()
+    print(f"{script.title}: {result['changes']} changes in {result['groups_total']} groups")
+    _print_groups(result, args.show)
+    if result["changes"]:
+        print("Nothing was written. Apply with: atlas groom apply " + args.script)
+    return 0
+
+
+def _cmd_groom_apply(args: argparse.Namespace) -> int:
+    from atlas import groom
+
+    conn = db.open_ready(args.db)
+    try:
+        script = groom.get_script(args.script, args.db)
+        result = groom.apply(conn, script, _groom_params(args.param), db_path=args.db)
+    finally:
+        conn.close()
+    if not result["applied"]:
+        print(f"{script.title}: nothing to do.")
+        return 0
+    print(f"{script.title}: applied {result['applied']} changes in {result['groups']} groups.")
+    print(f"  backup: {result['backup']}")
+    print(f"  undo with: atlas groom undo {result['run_id']}")
+    return 0
+
+
+def _cmd_groom_undo(args: argparse.Namespace) -> int:
+    from atlas import groom
+
+    conn = db.open_ready(args.db)
+    try:
+        run_id = args.run
+        if run_id == "last":
+            applied = [run for run in groom.history(conn) if run["status"] == "applied"]
+            if not applied:
+                raise ValueError("There is no applied run to undo.")
+            run_id = applied[0]["run_id"]
+        result = groom.undo(conn, run_id, db_path=args.db)
+    finally:
+        conn.close()
+    print(f"Reverted {result['reverted']} changes.")
+    return 0
+
+
+def _cmd_groom_history(args: argparse.Namespace) -> int:
+    from atlas import groom
+
+    conn = db.open_ready(args.db)
+    try:
+        runs = groom.history(conn)
+    finally:
+        conn.close()
+    if not runs:
+        print("No grooming run yet.")
+    for run in runs:
+        print(
+            f"{run['started_at']}  {run['script']:<22}{run['changes']:>6} changes  "
+            f"{run['status']:<8} {run['run_id']}"
+        )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Bookmark Atlas")
     parser.add_argument("--version", action="version", version=f"atlas {__version__}")
@@ -376,6 +483,30 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = commands.add_parser("doctor", help="check that this installation works")
     doctor.add_argument("--offline", action="store_true", help="skip the Notion connection check")
     doctor.set_defaults(func=_cmd_doctor)
+
+    groom = commands.add_parser("groom", help="clean the collection with scripts")
+    groom_commands = groom.add_subparsers(dest="groom_command", required=True)
+
+    groom_list = groom_commands.add_parser("list", help="list the grooming scripts")
+    groom_list.set_defaults(func=_cmd_groom_list)
+
+    for name, func, text in (
+        ("preview", _cmd_groom_preview, "show what a script would change, without writing"),
+        ("apply", _cmd_groom_apply, "run a script and write its changes"),
+    ):
+        sub = groom_commands.add_parser(name, help=text)
+        sub.add_argument("script")
+        sub.add_argument("--param", action="append", metavar="NAME=VALUE")
+        if name == "preview":
+            sub.add_argument("--show", type=int, default=15, help="groups to print (default 15)")
+        sub.set_defaults(func=func)
+
+    groom_undo = groom_commands.add_parser("undo", help="reverse a run")
+    groom_undo.add_argument("run", help="run ID from 'atlas groom history', or 'last'")
+    groom_undo.set_defaults(func=_cmd_groom_undo)
+
+    groom_history = groom_commands.add_parser("history", help="list past runs")
+    groom_history.set_defaults(func=_cmd_groom_history)
 
     return parser
 
