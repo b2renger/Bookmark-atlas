@@ -218,7 +218,7 @@ def set_cluster_label(
     conn.commit()
 
 
-def describe_run(conn: sqlite3.Connection, run_id: str, samples: int = 5) -> dict:
+def describe_run(conn: sqlite3.Connection, run_id: str, samples: int = 5) -> dict:  # noqa: C901
     """A run with its clusters: size, telling tags, a generated or edited label,
     and the bookmarks closest to each centre."""
     np = require_numpy()
@@ -300,6 +300,108 @@ def describe_run(conn: sqlite3.Connection, run_id: str, samples: int = 5) -> dic
         "params": params,
         "metrics": json.loads(run["metrics"] or "{}"),
         "clusters": clusters,
+    }
+
+
+def project_run(conn: sqlite3.Connection, seed: int = 0) -> dict:
+    """Lay the collection out in 2D and store it. Only the latest layout is kept."""
+    from atlas.analysis import project
+
+    ids, matrix, model = load_vectors(conn)
+    matrix = leading(matrix)
+    points, method = project.layout(matrix, seed=seed)
+    metrics = {"trustworthiness": project.trustworthiness(matrix, points)}
+    run_id = uuid.uuid4().hex
+    params = {
+        "seed": seed,
+        "vectors": model,
+        "dims_used": int(matrix.shape[1]),
+        "bookmarks": len(ids),
+    }
+    try:
+        conn.execute("DELETE FROM runs WHERE kind = 'projection'")
+        conn.execute(
+            "INSERT INTO runs (id, created_at, kind, algorithm, params, app_version, metrics) "
+            "VALUES (?, ?, 'projection', ?, ?, ?, ?)",
+            (run_id, now_iso(), method, json.dumps(params), __version__, json.dumps(metrics)),
+        )
+        conn.executemany(
+            "INSERT INTO run_items (run_id, bookmark_id, x, y) VALUES (?, ?, ?, ?)",
+            [(run_id, ids[i], float(points[i, 0]), float(points[i, 1])) for i in range(len(ids))],
+        )
+    except BaseException:
+        conn.rollback()
+        raise
+    conn.commit()
+    return {"run_id": run_id, "method": method, "points": len(ids), **metrics}
+
+
+def map_data(conn: sqlite3.Connection, cluster_run_id: str | None = None) -> dict:
+    """Everything the map draws: one point per bookmark, and where each cluster sits."""
+    layout = conn.execute(
+        "SELECT * FROM runs WHERE kind = 'projection' ORDER BY created_at DESC, rowid DESC LIMIT 1"
+    ).fetchone()
+    live = conn.execute("SELECT COUNT(*) FROM bookmarks WHERE deleted_at IS NULL").fetchone()[0]
+    if layout is None:
+        return {"layout": None, "points": [], "clusters": [], "missing": live, "cluster_run": None}
+
+    cluster_run_id = cluster_run_id or latest_run_id(conn)
+    membership = {}
+    described = None
+    if cluster_run_id:
+        described = describe_run(conn, cluster_run_id, samples=0)
+        membership = dict(
+            conn.execute(
+                "SELECT bookmark_id, cluster FROM run_items WHERE run_id = ?", (cluster_run_id,)
+            )
+        )
+    points = [
+        {
+            "id": row["id"],
+            "x": row["x"],
+            "y": row["y"],
+            "title": row["title"] or row["url"],
+            "domain": row["domain"],
+            "cluster": membership.get(row["id"]),
+        }
+        for row in conn.execute(
+            "SELECT b.id, b.title, b.url, b.domain, ri.x, ri.y FROM run_items ri "
+            "JOIN bookmarks b ON b.id = ri.bookmark_id "
+            "WHERE ri.run_id = ? AND b.deleted_at IS NULL ORDER BY b.id",
+            (layout["id"],),
+        )
+    ]
+    clusters = []
+    if described:
+        positions: dict[int, list[tuple[float, float]]] = {}
+        for point in points:
+            if point["cluster"] is not None:
+                positions.setdefault(point["cluster"], []).append((point["x"], point["y"]))
+        for item in described["clusters"]:
+            placed = positions.get(item["cluster"])
+            if not placed:
+                continue
+            # The median, not the mean: a few strays do not drag the label away.
+            clusters.append(
+                {
+                    "cluster": item["cluster"],
+                    "label": item["label"],
+                    "size": item["size"],
+                    "x": statistics.median(p[0] for p in placed),
+                    "y": statistics.median(p[1] for p in placed),
+                }
+            )
+    return {
+        "layout": {
+            "run_id": layout["id"],
+            "created_at": layout["created_at"],
+            "method": layout["algorithm"],
+            **json.loads(layout["metrics"] or "{}"),
+        },
+        "points": points,
+        "clusters": clusters,
+        "missing": live - len(points),
+        "cluster_run": cluster_run_id,
     }
 
 

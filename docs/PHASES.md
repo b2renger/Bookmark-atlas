@@ -10,8 +10,8 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 1 | Local store and import | v0.2.0 | done, Notion token import untried with a real token |
 | 2 | Grooming, batch edits, sharing | v0.2.0, v0.2.1 | done, four planned scripts still to write |
 | 3 | Vectors, clusters and the e-means test | v0.3.0 | done |
-| 4 | Map view | | next |
-| 5 | Saved views and snapshots | | |
+| 4 | Map view | v0.4.0 | done |
+| 5 | Saved views and snapshots | | next |
 | 6 | Self-organising map and pearl tree | | |
 | 7 | Links and tendencies | | |
 
@@ -84,3 +84,21 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **On the real collection:** auto picks 16 clusters, and they read as topics.
 - **Left for later:** a neural embedding model, which should separate topics
   better and would need a download.
+
+## Phase 4: the map
+
+- **A 2D map of the collection.** t-SNE, written with NumPy, places similar
+  bookmarks next to each other. On the real collection its layout is as
+  faithful as scikit-learn's (trustworthiness 0.989 for both; a plain PCA
+  gives 0.78) and takes about 6 seconds.
+- **Topics are named, not coloured.** Labels sit on the map at the centre of
+  each cluster. Three colours, checked for colour-blind safety on both light
+  and dark backgrounds, show state: focused topic, search matches, selection.
+- **Linked to everything else.** Hover and click for details; Shift+drag
+  selects an area into the same selection the list uses, so a region of the
+  map can be tagged, exported, or shown in the list.
+- **Same map every time** for the same collection; new bookmarks are reported
+  as missing until the map is redrawn.
+- **Left for later:** filters by tag, platform and date on the map; a faster
+  layout for collections beyond a few thousand bookmarks (they fall back to a
+  cruder projection today).

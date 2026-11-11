@@ -9,12 +9,16 @@
     --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b675f; --line: #dedad1;
     --accent: #2f5d50; --accent-ink: #ffffff; --warn: #9a5b12; --bad: #a3322b; --good: #2f6b3a;
     --chip: #ece9e1;
+    /* Map marks. Three categorical slots, validated for scatter plots
+       (all pairs, both modes), used for states, never for cluster identity. */
+    --viz-surface: #fcfcfb; --viz-neutral: #b3afa5; --viz-focus: #2a78d6; --viz-selected: #eb6834; --viz-match: #1baf7a;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #171715; --panel: #201f1c; --ink: #ecebe6; --muted: #a19d93; --line: #35332e;
       --accent: #7fb8a4; --accent-ink: #10201b; --warn: #e0a557; --bad: #ef8a80; --good: #8fcf9a;
       --chip: #2b2a26;
+      --viz-surface: #1a1a19; --viz-neutral: #5f5c55; --viz-focus: #3987e5; --viz-selected: #d95926; --viz-match: #199e70;
     }
   }
   * { box-sizing: border-box; }
@@ -77,6 +81,18 @@
   .selrow input[type=text], .selrow select { width: auto; flex: 1 1 150px; max-width: 260px; background: var(--panel); }
   #selbar .note { margin-top: 2px; }
   td.pick, th.pick { width: 28px; padding-right: 0; }
+  #mapwrap { position: relative; background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  #mapcanvas { display: block; width: 100%; height: 620px; cursor: grab; touch-action: none; }
+  #mapcanvas.selecting { cursor: crosshair; }
+  #maptip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 9px; font-size: 13px; max-width: 320px; box-shadow: 0 2px 10px rgba(0,0,0,.15); z-index: 2; }
+  #maptip small { display: block; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+  .maptools { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 12px; }
+  .maptools select, .maptools input[type=search] { width: auto; min-width: 180px; }
+  #mapdetail h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
+  #mapdetail a { color: var(--ink); }
   .clgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .clcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
   .clcard h3 { font-size: 15px; margin: 0 0 2px; overflow-wrap: anywhere; }
@@ -112,6 +128,7 @@
   <h1>Bookmark Atlas</h1>
   <nav>
     <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
+    <button id="tab-map">Map</button>
     <button id="tab-clusters">Clusters</button>
     <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
@@ -133,6 +150,7 @@
         <div class="selrow">
           <strong id="sel-count"></strong>
           <button class="linkish" id="sel-all" hidden></button>
+          <button class="linkish" id="sel-show">show only these in the list</button>
           <button class="linkish" id="sel-clear">clear</button>
         </div>
         <div class="selrow" id="sel-actions">
@@ -151,6 +169,28 @@
         <button class="action" id="more" hidden>Show more</button>
       </div>
     </section>
+  </div>
+
+  <div id="view-map" hidden>
+    <section class="card">
+      <div class="maptools">
+        <button class="action primary" id="map-run">Draw the map</button>
+        <div><label for="map-clusters">Topics from</label><select id="map-clusters"></select></div>
+        <div><label for="map-focus">Focus on</label><select id="map-focus"></select></div>
+        <div class="grow"><label for="map-search">Highlight</label>
+          <input type="search" id="map-search" placeholder="Words to find on the map"></div>
+        <button class="action" id="map-in" aria-label="Zoom in">+</button>
+        <button class="action" id="map-out" aria-label="Zoom out">−</button>
+        <button class="action" id="map-reset">Reset view</button>
+      </div>
+      <div id="mapwrap">
+        <canvas id="mapcanvas" role="img" aria-label="Map of the bookmarks: similar bookmarks are drawn close together"></canvas>
+        <div id="maptip" hidden></div>
+      </div>
+      <div class="legend" id="map-legend"></div>
+      <div class="note muted" id="map-note"></div>
+    </section>
+    <section class="card" id="mapdetail" hidden></section>
   </div>
 
   <div id="view-clusters" hidden>
@@ -315,12 +355,15 @@ async function busy(button, work) {
   try { return await work(); } finally { button.disabled = false; button.textContent = label; }
 }
 
+let currentView = "bookmarks";
 function showView(name) {
-  for (const view of ["bookmarks", "clusters", "grooming", "settings"]) {
+  currentView = name;
+  for (const view of ["bookmarks", "map", "clusters", "grooming", "settings"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
   }
+  if (typeof refreshSelection === "function") refreshSelection();
 }
 
 /* ---- state ---- */
@@ -512,16 +555,279 @@ async function runSync(button, dryRun) {
 $("preview-sync").onclick = () => runSync($("preview-sync"), true);
 $("run-sync").onclick = () => runSync($("run-sync"), false);
 
+/* ---- map ---- */
+// Colour carries state, never cluster identity: with sixteen topics there are
+// not sixteen colours that stay distinguishable. Topics are named by labels
+// drawn on the map; focus, search matches and selection each get one colour.
+
+const map = { data: null, scale: 1, tx: 0, ty: 0, focus: null, matches: null, hover: null, box: null, drag: null, labels: [] };
+const canvas = $("mapcanvas");
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function mapFrame() {
+  const rect = canvas.getBoundingClientRect();
+  const pad = 36;
+  return { w: rect.width, h: rect.height, pad, sx: Math.max(rect.width - 2 * pad, 10), sy: Math.max(rect.height - 2 * pad, 10) };
+}
+function toScreen(point, frame) {
+  return [(frame.pad + point.x * frame.sx) * map.scale + map.tx, (frame.pad + point.y * frame.sy) * map.scale + map.ty];
+}
+function stateOf(point) {
+  if (selection.has(point.id)) return "selected";
+  if (map.matches && map.matches.has(point.id)) return "match";
+  if (map.focus !== null && point.cluster === map.focus) return "focus";
+  return "neutral";
+}
+
+function drawMap() {
+  if (!map.data || currentView !== "map") return;
+  const frame = mapFrame();
+  const ratio = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(frame.w * ratio) || canvas.height !== Math.round(frame.h * ratio)) {
+    canvas.width = Math.round(frame.w * ratio); canvas.height = Math.round(frame.h * ratio);
+  }
+  const g = canvas.getContext("2d");
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const surface = css("--viz-surface");
+  g.fillStyle = surface; g.fillRect(0, 0, frame.w, frame.h);
+  const colours = { neutral: css("--viz-neutral"), focus: css("--viz-focus"), match: css("--viz-match"), selected: css("--viz-selected") };
+  const anyState = map.focus !== null || map.matches || selection.size > 0;
+
+  // Neutral points first, then the states on top, each with a ring in the
+  // surface colour so overlapping marks stay separate.
+  for (const layer of ["neutral", "focus", "match", "selected"]) {
+    for (const point of map.data.points) {
+      if (stateOf(point) !== layer) continue;
+      const [x, y] = toScreen(point, frame);
+      if (x < -10 || y < -10 || x > frame.w + 10 || y > frame.h + 10) continue;
+      g.beginPath(); g.arc(x, y, layer === "neutral" ? 4 : 5, 0, Math.PI * 2);
+      g.globalAlpha = layer === "neutral" && anyState ? 0.7 : 1;
+      g.fillStyle = colours[layer]; g.fill();
+      g.globalAlpha = 1; g.lineWidth = 2; g.strokeStyle = surface; g.stroke();
+    }
+  }
+  if (map.hover) {
+    const [x, y] = toScreen(map.hover, frame);
+    g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.lineWidth = 2; g.strokeStyle = css("--ink"); g.stroke();
+  }
+
+  // Topic labels, biggest topics first; a label that would cover another is
+  // left out (it stays reachable through "Focus on").
+  map.labels = [];
+  const ink = css("--ink");
+  const ordered = [...map.data.clusters].sort((a, b) => (b.cluster === map.focus) - (a.cluster === map.focus) || b.size - a.size);
+  for (const cluster of ordered) {
+    const focused = cluster.cluster === map.focus;
+    g.font = (focused ? "700 " : "600 ") + "13px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    const text = cluster.label.length > 34 ? cluster.label.slice(0, 33) + "…" : cluster.label;
+    const [x, y] = toScreen(cluster, frame);
+    const width = g.measureText(text).width;
+    const box = { x: x - width / 2 - 4, y: y - 11, w: width + 8, h: 22, cluster };
+    if (box.x + box.w < 0 || box.y + box.h < 0 || box.x > frame.w || box.y > frame.h) continue;
+    if (!focused && map.labels.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue;
+    map.labels.push(box);
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.lineWidth = 4; g.lineJoin = "round"; g.strokeStyle = surface; g.strokeText(text, x, y);
+    g.fillStyle = ink; g.fillText(text, x, y);
+    if (focused) { g.fillStyle = colours.focus; g.fillRect(x - width / 2, y + 10, width, 2); }
+  }
+  if (map.box) {
+    g.fillStyle = "rgba(127,127,127,.15)"; g.strokeStyle = colours.selected; g.lineWidth = 1;
+    const b = map.box; g.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+  }
+}
+
+function mapLegend() {
+  const holder = $("map-legend");
+  holder.replaceChildren();
+  if (!map.data || !map.data.points.length) return;
+  const focused = map.data.clusters.find((c) => c.cluster === map.focus);
+  const rows = [];
+  if (focused) rows.push(["--viz-focus", "Focused topic: " + focused.label + " (" + focused.size + ")"]);
+  if (map.matches) rows.push(["--viz-match", "Matches “" + $("map-search").value.trim() + "” (" + map.data.points.filter((p) => map.matches.has(p.id)).length + ")"]);
+  if (selection.size) rows.push(["--viz-selected", "Selected (" + map.data.points.filter((p) => selection.has(p.id)).length + ")"]);
+  rows.push(["--viz-neutral", rows.length ? "Other bookmarks" : "One dot per bookmark; similar bookmarks sit close together"]);
+  for (const [colour, text] of rows) {
+    const dot = el("i"); dot.style.background = "var(" + colour + ")";
+    holder.append(el("span", {}, [dot, text]));
+  }
+}
+
+function mapPointAt(mx, my) {
+  const frame = mapFrame();
+  let best = null, bestDistance = 12 * 12;   // the hit target is larger than the dot
+  for (const point of map.data.points) {
+    const [x, y] = toScreen(point, frame);
+    const d = (x - mx) * (x - mx) + (y - my) * (y - my);
+    if (d < bestDistance) { best = point; bestDistance = d; }
+  }
+  return best;
+}
+
+function setFocus(cluster) {
+  map.focus = cluster;
+  $("map-focus").value = cluster === null ? "" : String(cluster);
+  mapLegend(); drawMap();
+}
+
+async function showDetail(point) {
+  const holder = $("mapdetail");
+  try {
+    const item = (await api("GET", "/api/bookmarks/item?id=" + encodeURIComponent(point.id))).item;
+    const href = safeLink(item.url);
+    const title = href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title || item.url }) : el("span", { textContent: item.title || item.url });
+    const cluster = map.data.clusters.find((c) => c.cluster === point.cluster);
+    const toggle = el("button", { className: "action", textContent: selection.has(item.id) ? "Remove from selection" : "Add to selection" });
+    toggle.onclick = () => { if (selection.has(item.id)) selection.delete(item.id); else selection.add(item.id);
+      toggle.textContent = selection.has(item.id) ? "Remove from selection" : "Add to selection"; refreshSelection(); mapLegend(); };
+    holder.replaceChildren(el("h3", {}, [title]),
+      el("div", { className: "nowrap", textContent: [item.platform && item.platform !== "Website" ? item.platform : item.domain, cluster ? "topic: " + cluster.label : "",
+        item.saved_at ? "saved " + item.saved_at.slice(0, 10) : "", item.published_at ? "published " + item.published_at.slice(0, 10) : ""].filter(Boolean).join(" · ") }),
+      el("p", { className: "sum", textContent: item.summary || "" }),
+      el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))),
+      el("div", { className: "row", style: "margin-top:12px" }, [toggle]));
+    holder.hidden = false;
+  } catch (error) { note("map-note", error.message, "bad"); }
+}
+
+function zoomAt(factor, cx, cy) {
+  const next = Math.min(40, Math.max(0.6, map.scale * factor));
+  const applied = next / map.scale;
+  map.tx = cx - (cx - map.tx) * applied; map.ty = cy - (cy - map.ty) * applied; map.scale = next;
+  drawMap();
+}
+function mousePos(event) { const r = canvas.getBoundingClientRect(); return [event.clientX - r.left, event.clientY - r.top]; }
+
+canvas.addEventListener("wheel", (event) => {
+  if (!map.data) return;
+  event.preventDefault();
+  const [x, y] = mousePos(event);
+  zoomAt(event.deltaY < 0 ? 1.15 : 1 / 1.15, x, y);
+}, { passive: false });
+canvas.addEventListener("pointerdown", (event) => {
+  if (!map.data) return;
+  const [x, y] = mousePos(event);
+  canvas.setPointerCapture(event.pointerId);
+  map.drag = { x, y, tx: map.tx, ty: map.ty, moved: false, selecting: event.shiftKey };
+  if (event.shiftKey) { map.box = { x0: x, y0: y, x1: x, y1: y }; canvas.classList.add("selecting"); }
+});
+canvas.addEventListener("pointermove", (event) => {
+  if (!map.data) return;
+  const [x, y] = mousePos(event);
+  if (map.drag) {
+    if (Math.abs(x - map.drag.x) + Math.abs(y - map.drag.y) > 4) map.drag.moved = true;
+    if (map.drag.selecting) { map.box.x1 = x; map.box.y1 = y; }
+    else if (map.drag.moved) { map.tx = map.drag.tx + x - map.drag.x; map.ty = map.drag.ty + y - map.drag.y; }
+    $("maptip").hidden = true; drawMap(); return;
+  }
+  const point = mapPointAt(x, y);
+  if (point !== map.hover) { map.hover = point; drawMap(); }
+  const tip = $("maptip");
+  if (!point) { tip.hidden = true; return; }
+  const cluster = map.data.clusters.find((c) => c.cluster === point.cluster);
+  tip.replaceChildren(el("strong", { textContent: point.title.length > 90 ? point.title.slice(0, 89) + "…" : point.title }),
+    el("small", { textContent: point.domain + (cluster ? " · " + cluster.label : "") }));
+  tip.hidden = false;
+  const frame = mapFrame();
+  tip.style.left = Math.min(x + 14, frame.w - tip.offsetWidth - 6) + "px";
+  tip.style.top = (y + 16 + tip.offsetHeight > frame.h ? y - tip.offsetHeight - 10 : y + 16) + "px";
+});
+canvas.addEventListener("pointerleave", () => { $("maptip").hidden = true; if (map.hover) { map.hover = null; drawMap(); } });
+canvas.addEventListener("pointerup", (event) => {
+  if (!map.data || !map.drag) return;
+  const [x, y] = mousePos(event);
+  const drag = map.drag; map.drag = null; canvas.classList.remove("selecting");
+  if (drag.selecting && map.box) {
+    const b = map.box; map.box = null;
+    const [x0, x1, y0, y1] = [Math.min(b.x0, b.x1), Math.max(b.x0, b.x1), Math.min(b.y0, b.y1), Math.max(b.y0, b.y1)];
+    const frame = mapFrame();
+    for (const point of map.data.points) {
+      const [px, py] = toScreen(point, frame);
+      if (px >= x0 && px <= x1 && py >= y0 && py <= y1) selection.add(point.id);
+    }
+    refreshSelection(); mapLegend(); return;
+  }
+  if (drag.moved) return;
+  const label = map.labels.find((o) => x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h);
+  const point = mapPointAt(x, y);
+  if (point) showDetail(point);
+  else if (label) setFocus(label.cluster.cluster === map.focus ? null : label.cluster.cluster);
+  else setFocus(null);
+});
+canvas.addEventListener("dblclick", () => { map.scale = 1; map.tx = 0; map.ty = 0; drawMap(); });
+$("map-in").onclick = () => { const f = mapFrame(); zoomAt(1.3, f.w / 2, f.h / 2); };
+$("map-out").onclick = () => { const f = mapFrame(); zoomAt(1 / 1.3, f.w / 2, f.h / 2); };
+$("map-reset").onclick = () => { map.scale = 1; map.tx = 0; map.ty = 0; drawMap(); };
+$("map-focus").onchange = () => setFocus($("map-focus").value === "" ? null : Number($("map-focus").value));
+window.addEventListener("resize", drawMap);
+
+let mapSearchTimer = null;
+$("map-search").oninput = () => {
+  clearTimeout(mapSearchTimer);
+  mapSearchTimer = setTimeout(async () => {
+    const q = $("map-search").value.trim();
+    try { map.matches = q ? new Set((await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent(q))).ids) : null; }
+    catch (error) { map.matches = null; }
+    mapLegend(); drawMap();
+  }, 250);
+};
+
+function applyMapData(data) {
+  map.data = data;
+  if (map.focus !== null && !data.clusters.some((c) => c.cluster === map.focus)) map.focus = null;
+  const focus = $("map-focus");
+  focus.replaceChildren(el("option", { value: "", textContent: "No topic" }));
+  for (const cluster of [...data.clusters].sort((a, b) => b.size - a.size)) {
+    focus.append(el("option", { value: String(cluster.cluster), textContent: cluster.label + " (" + cluster.size + ")", selected: cluster.cluster === map.focus }));
+  }
+  $("map-run").textContent = data.layout ? "Redraw the map" : "Draw the map";
+  $("map-run").className = data.layout ? "action" : "action primary";
+  if (!data.layout) note("map-note", "No map yet. Drawing it takes a few seconds: similar bookmarks are placed close together.", "muted");
+  else {
+    let text = data.points.length + " bookmarks. Drag to move, scroll to zoom, Shift+drag to select an area, click a dot for details, click a topic name to focus it.";
+    if (data.missing > 0) text += " " + data.missing + " bookmarks were added since the map was drawn and are not on it: redraw to include them.";
+    note("map-note", text, data.missing > 0 ? "bad" : "muted");
+  }
+  mapLegend(); drawMap();
+}
+
+async function loadMap(clusterRun) {
+  const runs = (await api("GET", "/api/clusters/runs")).runs;
+  const data = await api("GET", "/api/map" + (clusterRun ? "?clusters=" + encodeURIComponent(clusterRun) : ""));
+  const select = $("map-clusters");
+  select.replaceChildren();
+  for (const run of runs) {
+    select.append(el("option", { value: run.run_id, selected: run.run_id === data.cluster_run,
+      textContent: run.k + " clusters · " + run.algorithm + " · " + new Date(run.created_at).toLocaleDateString() }));
+  }
+  select.disabled = runs.length === 0;
+  applyMapData(data);
+}
+$("map-clusters").onchange = () => { map.focus = null; loadMap($("map-clusters").value).catch((e) => note("map-note", e.message, "bad")); };
+$("map-run").onclick = () => busy($("map-run"), async () => {
+  note("map-note", "Placing the bookmarks. This takes a few seconds…", "muted");
+  try { await api("POST", "/api/map", {}); await loadMap(); }
+  catch (error) { note("map-note", error.message, "bad"); }
+});
+
 /* ---- clusters ---- */
 
-let clusterFilter = null;  // { key: "<run id>:<number>", label }
+let clusterFilter = null;    // { key: "<run id>:<number>", label }
+let selectionFilter = null;  // array of bookmark IDs, frozen when the filter was set
 
 function setClusterFilter(filter) {
-  clusterFilter = filter;
+  clusterFilter = filter; selectionFilter = null;
   $("filterrow").hidden = !filter;
   if (filter) $("filtertext").textContent = "Cluster: " + filter.label;
 }
+function setSelectionFilter(ids) {
+  selectionFilter = ids; clusterFilter = null;
+  $("filterrow").hidden = !ids;
+  if (ids) $("filtertext").textContent = "Selection: " + ids.length + (ids.length === 1 ? " bookmark" : " bookmarks");
+}
 $("filterclear").onclick = () => { setClusterFilter(null); loadBookmarks(true).catch(() => {}); };
+$("sel-show").onclick = () => { setSelectionFilter([...selection]); $("search").value = ""; showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
 
 function renderRun(run) {
   const grid = $("cl-grid");
@@ -724,8 +1030,10 @@ function safeLink(url) {
 async function loadBookmarks(reset) {
   if (reset) shown = 0;
   const q = $("search").value.trim();
-  const data = await api("GET", "/api/bookmarks?limit=100&offset=" + shown + "&q=" + encodeURIComponent(q)
-    + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : ""));
+  const data = selectionFilter
+    ? await api("POST", "/api/bookmarks/list", { ids: selectionFilter, q, limit: 100, offset: shown })
+    : await api("GET", "/api/bookmarks?limit=100&offset=" + shown + "&q=" + encodeURIComponent(q)
+      + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : ""));
   total = data.total;
   const holder = $("list");
   if (reset) holder.replaceChildren();
@@ -783,7 +1091,12 @@ let keepNote = false;
 function refreshSelection() {
   const n = selection.size;
   // After a delete the selection is empty, but its result and Undo must stay visible.
-  $("selbar").hidden = n === 0 && !keepNote;
+  // The bar serves the list and the map; it sits above both.
+  $("selbar").hidden = (n === 0 && !keepNote) || !["bookmarks", "map"].includes(currentView);
+  // Sticky over the long list; in place above the map, where it would cover the tools.
+  $("selbar").style.position = currentView === "map" ? "static" : "";
+  $("sel-show").hidden = n === 0;
+  if (typeof drawMap === "function") drawMap();
   $("sel-actions").hidden = n === 0;
   if (!n) { $("sel-count").textContent = "Nothing selected"; $("sel-all").hidden = true; if (!keepNote) note("sel-note", "", "muted"); return; }
   keepNote = false;
@@ -872,9 +1185,11 @@ $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeou
 $("more").onclick = () => loadBookmarks(false);
 $("tab-bookmarks").onclick = () => showView("bookmarks");
 $("tab-settings").onclick = () => showView("settings");
+$("tab-map").onclick = () => { showView("map"); loadMap($("map-clusters").value || undefined).catch((e) => note("map-note", e.message, "bad")); };
 $("tab-clusters").onclick = () => { showView("clusters"); loadClusters().catch((e) => note("cl-note", e.message, "bad")); };
 $("tab-grooming").onclick = () => { showView("grooming"); loadGrooming().catch((e) => note("scripts-note", e.message, "bad")); };
 
+document.querySelector("main").prepend($("selbar"));
 (async () => {
   try {
     await refreshState();

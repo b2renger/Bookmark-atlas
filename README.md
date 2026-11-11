@@ -13,9 +13,9 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 ## Status
 
-Phase 3 of 7. Import (Notion or CSV), browse, groom the collection with
-scripts, and group it into topic clusters. The map and the other visual views
-come next. The e-means test is done: see
+Phase 4 of 7. Import (Notion or CSV), browse, groom the collection with
+scripts, group it into topic clusters, and explore it on a map. Saved views,
+the self-organising map, the pearl tree and tendencies come next. The e-means test is done: see
 [docs/reports/e-means-test.md](docs/reports/e-means-test.md).
 
 **The Notion import has not been run against the real Notion API with a real
@@ -67,6 +67,10 @@ In **Settings** you can load data two ways, and combine them:
 In **Bookmarks**, tick rows (or "select all matching" a search) to add or
 remove a tag, delete, or **export the selection** as a file another Atlas user
 can import from Settings.
+
+The **Map** draws every bookmark as a dot, similar ones close together, with
+topic names on top. Hover and click to read, click a topic to focus it, type
+to highlight matches, Shift+drag to select an area.
 
 In **Clusters**, group the collection by topic. Each cluster shows its telling
 tags and a few bookmarks; rename it, or "show bookmarks" to work on it in the

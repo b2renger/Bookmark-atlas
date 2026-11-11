@@ -4,6 +4,63 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: v0.3.0 published; phase 4, the map
+
+**Published:** v0.3.0. Its first attempt was stopped by the test gate: a test
+expected exact cluster sizes from plain e-means on the 72-item toy set, which
+is exactly what the e-means report says not to expect. Tests that depended on
+e-means outcomes, or on a random draw of the suggested k, were rewritten.
+
+**Works**
+
+- `atlas.analysis.project`: exact t-SNE in NumPy (PCA start, so it is
+  repeatable), PCA fallback above 3,500 bookmarks, and a trustworthiness
+  measure.
+- Layouts are stored as runs of kind `projection`; only the latest is kept.
+- Map tab: canvas scatter, topic labels with collision avoidance, hover
+  tooltip, click for a detail card, focus a topic (by label or by list),
+  highlight search matches, Shift+drag area selection, zoom and pan.
+- The selection bar is now shared by the list and the map, with "show only
+  these in the list".
+
+**Checked on the real collection**
+
+- Trustworthiness 0.989 (scikit-learn's t-SNE: 0.989; PCA: 0.78). My measure
+  agrees with scikit-learn's to six decimals.
+- The 16 k-means clusters are better separated on the map than in the vectors
+  (silhouette 0.39 against 0.25), so topics appear as islands.
+- Driven in Chrome, light and dark: draw the map, focus a topic, highlight
+  "blender" (29 matches), hover, open a detail, select an area (67
+  bookmarks), show them in the list, tag them. No page errors.
+
+**Decided**
+
+- Colour encodes state, not cluster identity. A scatter plot compares every
+  pair of colours, and the palette checker passes only three slots under that
+  rule, in both light and dark. Topics get text labels and a "Focus on" list.
+- Labels that would overlap a bigger topic's label are not drawn; every topic
+  stays reachable through the list.
+- One scale per axis to use the whole canvas. Distances on a t-SNE map are
+  only meaningful locally anyway, and the note under the map says "close
+  together", not "far apart".
+- The selection bar is sticky over the list and static above the map.
+
+**Found by the browser run**
+
+- The sticky selection bar covered the map's tools. Fixed.
+- The server printed a traceback when a page closed mid-answer. Silenced.
+
+**Known gaps**
+
+- No touch gestures for pinch zoom. No filter by tag, platform or date on the
+  map.
+- The map is not redrawn automatically when bookmarks are added: the note
+  says how many are missing and the button redraws.
+
+**Next**
+
+- Publish 0.4.0. Phase 5: saved views and snapshots.
+
 ## 2026-11-11: phase 3, vectors, clusters and the e-means test
 
 **Published before this:** v0.2.1 (portable data folder), with both smoke

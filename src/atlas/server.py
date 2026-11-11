@@ -326,13 +326,73 @@ class App:
         finally:
             conn.close()
 
-    def bookmarks(self, query: dict) -> dict:
+    def map_show(self, query: dict) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            return store.map_data(conn, (query.get("clusters") or [None])[0] or None)
+        finally:
+            conn.close()
+
+    def map_new(self, body: dict) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            if store.latest_run_id(conn) is None:
+                store.cluster_run(conn)  # a map without topics says little: make them first
+            store.project_run(conn, seed=int(body.get("seed") or 0))
+            return store.map_data(conn)
+        finally:
+            conn.close()
+
+    def bookmark_item(self, query: dict) -> dict:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT id, url, title, summary, domain, platform, saved_at, published_at "
+                "FROM bookmarks WHERE id = ? AND deleted_at IS NULL",
+                ((query.get("id") or [""])[0],),
+            ).fetchone()
+            if row is None:
+                raise ValueError("No such bookmark.")
+            item = dict(row)
+            item["tags"] = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM tags JOIN bookmark_tags ON tag_id = tags.id "
+                    "WHERE bookmark_id = ? ORDER BY name COLLATE NOCASE",
+                    (row["id"],),
+                )
+            ]
+            return {"item": item}
+        finally:
+            conn.close()
+
+    def bookmarks_listed(self, body: dict) -> dict:
+        """The bookmark list restricted to given IDs (the current selection)."""
+        ids = body.get("ids")
+        if not isinstance(ids, list):
+            raise ValueError("ids must be a list.")
+        query = {
+            "q": [str(body.get("q") or "")],
+            "limit": [str(body.get("limit") or 100)],
+            "offset": [str(body.get("offset") or 0)],
+        }
+        return self.bookmarks(query, only=[str(i) for i in ids])
+
+    def bookmarks(self, query: dict, only: list[str] | None = None) -> dict:
         text = (query.get("q") or [""])[0].strip()
         limit = max(1, min(int((query.get("limit") or ["100"])[0]), 500))
         offset = max(0, int((query.get("offset") or ["0"])[0]))
         where, params = search_clause(text, (query.get("cluster") or [None])[0])
         conn = self._conn()
         try:
+            if only is not None:
+                conn.execute("CREATE TEMP TABLE wanted (id TEXT PRIMARY KEY)")
+                conn.executemany("INSERT OR IGNORE INTO wanted VALUES (?)", [(i,) for i in only])
+                where += " AND id IN (SELECT id FROM wanted)"
             total = conn.execute(
                 f"SELECT COUNT(*) FROM bookmarks WHERE {where}", params
             ).fetchone()[0]
@@ -384,8 +444,11 @@ def make_handler(app: App):
                 "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
                 "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             )
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the page went away before the answer: nothing to report
 
         def _json(self, code: int, data: dict) -> None:
             self._send(
@@ -432,6 +495,10 @@ def make_handler(app: App):
                 ("POST", "/api/bookmarks/tags"): lambda: app.selection_tags(self._body()),
                 ("POST", "/api/bookmarks/batch"): lambda: app.batch_edit(self._body()),
                 ("POST", "/api/bookmarks/export"): lambda: app.export_selection(self._body()),
+                ("GET", "/api/map"): lambda: app.map_show(parse_qs(url.query)),
+                ("POST", "/api/map"): lambda: app.map_new(self._body()),
+                ("GET", "/api/bookmarks/item"): lambda: app.bookmark_item(parse_qs(url.query)),
+                ("POST", "/api/bookmarks/list"): lambda: app.bookmarks_listed(self._body()),
                 ("GET", "/api/clusters/runs"): lambda: app.cluster_runs(),
                 ("GET", "/api/clusters/run"): lambda: app.cluster_show(parse_qs(url.query)),
                 ("POST", "/api/clusters/run"): lambda: app.cluster_new(self._body()),
