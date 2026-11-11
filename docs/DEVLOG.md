@@ -4,6 +4,67 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: v0.2.0 published; portable data folder (0.2.1)
+
+**Published**
+
+- v0.2.0 is on GitHub Releases with the Windows installer and `latest.yml`
+  (run 43102183630: tests, build, smoke test, publish, all green).
+- Releases are now cut from the Actions tab: run `release` with a version. The
+  workflow creates the tag. (Tags could not be pushed from the development
+  environment.)
+- CI is green on Linux and Windows.
+
+**Works (0.2.1)**
+
+- All user data is in one folder: `atlas.sqlite`, `scripts/`, `backups/`,
+  `secrets.json` (the Notion token).
+- **Atlas > Choose data folder…**: pick a folder. If it already holds a
+  collection, the app switches to it. Otherwise it offers to copy the current
+  data there or to start empty. The app restarts on the new folder.
+- Which folder is in use is remembered per machine, in `location.json` in the
+  app's own settings folder. `ATLAS_DATA_DIR` overrides it.
+- If the chosen folder is missing at start, the app asks: choose another, use
+  the default, or quit. It never silently starts an empty collection.
+- Settings shows the folder and explains how to move it.
+
+**Verified how**
+
+- The copy and pointer logic is plain Node (`desktop/datafolder.js`) with nine
+  unit tests: copy is complete, the source is untouched, an existing
+  collection is never overwritten, a folder inside the current one is refused,
+  an open database is refused, a damaged pointer is ignored.
+- The release workflow starts the packaged app a second time with a chosen
+  folder (with a space in its name) and checks that the backend reports that
+  folder, and that the database is created there and not in the settings
+  folder.
+- Not covered by any automated check: the dialogs themselves (the menu flow,
+  the restart). They need a person on Windows.
+
+**Decided**
+
+- "Move" is a copy that leaves the original in place. The pointer is written
+  last, so an interrupted copy changes nothing.
+- The token stays inside the data folder, so that copying the folder really
+  brings everything back. The cost: the folder must not be shared. The
+  interface says so, and sharing is done with bundles.
+- `backend.log` and Electron's own files stay in the per-machine settings
+  folder; they are not user data.
+- The backend is stopped, and its exit awaited, before files are copied.
+
+**Known gaps**
+
+- Two computers on the same synced folder at the same time: sync tools can
+  produce conflict copies of the database. One machine at a time.
+
+**Next**
+
+- Publish 0.2.1. With 0.2.0 installed first, this is also the first real test
+  of self-update.
+- Phase 3: embeddings and the e-means test. The reference e-means code has
+  been read (Faiss `contrib/e_means`, commit f777f7d): its NumPy class needs
+  only `faiss.knn`, so it can run with NumPy alone.
+
 ## 2026-11-11: batch edits, sharing, first green build
 
 **Works**

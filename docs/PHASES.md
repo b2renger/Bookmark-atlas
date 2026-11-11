@@ -8,7 +8,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | --- | --- | --- | --- |
 | 0 | Scaffolding | v0.2.0 | done |
 | 1 | Local store and import | v0.2.0 | done, Notion token import untried with a real token |
-| 2 | Grooming, batch edits, sharing | v0.2.0 | done, four planned scripts still to write |
+| 2 | Grooming, batch edits, sharing | v0.2.0, v0.2.1 | done, four planned scripts still to write |
 | 3 | Embeddings and the e-means test | | next |
 | 4 | Map view | | |
 | 5 | Saved views and snapshots | | |
@@ -56,6 +56,8 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **What the data taught:** a Date without a time is the publication day on X
   rows (304 of 306 match the post ID). On other rows it comes from the tagging
   tool and is not reliable.
+- **Portable data folder (0.2.1):** everything the user owns is in one folder
+  that can be placed anywhere and copied to another machine.
 - **Left for later:** similar-title duplicates, tag synonyms, publication
   dates fetched from the platforms, dead-link check, review screen for rows
   edited in Notion.

@@ -37,9 +37,20 @@ The app updates itself. It checks GitHub Releases at start, downloads a new
 version in the background and offers to restart. **Atlas > Check for updates…**
 checks on demand.
 
-Your bookmarks are in `%APPDATA%\Bookmark Atlas\atlas.sqlite`
-(**Atlas > Open data folder**). Updates and uninstalling leave that folder
-alone.
+### Your data folder
+
+Everything you own is in one folder: the bookmarks (`atlas.sqlite`), your
+grooming scripts, the backups and the Notion token. By default it is
+`%APPDATA%\Bookmark Atlas`. Settings shows the current place, and
+**Atlas > Open data folder** opens it. Updates and uninstalling leave it alone.
+
+- **Put it elsewhere:** **Atlas > Choose data folder…** copies your data to
+  the folder you pick (another disk, a synced drive) and uses it from then on.
+  The original stays in place as a safety copy.
+- **Change computer:** copy the folder to the new machine, install Bookmark
+  Atlas there, and choose the folder with the same menu.
+- The folder holds your Notion token. Do not hand it to someone else; to share
+  bookmarks, use Export selection.
 
 macOS and Linux builds are not produced yet.
 
