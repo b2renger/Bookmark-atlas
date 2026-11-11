@@ -26,7 +26,7 @@ function readPointer(settingsDir) {
     }
 }
 
-function writePointer(settingsDir, dataFolder) {
+function writePointer(settingsDir, dataFolder, home) {
     fs.mkdirSync(settingsDir, { recursive: true });
     const file = path.join(settingsDir, POINTER);
     if (dataFolder === null) {
@@ -34,7 +34,73 @@ function writePointer(settingsDir, dataFolder) {
         return;
     }
     if (!path.isAbsolute(dataFolder)) throw new Error('The data folder must be an absolute path.');
-    fs.writeFileSync(file, JSON.stringify({ dataFolder }, null, 2));
+    const data = { dataFolder };
+    // "home" is set only while a snapshot is open: where to go back to.
+    if (home !== undefined) data.home = home;
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+/**
+ * While a snapshot is open: the collection to return to, as an absolute path
+ * or the word "default". Null when no snapshot is open.
+ */
+function readHome(settingsDir) {
+    try {
+        const data = JSON.parse(fs.readFileSync(path.join(settingsDir, POINTER), 'utf8'));
+        if (data.home === 'default') return 'default';
+        return typeof data.home === 'string' && path.isAbsolute(data.home) ? data.home : null;
+    } catch {
+        return null;
+    }
+}
+
+const SQLITE_HEADER = Buffer.from('SQLite format 3\u0000', 'latin1');
+
+/** True if the file starts like an SQLite database. */
+function looksLikeDatabase(file) {
+    try {
+        const handle = fs.openSync(file, 'r');
+        try {
+            const head = Buffer.alloc(16);
+            return fs.readSync(handle, head, 0, 16, 0) === 16 && head.equals(SQLITE_HEADER);
+        } finally {
+            fs.closeSync(handle);
+        }
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Open a snapshot file: copy it into a folder of its own under
+ * ``snapshotsRoot`` and point the app at that folder. The user's collection
+ * is not touched, and the snapshot file itself is not modified; what the user
+ * changes while looking at the snapshot stays in the copy.
+ *
+ * ``current`` says where the app is now ({ folder, source }), so that it can
+ * come back. Returns the folder created.
+ */
+function openSnapshot(settingsDir, file, snapshotsRoot, current) {
+    if (!looksLikeDatabase(file)) throw new Error('This file is not a Bookmark Atlas snapshot.');
+    const base = path.basename(file).replace(/\.atlas-snapshot\.sqlite$|\.sqlite$|\.db$/i, '')
+        .replace(/[^A-Za-z0-9 _.\-]/g, '_').slice(0, 60) || 'snapshot';
+    fs.mkdirSync(snapshotsRoot, { recursive: true });
+    let folder = path.join(snapshotsRoot, base);
+    for (let n = 2; fs.existsSync(folder); n += 1) folder = path.join(snapshotsRoot, `${base} (${n})`);
+    fs.mkdirSync(folder);
+    fs.copyFileSync(file, path.join(folder, DATABASE));
+    // Opening a snapshot from inside another one still returns to the real home.
+    const home = readHome(settingsDir) ?? (current.source === 'chosen' ? current.folder : 'default');
+    writePointer(settingsDir, folder, home);
+    return folder;
+}
+
+/** Leave the snapshot: point the app back at the user's collection. Returns where, or null. */
+function returnHome(settingsDir) {
+    const home = readHome(settingsDir);
+    if (home === null) return null;
+    writePointer(settingsDir, home === 'default' ? null : home);
+    return home;
 }
 
 /**
@@ -119,4 +185,7 @@ function copyData(from, to) {
     return copied;
 }
 
-module.exports = { DATABASE, ITEMS, readPointer, writePointer, resolve, describe, copyData, samePlace, isInside };
+module.exports = {
+    DATABASE, ITEMS, readPointer, writePointer, readHome, looksLikeDatabase, openSnapshot, returnHome,
+    resolve, describe, copyData, samePlace, isInside,
+};

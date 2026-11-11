@@ -154,6 +154,32 @@ jobs:
           if (-not (Test-Path (Join-Path $custom 'atlas.sqlite'))) { throw 'No database was created in the chosen folder.' }
           if (Test-Path (Join-Path $env:ATLAS_USER_DATA 'atlas.sqlite')) { throw 'A database was created in the settings folder as well.' }
 
+      # Third run: a snapshot made by the bundled backend, opened the way the
+      # menu opens one, must be what the app shows.
+      - name: Smoke-test opening a snapshot
+        shell: pwsh
+        run: |
+          $py = 'desktop\backend\python\python.exe'
+          $run = 'desktop\backend\run_atlas.py'
+          $source = Join-Path $env:RUNNER_TEMP 'snap-source\atlas.sqlite'
+          $file = Join-Path $env:RUNNER_TEMP 'Shared by CI.atlas-snapshot.sqlite'
+          New-Item -ItemType Directory -Force -Path (Split-Path $source) | Out-Null
+          & $py -I -u $run --db $source init
+          & $py -I -u $run --db $source import-csv tests\fixtures\sample_export.csv
+          & $py -I -u $run --db $source snapshot -o $file --name 'Shared by CI'
+          if (-not (Test-Path $file)) { throw 'The snapshot was not written.' }
+          $env:ATLAS_SMOKE_OUT = Join-Path $env:RUNNER_TEMP 'smoke-snapshot.json'
+          $env:ATLAS_USER_DATA = Join-Path $env:RUNNER_TEMP 'atlas-settings-snapshot'
+          node -e "const df = require('./desktop/datafolder.js'); const path = require('path'); const s = process.env.ATLAS_USER_DATA; require('fs').mkdirSync(s, { recursive: true }); console.log('opened in', df.openSnapshot(s, process.argv[1], path.join(s, 'Snapshots'), { folder: s, source: 'default' }));" $file
+          $process = Start-Process -FilePath 'desktop\dist\win-unpacked\Bookmark Atlas.exe' -ArgumentList '--smoke-test' -PassThru
+          if (-not $process.WaitForExit(150000)) { $process.Kill(); Write-Host 'Timed out.' }
+          if (-not (Test-Path $env:ATLAS_SMOKE_OUT)) { throw 'The smoke test wrote no result.' }
+          Get-Content $env:ATLAS_SMOKE_OUT
+          $result = Get-Content $env:ATLAS_SMOKE_OUT -Raw | ConvertFrom-Json
+          if (-not $result.ok) { throw "Smoke test failed: $($result.error)" }
+          if ($result.summary -notlike '5 bookmarks*') { throw "Expected the 5 bookmarks of the snapshot, got: $($result.summary)" }
+          if ($result.snapshotBanner -notlike 'Snapshot: Shared by CI*') { throw "The snapshot banner is missing: $($result.snapshotBanner)" }
+
       - name: List what was built
         shell: bash
         run: ls -la desktop/dist | cat

@@ -451,6 +451,23 @@ def _cmd_groom_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_snapshot(args: argparse.Namespace) -> int:
+    from atlas.exporter import matching_ids
+    from atlas.snapshot import export_snapshot
+
+    conn = db.open_ready(args.db)
+    try:
+        ids = matching_ids(conn, args.search) if args.search else None
+        info = export_snapshot(conn, args.output, ids=ids, name=args.name)
+    finally:
+        conn.close()
+    print(
+        f"Wrote a snapshot of {info['bookmarks']} bookmarks to {info['path']} "
+        f"({info['bytes'] // 1000} kB). Open it with: atlas --db <file> ui"
+    )
+    return 0
+
+
 def _cmd_embed(args: argparse.Namespace) -> int:
     from atlas.analysis import store
 
@@ -626,6 +643,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     groom_history = groom_commands.add_parser("history", help="list past runs")
     groom_history.set_defaults(func=_cmd_groom_history)
+
+    snap = commands.add_parser(
+        "snapshot", help="write the collection, its clusters, map and views as one file"
+    )
+    snap.add_argument("-o", "--output", type=Path, required=True)
+    snap.add_argument("--search", help="only bookmarks matching this text")
+    snap.add_argument("--name", help="name shown when the snapshot is opened")
+    snap.set_defaults(func=_cmd_snapshot)
 
     embed = commands.add_parser("embed", help="build the text vectors used for clustering")
     embed.add_argument("--dim", type=int, default=48)

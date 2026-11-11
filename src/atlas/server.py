@@ -29,7 +29,7 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from atlas import __version__, batch, bundle, db, groom, settings
+from atlas import __version__, batch, bundle, db, groom, settings, snapshot, views
 from atlas.exporter import matching_ids, search_clause, status
 from atlas.importer import import_csv_stream
 from atlas.notion import NotionClient, NotionError
@@ -77,6 +77,7 @@ class App:
             return {
                 "database": str(self.db_path),
                 "data_folder": str(self.db_path.resolve().parent),
+                "snapshot": snapshot.snapshot_info(conn),
                 "version": app_version(),
                 "status": status(conn),
                 "notion": {
@@ -201,6 +202,54 @@ class App:
         conn = self._conn()
         try:
             return bundle.export_bundle(conn, None if ids is None else [str(i) for i in ids])
+        finally:
+            conn.close()
+
+    def views_list(self) -> dict:
+        conn = self._conn()
+        try:
+            return {"views": views.list_views(conn)}
+        finally:
+            conn.close()
+
+    def view_get(self, query: dict) -> dict:
+        conn = self._conn()
+        try:
+            return {"view": views.get_view(conn, (query.get("id") or [""])[0])}
+        finally:
+            conn.close()
+
+    def view_save(self, body: dict) -> dict:
+        conn = self._conn()
+        try:
+            view = views.save_view(conn, body.get("name"), body.get("state"), body.get("note"))
+            return {"view": view, "views": views.list_views(conn)}
+        finally:
+            conn.close()
+
+    def view_delete(self, body: dict) -> dict:
+        conn = self._conn()
+        try:
+            views.delete_view(conn, str(body.get("id") or ""))
+            return {"views": views.list_views(conn)}
+        finally:
+            conn.close()
+
+    def snapshot_export(self, body: dict) -> bytes:
+        """Build a snapshot and return its bytes; nothing is left on disk."""
+        import tempfile
+
+        ids = body.get("ids")
+        if ids is not None and (not isinstance(ids, list) or not ids):
+            raise ValueError("Select at least one bookmark, or export everything.")
+        conn = self._conn()
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                target = Path(folder) / ("export" + snapshot.SUFFIX)
+                snapshot.export_snapshot(
+                    conn, target, ids=ids, name=body.get("name"), note=body.get("note")
+                )
+                return target.read_bytes()
         finally:
             conn.close()
 
@@ -499,6 +548,11 @@ def make_handler(app: App):
                 ("POST", "/api/map"): lambda: app.map_new(self._body()),
                 ("GET", "/api/bookmarks/item"): lambda: app.bookmark_item(parse_qs(url.query)),
                 ("POST", "/api/bookmarks/list"): lambda: app.bookmarks_listed(self._body()),
+                ("GET", "/api/views"): lambda: app.views_list(),
+                ("GET", "/api/views/item"): lambda: app.view_get(parse_qs(url.query)),
+                ("POST", "/api/views"): lambda: app.view_save(self._body()),
+                ("POST", "/api/views/delete"): lambda: app.view_delete(self._body()),
+                ("POST", "/api/snapshot"): lambda: app.snapshot_export(self._body()),
                 ("GET", "/api/clusters/runs"): lambda: app.cluster_runs(),
                 ("GET", "/api/clusters/run"): lambda: app.cluster_show(parse_qs(url.query)),
                 ("POST", "/api/clusters/run"): lambda: app.cluster_new(self._body()),
@@ -514,7 +568,11 @@ def make_handler(app: App):
             if route is None:
                 return self._json(404, {"error": "Not found."})
             try:
-                self._json(200, route())
+                answer = route()
+                if isinstance(answer, bytes):
+                    self._send(200, answer, "application/octet-stream")
+                else:
+                    self._json(200, answer)
             except USER_ERRORS as error:
                 self._json(400, {"error": str(error)})
             except json.JSONDecodeError:

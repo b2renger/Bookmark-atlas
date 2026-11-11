@@ -93,6 +93,14 @@
   .maptools select, .maptools input[type=search] { width: auto; min-width: 180px; }
   #mapdetail h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
   #mapdetail a { color: var(--ink); }
+  #snapbanner { background: var(--chip); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; overflow-wrap: anywhere; }
+  .viewrow { display: flex; gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); }
+  .viewrow:first-child { border-top: 0; }
+  .viewrow .grow { min-width: 0; }
+  .viewrow strong { overflow-wrap: anywhere; }
+  textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
+    color: var(--ink); font: inherit; min-height: 60px; resize: vertical; }
   .clgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .clcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
   .clcard h3 { font-size: 15px; margin: 0 0 2px; overflow-wrap: anywhere; }
@@ -130,6 +138,7 @@
     <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
     <button id="tab-map">Map</button>
     <button id="tab-clusters">Clusters</button>
+    <button id="tab-views">Views</button>
     <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
   </nav>
@@ -137,6 +146,7 @@
 </header>
 
 <main>
+  <div id="snapbanner" hidden></div>
   <div id="view-bookmarks">
     <section class="card">
       <div class="toolbar">
@@ -216,6 +226,39 @@
       <div class="note" id="cl-note"></div>
     </section>
     <div class="clgrid" id="cl-grid"></div>
+  </div>
+
+  <div id="view-views" hidden>
+    <section class="card">
+      <h2>Save what you are looking at</h2>
+      <p class="help" id="views-what"></p>
+      <div class="row">
+        <div class="grow"><label for="view-name">Name</label><input type="text" id="view-name" maxlength="120"></div>
+        <button class="action primary" id="view-save">Save view</button>
+      </div>
+      <div style="margin-top:10px"><label for="view-note">Note (optional)</label><textarea id="view-note" maxlength="5000"></textarea></div>
+      <div class="note" id="view-note-msg"></div>
+    </section>
+    <section class="card">
+      <h2>Saved views</h2>
+      <div id="views-list"></div>
+    </section>
+    <section class="card">
+      <h2>Share a snapshot</h2>
+      <p class="help">A snapshot is one file holding bookmarks with their tags, the clusters, the map
+        and your saved views, as they are now. Someone with Bookmark Atlas opens it with the menu
+        <strong>Atlas &gt; Open snapshot…</strong> and sees what you see, without touching their own
+        collection. It does not contain your Notion token, your grooming history or the raw Notion
+        records.</p>
+      <div class="row">
+        <div class="grow"><label for="snap-name">Name shown to the receiver</label><input type="text" id="snap-name" maxlength="120"></div>
+        <div><label for="snap-scope">Contents</label>
+          <select id="snap-scope" style="width:auto"><option value="all">Whole collection</option></select></div>
+        <button class="action primary" id="snap-go">Export snapshot</button>
+      </div>
+      <div style="margin-top:10px"><label for="snap-note">Message to the receiver (optional)</label><textarea id="snap-note" maxlength="5000"></textarea></div>
+      <div class="note" id="snap-msg"></div>
+    </section>
   </div>
 
   <div id="view-grooming" hidden>
@@ -356,9 +399,11 @@ async function busy(button, work) {
 }
 
 let currentView = "bookmarks";
+let lastWorkView = "bookmarks";   // what "Save view" captures
 function showView(name) {
   currentView = name;
-  for (const view of ["bookmarks", "map", "clusters", "grooming", "settings"]) {
+  if (["bookmarks", "map", "clusters"].includes(name)) lastWorkView = name;
+  for (const view of ["bookmarks", "map", "clusters", "views", "grooming", "settings"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -375,6 +420,15 @@ async function refreshState() {
     + (s.pending_review ? " · " + s.pending_review + " to review" : "") + " · v" + state.version;
 
   $("data-folder").textContent = state.data_folder;
+  const snap = state.snapshot;
+  $("snapbanner").hidden = !snap;
+  if (snap) {
+    $("snapbanner").replaceChildren(el("strong", { textContent: "Snapshot: " + (snap.name || "untitled") }),
+      " · " + (snap.partial ? "part of a collection" : "a whole collection")
+      + (snap.created_at ? ", made " + new Date(snap.created_at).toLocaleDateString() : "")
+      + ". What you change here stays in this copy. Menu Atlas > Return to my collection to leave it."
+      + (snap.note ? " Message: " + snap.note : ""));
+  }
   const n = state.notion;
   $("forget-token").hidden = !n.token_set || n.token_source === "environment";
   if (n.token_set && !$("token-note").textContent) {
@@ -890,6 +944,107 @@ $("cl-delete").onclick = async () => {
   catch (error) { note("cl-note", error.message, "bad"); }
 };
 
+/* ---- saved views and snapshots ---- */
+
+function captureView() {
+  return {
+    tab: lastWorkView,
+    search: $("search").value.trim(),
+    cluster: clusterFilter,
+    selection: [...selection],
+    selection_filter: !!selectionFilter,
+    clusters_run: $("cl-runs").value || null,
+    map: { focus: map.focus, scale: map.scale, tx: map.tx, ty: map.ty, search: $("map-search").value.trim(), clusters_run: $("map-clusters").value || null },
+  };
+}
+
+async function restoreView(state) {
+  selection.clear();
+  for (const id of state.selection) selection.add(id);
+  keepNote = false;
+  $("search").value = state.search;
+  if (state.cluster) setClusterFilter(state.cluster);
+  else if (state.selection_filter && state.selection.length) setSelectionFilter([...state.selection]);
+  else setClusterFilter(null);
+  map.focus = state.map.focus; map.scale = state.map.scale; map.tx = state.map.tx; map.ty = state.map.ty;
+  $("map-search").value = state.map.search;
+  map.matches = null;
+  if (state.map.search) {
+    try { map.matches = new Set((await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent(state.map.search))).ids); } catch (error) { /* shown without highlight */ }
+  }
+  showView(state.tab);
+  if (state.tab === "map") await loadMap(state.map.clusters_run || undefined);
+  else if (state.tab === "clusters") await loadClusters(state.clusters_run || undefined);
+  await loadBookmarks(true);
+}
+
+function describeCurrent() {
+  const parts = ["the " + ({ bookmarks: "list", map: "map", clusters: "clusters" })[lastWorkView]];
+  if ($("search").value.trim()) parts.push("the search “" + $("search").value.trim() + "”");
+  if (clusterFilter) parts.push("the filter on “" + clusterFilter.label + "”");
+  if (selection.size) parts.push(selection.size + " selected bookmarks");
+  if (lastWorkView === "map" && map.focus !== null && map.data) {
+    const focused = map.data.clusters.find((c) => c.cluster === map.focus);
+    if (focused) parts.push("the focus on “" + focused.label + "”");
+  }
+  return "A view remembers where you were: " + parts.join(", ") + ". Opening it later brings you back there.";
+}
+
+function renderViews(list) {
+  const holder = $("views-list");
+  if (!list.length) { holder.replaceChildren(el("div", { className: "note muted", textContent: "No saved view yet." })); return; }
+  holder.replaceChildren();
+  for (const view of list) {
+    const open = el("button", { className: "action", textContent: "Open" });
+    open.onclick = () => busy(open, async () => {
+      try { await restoreView((await api("GET", "/api/views/item?id=" + encodeURIComponent(view.id))).view.state); }
+      catch (error) { note("view-note-msg", error.message, "bad"); }
+    });
+    const remove = el("button", { className: "linkish", textContent: "delete" });
+    remove.onclick = async () => {
+      try { renderViews((await api("POST", "/api/views/delete", { id: view.id })).views); }
+      catch (error) { note("view-note-msg", error.message, "bad"); }
+    };
+    const text = el("div", { className: "grow" }, [el("strong", { textContent: view.name }),
+      el("div", { className: "tagline", textContent: new Date(view.created_at).toLocaleString() + " · " + view.tab
+        + (view.selected ? " · " + view.selected + " selected" : "") })]);
+    if (view.note) text.append(el("div", { className: "sum", textContent: view.note }));
+    holder.append(el("div", { className: "viewrow" }, [text, open, remove]));
+  }
+}
+
+async function loadViews() {
+  $("views-what").textContent = describeCurrent();
+  const scope = $("snap-scope");
+  scope.replaceChildren(el("option", { value: "all", textContent: "Whole collection (" + state.status.bookmarks + ")" }));
+  if (selection.size) scope.append(el("option", { value: "selection", textContent: "Only the " + selection.size + " selected bookmarks" }));
+  renderViews((await api("GET", "/api/views")).views);
+}
+
+$("view-save").onclick = () => busy($("view-save"), async () => {
+  try {
+    const answer = await api("POST", "/api/views", { name: $("view-name").value, note: $("view-note").value, state: captureView() });
+    $("view-name").value = ""; $("view-note").value = "";
+    note("view-note-msg", "Saved.", "good");
+    renderViews(answer.views);
+  } catch (error) { note("view-note-msg", error.message, "bad"); }
+});
+
+$("snap-go").onclick = () => busy($("snap-go"), async () => {
+  try {
+    const body = { name: $("snap-name").value, note: $("snap-note").value };
+    if ($("snap-scope").value === "selection") body.ids = [...selection];
+    const response = await fetch("/api/snapshot", { method: "POST", headers: { "X-Atlas-Token": SESSION, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!response.ok) { let data = {}; try { data = await response.json(); } catch (e) { /* no details */ } throw new Error(data.error || "The export failed."); }
+    const blob = await response.blob();
+    const base = ($("snap-name").value.trim() || "atlas-" + new Date().toISOString().slice(0, 10)).replace(/[^A-Za-z0-9 _.-]/g, "_").slice(0, 60);
+    const link = el("a", { href: URL.createObjectURL(blob), download: base + ".atlas-snapshot.sqlite" });
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    note("snap-msg", "Snapshot exported (" + Math.max(1, Math.round(blob.size / 1000)) + " kB).", "good");
+  } catch (error) { note("snap-msg", error.message, "bad"); }
+});
+
 /* ---- grooming ---- */
 
 const previews = {};  // script name -> last preview
@@ -1185,6 +1340,7 @@ $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeou
 $("more").onclick = () => loadBookmarks(false);
 $("tab-bookmarks").onclick = () => showView("bookmarks");
 $("tab-settings").onclick = () => showView("settings");
+$("tab-views").onclick = () => { showView("views"); loadViews().catch((e) => note("view-note-msg", e.message, "bad")); };
 $("tab-map").onclick = () => { showView("map"); loadMap($("map-clusters").value || undefined).catch((e) => note("map-note", e.message, "bad")); };
 $("tab-clusters").onclick = () => { showView("clusters"); loadClusters().catch((e) => note("cl-note", e.message, "bad")); };
 $("tab-grooming").onclick = () => { showView("grooming"); loadGrooming().catch((e) => note("scripts-note", e.message, "bad")); };

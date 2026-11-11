@@ -11,8 +11,8 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 2 | Grooming, batch edits, sharing | v0.2.0, v0.2.1 | done, four planned scripts still to write |
 | 3 | Vectors, clusters and the e-means test | v0.3.0 | done |
 | 4 | Map view | v0.4.0 | done |
-| 5 | Saved views and snapshots | | next |
-| 6 | Self-organising map and pearl tree | | |
+| 5 | Saved views and snapshots | v0.5.0 | done |
+| 6 | Self-organising map and pearl tree | | next |
 | 7 | Links and tendencies | | |
 
 ## Phase 0: scaffolding
@@ -102,3 +102,23 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Left for later:** filters by tag, platform and date on the map; a faster
   layout for collections beyond a few thousand bookmarks (they fall back to a
   cruder projection today).
+
+## Phase 5: saved views and snapshots
+
+- **Saved views.** A view stores the tab, search, cluster filter, selection
+  and map position and focus, with a name and a note. Opening it restores
+  them.
+- **Snapshots.** One database file with the bookmarks in scope, tags,
+  clusters, map, vectors and saved views. Private material is left out:
+  source records, grooming journal, sync state.
+- **A snapshot is an ordinary Atlas database**, so there is no second file
+  format to maintain. Opening one copies it into its own folder and switches
+  the app to it; the menu brings you back.
+- **Two kinds of sharing.** A bundle (phase 2) adds bookmarks to the
+  receiver's collection. A snapshot shows an exploration as it was.
+- **Checked on the real collection:** a view of the map with 132 selected
+  bookmarks, a focus and a highlight survives a reload; a 132-bookmark
+  snapshot is 454 kB and opens in a second Atlas with its banner, its map and
+  the sender's view.
+- **Left for later:** comparing two snapshots, a read-only web page export of
+  the map, notes attached to single bookmarks.

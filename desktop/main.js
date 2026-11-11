@@ -200,6 +200,59 @@ function stopBackendAndWait(timeoutMs = 8000) {
     });
 }
 
+// ---- snapshots -------------------------------------------------------------
+// A snapshot is a collection file someone exported. Opening one copies it into
+// a folder of its own and restarts on it; the user's collection is untouched.
+
+async function restartWith(action, failureTitle) {
+    quitting = true;                      // the backend stopping is expected
+    await stopBackendAndWait();
+    try {
+        action();
+    } catch (error) {
+        dialog.showErrorBox(failureTitle, `${error.message}\n\nBookmark Atlas will restart where it was.`);
+    }
+    app.relaunch();
+    app.exit(0);
+}
+
+async function openSnapshot() {
+    if (dataFolderSource === 'override') {
+        dialog.showMessageBox(win, { type: 'info', message: 'The data folder is set by ATLAS_DATA_DIR; snapshots cannot be opened here.' });
+        return;
+    }
+    const pick = await dialog.showOpenDialog(win, {
+        title: 'Open a snapshot',
+        buttonLabel: 'Open',
+        properties: ['openFile'],
+        filters: [{ name: 'Bookmark Atlas snapshot', extensions: ['sqlite'] }, { name: 'All files', extensions: ['*'] }],
+    });
+    if (pick.canceled || !pick.filePaths[0]) return;
+    const file = pick.filePaths[0];
+    if (!datafolder.looksLikeDatabase(file)) {
+        dialog.showMessageBox(win, { type: 'warning', message: 'This file is not a Bookmark Atlas snapshot.', detail: file });
+        return;
+    }
+    const { response } = await dialog.showMessageBox(win, {
+        type: 'question',
+        buttons: ['Open the snapshot', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1,
+        message: 'Open this snapshot?',
+        detail: `${file}\n\nBookmark Atlas will restart and show the snapshot. Your own collection is not touched: come back to it with Atlas > Return to my collection.`,
+    });
+    if (response !== 0) return;
+    await restartWith(
+        () => datafolder.openSnapshot(userData(), file, path.join(userData(), 'Snapshots'), { folder: dataFolder, source: dataFolderSource }),
+        'The snapshot was not opened',
+    );
+}
+
+async function returnToCollection() {
+    if (datafolder.readHome(userData()) === null) return;
+    await restartWith(() => datafolder.returnHome(userData()), 'Could not return to your collection');
+}
+
 // ---- data folder -----------------------------------------------------------
 
 async function chooseDataFolder() {
@@ -315,6 +368,9 @@ function buildMenu() {
                 { type: 'separator' },
                 { label: 'Open data folder', click: () => shell.openPath(dataFolder) },
                 { label: 'Choose data folder…', click: () => chooseDataFolder() },
+                { type: 'separator' },
+                { label: 'Open snapshot…', click: () => openSnapshot() },
+                { label: 'Return to my collection', enabled: datafolder.readHome(userData()) !== null, click: () => returnToCollection() },
                 { type: 'separator' },
                 { role: 'quit' },
             ],
@@ -445,7 +501,9 @@ async function runSmoke() {
                 // What the backend itself says its folder is, read from the page.
                 const shown = await win.webContents.executeJavaScript(
                     '(document.getElementById("data-folder") || {}).textContent || ""');
-                finishSmoke({ ok: true, summary: last, title: win.getTitle(), dataFolderShown: shown });
+                const banner = await win.webContents.executeJavaScript(
+                    '(document.getElementById("snapbanner") || {}).textContent || ""');
+                finishSmoke({ ok: true, summary: last, title: win.getTitle(), dataFolderShown: shown, snapshotBanner: banner });
                 return;
             }
         } catch (error) { last = `error: ${error.message}`; }

@@ -105,3 +105,74 @@ test('copyData copes with a source that has only a database', () => {
     fs.writeFileSync(path.join(from, 'atlas.sqlite'), 'x');
     assert.deepEqual(df.copyData(from, path.join(temp(), 'b')), ['atlas.sqlite']);
 });
+
+function fakeSnapshot(dir, name = 'June reading.atlas-snapshot.sqlite') {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, Buffer.concat([Buffer.from('SQLite format 3\u0000', 'latin1'), Buffer.from('rest-of-the-database')]));
+    return file;
+}
+
+test('opening a snapshot copies it aside and remembers the way back', () => {
+    const settings = temp();
+    const root = path.join(settings, 'Snapshots');
+    const file = fakeSnapshot(temp());
+
+    const folder = df.openSnapshot(settings, file, root, { folder: '/default', source: 'default' });
+
+    assert.equal(folder, path.join(root, 'June reading'));
+    assert.deepEqual(fs.readFileSync(path.join(folder, 'atlas.sqlite')), fs.readFileSync(file));
+    assert.equal(df.readPointer(settings), folder);
+    assert.equal(df.readHome(settings), 'default');
+    assert.equal(fs.existsSync(file), true, 'the snapshot file itself is left alone');
+
+    assert.equal(df.returnHome(settings), 'default');
+    assert.equal(df.readPointer(settings), null);
+    assert.equal(df.readHome(settings), null);
+    assert.equal(df.returnHome(settings), null);
+});
+
+test('returning from a snapshot goes back to a chosen folder', () => {
+    const settings = temp();
+    const mine = temp();
+    df.writePointer(settings, mine);
+    df.openSnapshot(settings, fakeSnapshot(temp()), path.join(settings, 'Snapshots'), { folder: mine, source: 'chosen' });
+    assert.equal(df.readHome(settings), mine);
+    assert.equal(df.returnHome(settings), mine);
+    assert.equal(df.readPointer(settings), mine);
+});
+
+test('a snapshot opened from inside a snapshot still returns to the real collection', () => {
+    const settings = temp();
+    const root = path.join(settings, 'Snapshots');
+    const first = df.openSnapshot(settings, fakeSnapshot(temp()), root, { folder: '/default', source: 'default' });
+    const second = df.openSnapshot(settings, fakeSnapshot(temp()), root, { folder: first, source: 'chosen' });
+    assert.notEqual(first, second);
+    assert.equal(path.basename(second), 'June reading (2)');
+    assert.equal(df.readHome(settings), 'default');
+});
+
+test('a file that is not a database is refused and nothing changes', () => {
+    const settings = temp();
+    const bogus = path.join(temp(), 'notes.atlas-snapshot.sqlite');
+    fs.writeFileSync(bogus, 'just some text, long enough to read');
+    assert.throws(() => df.openSnapshot(settings, bogus, path.join(settings, 'Snapshots'), { folder: '/d', source: 'default' }), /not a Bookmark Atlas snapshot/);
+    assert.throws(() => df.openSnapshot(settings, path.join(settings, 'missing.sqlite'), path.join(settings, 'Snapshots'), { folder: '/d', source: 'default' }), /not a Bookmark Atlas snapshot/);
+    assert.equal(df.readPointer(settings), null);
+    assert.equal(fs.existsSync(path.join(settings, 'Snapshots')), false);
+});
+
+test('odd file names become safe folder names', () => {
+    const settings = temp();
+    const file = fakeSnapshot(temp(), 'été: a<b>c?.sqlite');
+    const folder = df.openSnapshot(settings, file, path.join(settings, 'Snapshots'), { folder: '/d', source: 'default' });
+    assert.match(path.basename(folder), /^[A-Za-z0-9 _.\-]+$/);
+});
+
+test('choosing a data folder while in a snapshot makes that folder the new home', () => {
+    const settings = temp();
+    df.openSnapshot(settings, fakeSnapshot(temp()), path.join(settings, 'Snapshots'), { folder: '/d', source: 'default' });
+    const chosen = temp();
+    df.writePointer(settings, chosen);
+    assert.equal(df.readHome(settings), null);
+    assert.equal(df.readPointer(settings), chosen);
+});

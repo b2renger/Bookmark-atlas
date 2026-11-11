@@ -4,6 +4,64 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: v0.4.0 published; phase 5, saved views and snapshots
+
+**Published:** v0.4.0.
+
+**Works**
+
+- Schema version 3: `views`, `annotations`.
+- `atlas.views`: save, list, open, delete. Views tab with a save form, the
+  list, and "Open".
+- `atlas.snapshot`: export the whole collection or a set of bookmarks to a
+  database file. `atlas snapshot -o FILE [--search TEXT] [--name NAME]`.
+  Views tab: name, message, scope (everything or the selection), download.
+- Desktop: **Atlas > Open snapshot…** and **Return to my collection**. A
+  banner at the top of every tab says when a snapshot is being shown.
+
+**Verified how**
+
+- Python tests: a view keeps only the fields a view may hold; a snapshot
+  contains the exploration and no private table; a partial snapshot contains
+  no trace of the other bookmarks (checked in the file's bytes); the snapshot
+  opens as a database and shows clusters, labels, map and views without
+  recomputing.
+- Node tests for opening a snapshot: copied aside, way back remembered (to the
+  default or a chosen folder, also from a snapshot inside a snapshot), a
+  non-database file refused, odd file names made safe.
+- Chrome, on the real collection: save a map view with 132 selected, a focus
+  and a highlight; reload; open it; export the selection as a snapshot
+  (454 kB); start a second Atlas on the file: banner, 132 bookmarks, map, and
+  the sender's saved view opens.
+- The release workflow has a third smoke test: the bundled backend imports the
+  test fixture and writes a snapshot, the snapshot is opened the way the menu
+  does, and the packaged app must show its 5 bookmarks and the banner.
+- Not covered: the two menu dialogs themselves.
+
+**Decided**
+
+- A snapshot is a normal database, not a new format. "Read-only" was dropped
+  in favour of "a separate copy": the receiver can explore and edit freely
+  without any risk to the sender's file or to their own collection.
+- Opening a snapshot reuses the data folder mechanism: the copy lives in
+  `Snapshots/<name>` under the app's settings folder, and the pointer file
+  remembers where home is.
+- View states are filtered field by field when saved and again when read,
+  because views travel inside snapshots made by other people.
+- Saved map positions are in screen units; on a window of another size the
+  view opens slightly shifted.
+
+**Known gaps**
+
+- No comparison of two snapshots, no web-page export of the map, no notes on
+  single bookmarks (the `annotations` table is there, unused).
+- Snapshots opened earlier stay in the `Snapshots` folder until deleted by
+  hand.
+
+**Next**
+
+- Publish 0.5.0. Phase 6: self-organising map and pearl tree.
+
 ## 2026-11-11: v0.3.0 published; phase 4, the map
 
 **Published:** v0.3.0. Its first attempt was stopped by the test gate: a test
