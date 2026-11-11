@@ -9,7 +9,7 @@ import uuid
 from atlas.db import now_iso
 
 MAX_STATE_BYTES = 2_000_000
-TABS = ("bookmarks", "map", "clusters", "grid", "tree")
+TABS = ("bookmarks", "map", "clusters", "grid", "tree", "links", "trends")
 
 
 def _clean_state(state) -> dict:

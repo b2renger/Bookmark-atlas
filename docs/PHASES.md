@@ -13,7 +13,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 4 | Map view | v0.4.0 | done |
 | 5 | Saved views and snapshots | v0.5.0 | done |
 | 6 | Self-organising map and pearl tree | v0.6.0 | done, drag and drop, merge and split left out |
-| 7 | Links and tendencies | | next |
+| 7 | Links and tendencies | v0.7.0 | done |
 
 ## Phase 0: scaffolding
 
@@ -145,3 +145,25 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   families for 16 topics, in 0.5 s.
 - **Left out:** drag and drop, merging and splitting by hand, a grid for a
   filtered part of the collection.
+
+## Phase 7: links and tendencies
+
+- **Links tab.** Two bookmarks are linked when one is among the other's ten
+  nearest. Topics are drawn on a circle, joined where they share many links
+  (each topic's two strongest, so the picture stays readable).
+- **Three lists come out of the links:** bridges (filed in one topic, most
+  neighbours in another), bookmarks on their own, and old bookmarks that
+  recent ones resemble.
+- **"Similar bookmarks"** under every bookmark in the list.
+- **Trends tab.** Saved and published per month over the last 36 months, time
+  between publication and saving, topics and tags rising or fading (last 90
+  days against everything before, as shares of each period).
+- **Dates are counted back from the latest date in the collection,** not from
+  today, so a snapshot shows the same figures to whoever opens it.
+- **The tab says what its figures rest on:** how many bookmarks have each
+  date, and how many were placed by publication date for lack of a save date.
+- **Checked on the real collection:** 16 topics, 25 bridges, 15 old bookmarks
+  worth another look; 184 bookmarks have both dates and half were saved within
+  6 days of publication. 438 bookmarks have no save date yet, so the rising and
+  fading figures will shift once Notion supplies them.
+- **Left out:** a graph of single bookmarks, choice of the periods compared.

@@ -420,6 +420,8 @@ Each phase ends with something usable and a short written check.
 - Tendencies on both dates: when things were saved, when they were published.
 - Reaction time (gap between publication and saving) and rediscoveries.
 - Resurfacing of old bookmarks close to recent ones.
+- Done in v0.7.0. The link picture is drawn between topics; single bookmarks
+  appear in the lists.
 
 ## 9. Risks
 

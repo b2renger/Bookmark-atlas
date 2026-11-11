@@ -4,6 +4,49 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: v0.6.0 published; phase 7, links and tendencies
+
+**Published:** v0.6.0.
+
+**Works**
+
+- `atlas.analysis.links`: nearest neighbours on the clustering vectors;
+  `related`, `overview` (topic links, bridges, outliers), `resurface`.
+- `atlas.trends` (standard library only): months, reaction time, movement of
+  topics and tags.
+- Routes `/api/links`, `/api/links/related`, `/api/trends`. Tabs **Links** and
+  **Trends**; "similar bookmarks" in the list.
+- k-means keeps the best of 10 starts (was 3).
+
+**Decisions**
+
+- The link picture is drawn between topics, not between 956 bookmarks: a graph
+  of every bookmark is unreadable, and the lists carry the single bookmarks.
+- Link strength is links divided by the square root of the product of the two
+  topic sizes, so large topics do not win by size alone.
+- "Recent" is counted back from the latest date in the collection.
+- Rising and fading place a bookmark by its save date, or by its publication
+  date when the save date is missing. The tab states how many are in that
+  case.
+- Charts: one series per chart, one colour, values on hover, a table of the
+  numbers below.
+
+**Verified how**
+
+- 7 new Python tests (227 in all), repeated to check they do not depend on
+  row order.
+- Browser run on the real collection, light and dark, and on an empty
+  collection: every tab answers with a sentence instead of an error.
+
+**Not done**
+
+- Leftovers from earlier phases, listed in the plan: four grooming scripts,
+  the review screen for rows edited in Notion, snapshot comparison, macOS and
+  Linux builds.
+
+**Next:** the user's first run on Windows, and the Notion sync with a real
+token.
+
 ## 2026-11-11: v0.5.0 published; phase 6, grid and topic tree
 
 **Published:** v0.5.0 (the third smoke test, opening a snapshot in the

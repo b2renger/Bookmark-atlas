@@ -256,6 +256,43 @@ class App:
         finally:
             conn.close()
 
+    def links_show(self) -> dict:
+        from atlas.analysis import links
+
+        conn = self._conn()
+        try:
+            return {**links.overview(conn), "resurface": links.resurface(conn)}
+        finally:
+            conn.close()
+
+    def links_related(self, query: dict) -> dict:
+        from atlas.analysis import links
+
+        conn = self._conn()
+        try:
+            return links.related(conn, (query.get("id") or [""])[0])
+        finally:
+            conn.close()
+
+    def trends_show(self) -> dict:
+        from atlas import trends
+
+        conn = self._conn()
+        try:
+            run_id, names = None, None
+            try:
+                from atlas.analysis import store
+
+                run_id = store.latest_run_id(conn)
+                if run_id:
+                    described = store.describe_run(conn, run_id, samples=0)
+                    names = {item["cluster"]: item["label"] for item in described["clusters"]}
+            except RuntimeError:
+                pass  # no NumPy: dates and tags still work, topics are left out
+            return trends.overview(conn, run_id, names)
+        finally:
+            conn.close()
+
     def views_list(self) -> dict:
         conn = self._conn()
         try:
@@ -604,6 +641,9 @@ def make_handler(app: App):
                 ("GET", "/api/tree"): lambda: app.tree_show(),
                 ("POST", "/api/tree"): lambda: app.tree_new(self._body()),
                 ("POST", "/api/tree/edit"): lambda: app.tree_edit(self._body()),
+                ("GET", "/api/links"): lambda: app.links_show(),
+                ("GET", "/api/links/related"): lambda: app.links_related(parse_qs(url.query)),
+                ("GET", "/api/trends"): lambda: app.trends_show(),
                 ("GET", "/api/views"): lambda: app.views_list(),
                 ("GET", "/api/views/item"): lambda: app.view_get(parse_qs(url.query)),
                 ("POST", "/api/views"): lambda: app.view_save(self._body()),

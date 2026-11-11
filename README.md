@@ -13,10 +13,10 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 ## Status
 
-Phase 6 of 7. Import (Notion or CSV), browse, groom the collection with
-scripts, group it into topic clusters, explore it on a map, on a grid and as a
-tree of topics, save views and share snapshots. Links and tendencies come
-next. The e-means test is done: see
+All seven planned phases are published. Import (Notion or CSV), browse, groom
+the collection with scripts, group it into topic clusters, explore it on a
+map, on a grid and as a tree of topics, see how topics connect and what is
+rising, save views and share snapshots. The e-means test is done: see
 [docs/reports/e-means-test.md](docs/reports/e-means-test.md).
 
 **The Notion import has not been run against the real Notion API with a real
@@ -85,6 +85,15 @@ select it or open it in the list.
 The **Tree** gathers close topics into families and splits large topics into
 parts. Open a pearl to go inside; rename anything; move a topic to another
 family.
+
+**Links** shows which topics share the most similar bookmarks, the bookmarks
+that sit between two topics, those that resemble nothing else, and old
+bookmarks close to what you gathered lately. In the list, "similar bookmarks"
+under any bookmark shows its nearest neighbours.
+
+**Trends** shows bookmarks saved and published per month, how long after
+publication you save things, and which topics and tags take more or less room
+in the last 90 days.
 
 In **Views**, save where you are under a name and come back to it later, or
 export a **snapshot**: one file with bookmarks, clusters, map and views that

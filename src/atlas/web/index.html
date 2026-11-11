@@ -128,6 +128,42 @@
   #tree-items { margin: 8px 0 0; padding-left: 18px; }
   #tree-items li { overflow-wrap: anywhere; margin-bottom: 3px; }
   #tree-items a { color: var(--ink); }
+  svg.chart { display: block; width: 100%; height: auto; }
+  svg.chart text { fill: var(--muted); font-size: 12px; font-family: inherit; }
+  svg.chart text.val { fill: var(--ink); font-weight: 600; }
+  svg.chart .gridline { stroke: var(--line); stroke-width: 1; }
+  svg.chart .bar { fill: var(--viz-focus); }
+  svg.chart .hit { fill: transparent; }
+  svg.chart .hit:hover + .bar, svg.chart .bar.on { opacity: .75; }
+  svg.chart .edge { stroke: var(--viz-neutral); fill: none; stroke-linecap: round; }
+  svg.chart .edge.on { stroke: var(--viz-focus); }
+  svg.chart .edge.off { opacity: .25; }
+  svg.chart .node { fill: var(--viz-neutral); stroke: var(--viz-surface); stroke-width: 2; cursor: pointer; }
+  svg.chart .node.on { fill: var(--viz-focus); }
+  svg.chart .node.near { fill: var(--viz-match); }
+  svg.chart text.lab { cursor: pointer; }
+  svg.chart text.lab.on { fill: var(--ink); font-weight: 600; }
+  .chartwrap { position: relative; background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .charttip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 8px; font-size: 13px; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,.15); z-index: 2; }
+  details.numbers { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  details.numbers table { border-collapse: collapse; margin-top: 6px; }
+  details.numbers td, details.numbers th { padding: 2px 12px 2px 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 400; }
+  details.numbers th:first-child, details.numbers td:first-child { text-align: left; }
+  .hbar { display: grid; grid-template-columns: 190px 1fr 48px; gap: 10px; align-items: center; margin: 5px 0; font-size: 14px; }
+  .hbar div { height: 14px; background: var(--viz-surface); border-radius: 4px; }
+  .hbar div i { display: block; height: 100%; background: var(--viz-focus); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .hbar span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .twocol { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 28px; }
+  .twocol h3 { font-size: 14px; margin: 0 0 4px; }
+  ol.plain { list-style: none; margin: 0; padding: 0; }
+  ol.plain li { padding: 7px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  ol.plain li:first-child { border-top: 0; }
+  ol.plain a { color: var(--ink); font-weight: 600; text-decoration: none; }
+  ol.plain a:hover { text-decoration: underline; }
+  .move { display: grid; grid-template-columns: 62px 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .move:first-of-type { border-top: 0; }
+  .move b { font-variant-numeric: tabular-nums; text-align: right; }
   .clgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .clcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
   .clcard h3 { font-size: 15px; margin: 0 0 2px; overflow-wrap: anywhere; }
@@ -149,7 +185,7 @@
   .group .gt { font-weight: 600; overflow-wrap: anywhere; }
   .group ul { margin: 2px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
   .group li { overflow-wrap: anywhere; }
-  .linkish { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+  .linkish { text-align: left; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
   table.runs td, table.runs th { padding: 7px 10px; }
   .tagline { color: var(--muted); font-size: 12px; }
   [hidden] { display: none !important; }
@@ -167,6 +203,8 @@
     <button id="tab-clusters">Clusters</button>
     <button id="tab-grid">Grid</button>
     <button id="tab-tree">Tree</button>
+    <button id="tab-links">Links</button>
+    <button id="tab-trends">Trends</button>
     <button id="tab-views">Views</button>
     <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
@@ -291,6 +329,63 @@
       <div class="pearls" id="tree-pearls"></div>
       <ul id="tree-items"></ul>
       <div class="note muted" id="tree-note"></div>
+    </section>
+  </div>
+
+  <div id="view-links" hidden>
+    <section class="card">
+      <h2>How topics connect</h2>
+      <p class="help">Two bookmarks are linked when one is among the ten most similar to the other.
+        A line joins two topics that share many such links, thicker when they share more. Click a
+        topic to see what it is closest to.</p>
+      <div class="chartwrap" id="links-wrap" hidden><div id="links-graph"></div></div>
+      <div id="links-picked"></div>
+      <div class="note muted" id="links-note"></div>
+    </section>
+    <section class="card" id="links-bridges-card" hidden>
+      <h2>Bridges</h2>
+      <p class="help">Bookmarks filed in one topic whose closest neighbours are mostly in another.
+        They are the places where two of your interests meet.</p>
+      <ol class="plain" id="links-bridges"></ol>
+    </section>
+    <section class="card" id="links-old-card" hidden>
+      <h2>Worth another look</h2>
+      <p class="help" id="links-old-help"></p>
+      <ol class="plain" id="links-old"></ol>
+    </section>
+    <section class="card" id="links-outliers-card" hidden>
+      <h2>On their own</h2>
+      <p class="help">Bookmarks that resemble nothing else in the collection: one-off finds, the
+        start of a new interest, or a summary too thin to place.</p>
+      <ol class="plain" id="links-outliers"></ol>
+    </section>
+  </div>
+
+  <div id="view-trends" hidden>
+    <section class="card">
+      <h2>Over time</h2>
+      <p class="help" id="trends-coverage"></p>
+      <h3 class="tagline" id="trends-saved-title"></h3>
+      <div class="chartwrap"><div id="trends-saved"></div></div>
+      <h3 class="tagline" id="trends-published-title" style="margin-top:16px"></h3>
+      <div class="chartwrap"><div id="trends-published"></div></div>
+      <details class="numbers"><summary>Numbers</summary><div id="trends-table"></div></details>
+      <div class="note muted" id="trends-note"></div>
+    </section>
+    <section class="card" id="trends-reaction-card" hidden>
+      <h2>How fast you save</h2>
+      <p class="help" id="trends-reaction-help"></p>
+      <div id="trends-reaction"></div>
+    </section>
+    <section class="card" id="trends-moves-card" hidden>
+      <h2>Rising and fading</h2>
+      <p class="help" id="trends-window"></p>
+      <div class="twocol">
+        <div><h3>Topics taking more room</h3><div id="trends-up"></div></div>
+        <div><h3>Topics taking less room</h3><div id="trends-down"></div></div>
+        <div><h3>Tags on the rise</h3><div id="trends-tags-up"></div></div>
+        <div><h3>Tags fading</h3><div id="trends-tags-down"></div></div>
+      </div>
     </section>
   </div>
 
@@ -468,8 +563,8 @@ let currentView = "bookmarks";
 let lastWorkView = "bookmarks";   // what "Save view" captures
 function showView(name) {
   currentView = name;
-  if (["bookmarks", "map", "clusters", "grid", "tree"].includes(name)) lastWorkView = name;
-  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "views", "grooming", "settings"]) {
+  if (["bookmarks", "map", "clusters", "grid", "tree", "links", "trends"].includes(name)) lastWorkView = name;
+  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "views", "grooming", "settings"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -1198,6 +1293,218 @@ $("tree-run").onclick = () => busy($("tree-run"), async () => {
   catch (error) { note("tree-note", error.message, "bad"); }
 });
 
+/* ---- links and tendencies ---- */
+
+const SVGNS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, children) {
+  const node = document.createElementNS(SVGNS, tag);
+  for (const [name, value] of Object.entries(attrs || {})) node.setAttribute(name, value);
+  for (const child of children || []) node.append(child);
+  return node;
+}
+function bookmarkLink(item) {
+  const href = safeLink(item.url);
+  return href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title }) : el("span", { textContent: item.title });
+}
+function similarButton(item) {
+  const button = el("button", { className: "linkish", textContent: "similar bookmarks" });
+  button.onclick = async () => {
+    try {
+      const found = await api("GET", "/api/links/related?id=" + encodeURIComponent(item.id));
+      showIds([item.id, ...found.related.map((r) => r.id)], "Similar to “" + (item.title || "").slice(0, 40) + "”");
+    } catch (error) { note(currentView === "links" ? "links-note" : "sel-note", error.message, "bad"); }
+  };
+  return button;
+}
+function tip(wrap) {
+  let box = wrap.querySelector(".charttip");
+  if (!box) { box = el("div", { className: "charttip", hidden: true }); wrap.append(box); }
+  return {
+    show(event, text) {
+      box.textContent = text; box.hidden = false;
+      const r = wrap.getBoundingClientRect();
+      box.style.left = Math.max(4, Math.min(event.clientX - r.left + 12, r.width - box.offsetWidth - 4)) + "px";
+      box.style.top = Math.max(4, event.clientY - r.top - 34) + "px";
+    },
+    hide() { box.hidden = true; },
+  };
+}
+
+const links = { data: null, picked: null };
+
+function drawLinks() {
+  const data = links.data;
+  const holder = $("links-graph");
+  holder.replaceChildren(); $("links-picked").replaceChildren();
+  const has = data && data.topics.length > 0;
+  $("links-wrap").hidden = !has;
+  for (const id of ["links-bridges-card", "links-outliers-card", "links-old-card"]) $(id).hidden = true;
+  if (!has) { note("links-note", "Links are drawn between topics. Open Clusters and press Cluster first.", "muted"); return; }
+  note("links-note", "", "muted");
+  const name = Object.fromEntries(data.topics.map((t) => [t.cluster, t.label]));
+  const short = (label) => { const parts = label.split(" · "); const two = parts.slice(0, 2).join(" · "); return two.length > 30 ? two.slice(0, 29) + "…" : two; };
+  // Keep each topic's two strongest links: enough to read, not a tangle.
+  const kept = new Map();
+  for (const topic of data.topics) {
+    for (const link of data.links.filter((l) => l.a === topic.cluster || l.b === topic.cluster).slice(0, 2)) kept.set(link.a + ":" + link.b, link);
+  }
+  const W = 900, H = 520, cx = W / 2, cy = H / 2, R = 180;
+  const n = data.topics.length, largest = Math.max(...data.topics.map((t) => t.size));
+  const spot = {};
+  data.topics.forEach((topic, i) => { const angle = -Math.PI / 2 + 2 * Math.PI * i / n; spot[topic.cluster] = { x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle), angle }; });
+  const strongest = Math.max(0.001, ...[...kept.values()].map((l) => l.strength));
+  const near = new Set();
+  if (links.picked !== null) for (const l of kept.values()) { if (l.a === links.picked) near.add(l.b); if (l.b === links.picked) near.add(l.a); }
+  const root = svg("svg", { class: "chart", viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Topics on a circle, joined by lines where they share many similar bookmarks" });
+  const wrapTip = tip($("links-wrap"));
+  for (const link of kept.values()) {
+    const a = spot[link.a], b = spot[link.b];
+    const on = links.picked !== null && (link.a === links.picked || link.b === links.picked);
+    const edge = svg("path", { class: "edge" + (links.picked === null ? "" : on ? " on" : " off"),
+      d: "M" + a.x + " " + a.y + " Q" + cx + " " + cy + " " + b.x + " " + b.y, "stroke-width": (1.5 + 6.5 * link.strength / strongest).toFixed(1) });
+    edge.onmousemove = (event) => wrapTip.show(event, short(name[link.a]) + " ↔ " + short(name[link.b]) + ": " + link.links + " links");
+    edge.onmouseleave = wrapTip.hide;
+    root.append(edge);
+  }
+  for (const topic of data.topics) {
+    const p = spot[topic.cluster];
+    const state = links.picked === topic.cluster ? " on" : near.has(topic.cluster) ? " near" : "";
+    const pick = () => { links.picked = links.picked === topic.cluster ? null : topic.cluster; drawLinks(); };
+    const node = svg("circle", { class: "node" + state, cx: p.x, cy: p.y, r: (7 + 15 * Math.sqrt(topic.size / largest)).toFixed(1), tabindex: 0, role: "button", "aria-label": topic.label + ", " + plural(topic.size) });
+    node.onclick = pick; node.onkeydown = (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(); } };
+    node.onmousemove = (event) => wrapTip.show(event, topic.label + " · " + plural(topic.size));
+    node.onmouseleave = wrapTip.hide;
+    const right = Math.cos(p.angle) >= -0.01;
+    const label = svg("text", { class: "lab" + (state === " on" ? " on" : ""), x: p.x + (right ? 1 : -1) * 30 * Math.abs(Math.cos(p.angle)) + (right ? 6 : -6),
+      y: p.y + 34 * Math.sin(p.angle) + 4, "text-anchor": Math.abs(Math.cos(p.angle)) < 0.2 ? "middle" : right ? "start" : "end" });
+    label.textContent = short(topic.label); label.onclick = pick;
+    root.append(node, label);
+  }
+  holder.append(root);
+  if (links.picked !== null) {
+    const mine = data.links.filter((l) => l.a === links.picked || l.b === links.picked).slice(0, 5);
+    const show = el("button", { className: "linkish", textContent: "show its bookmarks" });
+    show.onclick = () => { setClusterFilter({ key: data.cluster_run + ":" + links.picked, label: name[links.picked] }); $("search").value = ""; showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
+    $("links-picked").append(el("p", { style: "margin:12px 0 4px" }, [el("strong", { textContent: name[links.picked] }), " is closest to: ", show]),
+      el("ol", { className: "plain" }, mine.map((l) => { const other = l.a === links.picked ? l.b : l.a;
+        const go = el("button", { className: "linkish", textContent: name[other] }); go.onclick = () => { links.picked = other; drawLinks(); };
+        return el("li", {}, [go, el("span", { className: "tagline", textContent: "  " + l.links + " links" })]); })));
+  }
+  const legend = [["--viz-neutral", "disc area = bookmarks in the topic; line width = links shared, for the size of the two topics"]];
+  if (links.picked !== null) { legend.push(["--viz-focus", "the topic you picked"], ["--viz-match", "its closest topics"]); }
+  const legendBox = el("div", { className: "legend" });
+  for (const [colour, text] of legend) { const dot = el("i"); dot.style.background = "var(" + colour + ")"; legendBox.append(el("span", {}, [dot, text])); }
+  $("links-picked").append(legendBox);
+
+  const filed = (item, text) => el("div", { className: "tagline" }, [text, " · ", similarButton(item)]);
+  $("links-bridges").replaceChildren(...data.bridges.map((item) => el("li", {}, [bookmarkLink(item),
+    filed(item, "filed in “" + short(name[item.topic]) + "”, " + Math.round(item.share * 10) + " of its 10 closest are elsewhere, mostly in “" + short(name[item.towards]) + "”")])));
+  $("links-bridges-card").hidden = !data.bridges.length;
+  $("links-outliers").replaceChildren(...data.outliers.map((item) => el("li", {}, [bookmarkLink(item), filed(item, "filed in “" + short(name[item.topic]) + "”")])));
+  $("links-outliers-card").hidden = !data.outliers.length;
+  const old = data.resurface;
+  $("links-old-help").textContent = "Bookmarks older than " + Math.round(old.old_days / 30) + " months that resemble what you gathered in the last "
+    + old.recent_days + " days (counted back from " + old.latest + ", the latest date in the collection).";
+  $("links-old").replaceChildren(...old.items.map((item) => el("li", {}, [bookmarkLink(item),
+    filed(item, item.day + " · close to " + item.echoes + " recent " + (item.echoes === 1 ? "bookmark" : "bookmarks") + ", such as “" + item.because[0].title.slice(0, 70) + "”")])));
+  $("links-old-card").hidden = !old.items.length;
+}
+async function loadLinks() { links.data = await api("GET", "/api/links"); if (links.data.topics.every((t) => t.cluster !== links.picked)) links.picked = null; drawLinks(); }
+
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function monthName(key) { return MONTH[Number(key.slice(5)) - 1] + " " + key.slice(0, 4); }
+
+function barChart(holder, series, word) {
+  holder.replaceChildren();
+  const months = series.months, W = 900, H = 200, left = 34, right = 8, top = 16, bottom = 24;
+  const most = Math.max(1, ...months.map((m) => m.count));
+  const step = most <= 5 ? 1 : most <= 20 ? 5 : most <= 50 ? 10 : most <= 100 ? 25 : 50;
+  const ceiling = Math.ceil(most / step) * step;
+  const slot = (W - left - right) / months.length, width = Math.max(2, Math.min(28, slot - 2));
+  const y = (value) => top + (H - top - bottom) * (1 - value / ceiling);
+  const root = svg("svg", { class: "chart", viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Bookmarks " + word + " per month, " + monthName(months[0].month) + " to " + monthName(months[months.length - 1].month) });
+  for (let value = 0; value <= ceiling; value += step) {
+    if (ceiling / step > 4 && (value / step) % 2) continue;
+    root.append(svg("line", { class: "gridline", x1: left, x2: W - right, y1: y(value), y2: y(value) }));
+    const label = svg("text", { x: left - 6, y: y(value) + 4, "text-anchor": "end" }); label.textContent = String(value); root.append(label);
+  }
+  const wrapTip = tip(holder.parentElement);
+  const peak = months.reduce((best, m) => (m.count > best.count ? m : best), months[0]);
+  months.forEach((m, i) => {
+    const x = left + i * slot + (slot - width) / 2, h = y(0) - y(m.count), r = Math.min(4, width / 2, h);
+    const hit = svg("rect", { class: "hit", x: left + i * slot, y: top, width: slot, height: H - top - bottom });
+    hit.onmousemove = (event) => wrapTip.show(event, monthName(m.month) + ": " + m.count + " " + word);
+    hit.onmouseleave = wrapTip.hide;
+    root.append(hit);
+    if (m.count) root.append(svg("path", { class: "bar", "pointer-events": "none",
+      d: "M" + x + " " + y(0) + " V" + (y(m.count) + r) + " Q" + x + " " + y(m.count) + " " + (x + r) + " " + y(m.count) + " H" + (x + width - r)
+        + " Q" + (x + width) + " " + y(m.count) + " " + (x + width) + " " + (y(m.count) + r) + " V" + y(0) + " Z" }));
+    const month = Number(m.month.slice(5));
+    if (month === 1 || (months.length <= 18 && month % 3 === 1) || (i === 0 && month <= 10)) {
+      const label = svg("text", { x: left + i * slot + slot / 2, y: H - 6, "text-anchor": i === 0 ? "start" : "middle" });
+      label.textContent = month === 1 || i === 0 ? MONTH[month - 1] + " " + m.month.slice(0, 4) : MONTH[month - 1]; root.append(label);
+    }
+    if (m === peak && m.count) { const label = svg("text", { class: "val", x: x + width / 2, y: y(m.count) - 4, "text-anchor": "middle" }); label.textContent = String(m.count); root.append(label); }
+  });
+  holder.append(root);
+}
+
+function moveRows(holder, moves, emptyText, action) {
+  holder.replaceChildren();
+  if (!moves.length) { holder.append(el("div", { className: "tagline", textContent: emptyText })); return; }
+  for (const m of moves) {
+    const points = 100 * m.change;
+    const name = action ? el("button", { className: "linkish", textContent: m.name }) : el("span", { textContent: m.name });
+    if (action) name.onclick = () => action(m);
+    holder.append(el("div", { className: "move" }, [el("b", { textContent: (points > 0 ? "+" : "−") + Math.abs(points).toFixed(1) + " pts" }),
+      el("div", {}, [name, el("div", { className: "tagline", textContent: m.recent + " recent (" + (100 * m.share_recent).toFixed(1) + "%), "
+        + m.before + " before (" + (100 * m.share_before).toFixed(1) + "%)" })])]));
+  }
+}
+
+async function loadTrends() {
+  const data = await api("GET", "/api/trends");
+  const c = data.coverage;
+  $("trends-coverage").textContent = "Of " + plural(c.bookmarks) + ", " + c.saved + " have the date you saved them and " + c.published
+    + " a publication date (" + c.both + " have both, " + c.neither + " have neither). Run the date scripts in Grooming, or sync from Notion, to fill more.";
+  for (const id of ["trends-saved", "trends-published", "trends-table"]) $(id).replaceChildren();
+  $("trends-reaction-card").hidden = true; $("trends-moves-card").hidden = true;
+  if (!data.latest) { note("trends-note", "No bookmark has a date yet.", "muted"); $("trends-saved-title").textContent = ""; $("trends-published-title").textContent = ""; return; }
+  note("trends-note", "", "muted");
+  $("trends-saved-title").textContent = "Saved per month (" + data.saved.total + " bookmarks)";
+  $("trends-published-title").textContent = "Published per month (" + data.published.total + " bookmarks"
+    + (data.published.earlier ? ", " + data.published.earlier + " earlier than " + monthName(data.published.months[0].month) + " not shown" : "") + ")";
+  barChart($("trends-saved"), data.saved, "saved");
+  barChart($("trends-published"), data.published, "published");
+  $("trends-table").append(el("table", {}, [el("thead", {}, [el("tr", {}, [el("th", { textContent: "Month" }), el("th", { textContent: "Saved" }), el("th", { textContent: "Published" })])]),
+    el("tbody", {}, data.saved.months.map((m, i) => el("tr", {}, [el("td", { textContent: monthName(m.month) }), el("td", { textContent: String(m.count) }), el("td", { textContent: String(data.published.months[i].count) })])))]));
+  const reaction = data.reaction;
+  if (reaction && reaction.measured) {
+    $("trends-reaction-help").textContent = "Time between publication and the moment you saved it, for the " + reaction.measured
+      + " bookmarks that have both dates. Half were saved within " + reaction.median_days + (reaction.median_days === 1 ? " day." : " days.")
+      + (reaction.saved_before_published ? " " + reaction.saved_before_published + " have a save date before their publication date and are left out." : "");
+    const most = Math.max(1, ...reaction.buckets.map((b) => b.count));
+    $("trends-reaction").replaceChildren(...reaction.buckets.map((b) => { const fill = el("i"); fill.style.width = (100 * b.count / most) + "%"; if (!b.count) fill.hidden = true;
+      return el("div", { className: "hbar" }, [el("span", { textContent: b.label }), el("div", {}, [fill]), el("span", { textContent: String(b.count) })]); }));
+    $("trends-reaction-card").hidden = false;
+  }
+  const w = data.window;
+  if (w && w.recent && w.before) {
+    $("trends-window").textContent = "The last " + w.recent_days + " days (since " + w.since + ", " + w.recent + " bookmarks) against everything before ("
+      + w.before + "). Figures are shares of the bookmarks of each period, in percentage points. Each bookmark is placed by its save date"
+      + (w.by_published_date ? ", or by its publication date when the save date is missing (" + w.by_published_date + " bookmarks)." : ".");
+    const moves = data.topics ? data.topics.moves : [];
+    const open = (m) => { setClusterFilter({ key: data.topics.cluster_run + ":" + m.key, label: m.name }); $("search").value = ""; showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
+    const none = data.topics ? "None." : "Open Clusters and press Cluster to see topics here.";
+    moveRows($("trends-up"), moves.filter((m) => m.change > 0).slice(0, 6), none, open);
+    moveRows($("trends-down"), moves.filter((m) => m.change < 0).reverse().slice(0, 6), none, open);
+    const find = (m) => { setClusterFilter(null); $("search").value = m.name; showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
+    moveRows($("trends-tags-up"), data.tags.rising.slice(0, 8), "None.", find);
+    moveRows($("trends-tags-down"), data.tags.fading.slice(0, 8), "None.", find);
+    $("trends-moves-card").hidden = false;
+  }
+}
+
 /* ---- saved views and snapshots ---- */
 
 function captureView() {
@@ -1231,12 +1538,14 @@ async function restoreView(state) {
   if (state.tab === "map") await loadMap(state.map.clusters_run || undefined);
   else if (state.tab === "clusters") await loadClusters(state.clusters_run || undefined);
   else if (state.tab === "grid") await loadGrid();
+  else if (state.tab === "links") await loadLinks();
+  else if (state.tab === "trends") await loadTrends();
   else if (state.tab === "tree") { tree.path = state.tree_path || []; await loadTree(); }
   await loadBookmarks(true);
 }
 
 function describeCurrent() {
-  const parts = ["the " + ({ bookmarks: "list", map: "map", clusters: "clusters", grid: "grid", tree: "topic tree" })[lastWorkView]];
+  const parts = ["the " + ({ bookmarks: "list", map: "map", clusters: "clusters", grid: "grid", tree: "topic tree", links: "links between topics", trends: "trends" })[lastWorkView]];
   if ($("search").value.trim()) parts.push("the search “" + $("search").value.trim() + "”");
   if (clusterFilter) parts.push("the filter on “" + clusterFilter.label + "”");
   if (selection.size) parts.push(selection.size + " selected bookmarks");
@@ -1479,6 +1788,7 @@ async function loadBookmarks(reset) {
       const cell = el("td", {}, [title]);
       if (item.summary) cell.append(el("div", { className: "sum", textContent: item.summary }));
       if (item.tags.length) cell.append(el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))));
+      cell.append(el("div", { className: "tagline", style: "margin-top:4px" }, [similarButton({ id: item.id, title: item.title || item.url })]));
       const pick = el("input", { type: "checkbox", checked: selection.has(item.id) });
       pick.dataset.id = item.id;
       pick.setAttribute("aria-label", "Select " + (item.title || item.url));
@@ -1603,6 +1913,8 @@ $("tab-map").onclick = () => { showView("map"); loadMap($("map-clusters").value 
 $("tab-clusters").onclick = () => { showView("clusters"); loadClusters().catch((e) => note("cl-note", e.message, "bad")); };
 $("tab-grid").onclick = () => { showView("grid"); loadGrid().catch((e) => note("grid-note", e.message, "bad")); };
 $("tab-tree").onclick = () => { showView("tree"); loadTree().catch((e) => note("tree-note", e.message, "bad")); };
+$("tab-links").onclick = () => { showView("links"); loadLinks().catch((e) => note("links-note", e.message, "bad")); };
+$("tab-trends").onclick = () => { showView("trends"); loadTrends().catch((e) => note("trends-note", e.message, "bad")); };
 $("tab-grooming").onclick = () => { showView("grooming"); loadGrooming().catch((e) => note("scripts-note", e.message, "bad")); };
 
 document.querySelector("main").prepend($("selbar"));
