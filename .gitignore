@@ -23,3 +23,10 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+
+# Desktop build: generated backend and installers
+desktop/backend/python/
+desktop/backend/app/
+desktop/backend/BUILD_INFO.json
+desktop/backend/*.tar.gz
+desktop/dist/

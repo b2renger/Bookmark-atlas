@@ -1,0 +1,46 @@
+# electron-builder: packages the shell plus the Python backend into one
+# self-updating installer, published to GitHub Releases. No paid signing.
+# Same approach as b2renger/ComfyQ and b2renger/LlmOnLan.
+
+appId: com.b2renger.bookmarkatlas
+productName: Bookmark Atlas
+
+files:
+  - main.js
+  - assets/**
+  - package.json
+
+# The backend is a standalone Python plus the atlas package, prepared by
+# scripts/prepare-backend.mjs. It sits beside the app, not inside app.asar,
+# because Python has to read its files from disk.
+extraResources:
+  - from: backend
+    to: backend
+    filter:
+      - "**/*"
+      - "!**/__pycache__/**"
+
+directories:
+  output: dist
+  buildResources: assets
+
+# Self-update from GitHub Releases. releaseType: release, because the updater
+# ignores drafts and prereleases.
+publish:
+  provider: github
+  owner: b2renger
+  repo: Bookmark-atlas
+  releaseType: release
+
+win:
+  target: nsis
+  icon: assets/icon.png
+
+# Per-user install: updates install silently, with no administrator prompt.
+# The artifact name has no spaces: GitHub turns spaces into dots on upload,
+# which breaks the updater's filename match in latest.yml.
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  artifactName: Bookmark-Atlas-Setup-${version}-windows-x64.${ext}

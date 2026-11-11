@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -415,7 +416,8 @@ def test_token_round_trip_in_a_private_file(config):
     assert settings.get_token() == "ntn_abcdefghijklmnop"
     assert settings.token_source() == "file"
     secrets = config / "secrets.json"
-    assert secrets.stat().st_mode & 0o777 == 0o600
+    if sys.platform != "win32":  # Windows has no owner-only mode bits to check
+        assert secrets.stat().st_mode & 0o777 == 0o600
 
     settings.delete_token()
     assert settings.get_token() is None

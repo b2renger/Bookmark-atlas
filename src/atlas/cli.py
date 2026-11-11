@@ -251,6 +251,52 @@ def _cmd_ui(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_notion_reachable() -> tuple[bool, str]:
+    """Contact Notion with a token that cannot be valid: a 401 proves the
+    network path, TLS and certificates all work."""
+    from atlas.notion import NotionClient
+
+    try:
+        NotionClient("ntn_connectivity_check_not_a_real_token").me()
+    except NotionError as error:
+        if error.status == 401:
+            return True, "reachable (secure connection works)"
+        return False, f"unexpected answer: {error.status} {error.code}"
+    except ConnectionError as error:
+        return False, str(error)
+    return False, "unexpected answer: a made-up token was accepted"
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    import platform
+    import sqlite3
+
+    from atlas import settings
+
+    print(f"Bookmark Atlas {__version__}")
+    print(f"  Python          {platform.python_version()} ({sys.executable})")
+    print(f"  SQLite          {sqlite3.sqlite_version}")
+    path = Path(args.db)
+    if path.exists():
+        conn = db.connect(path)
+        try:
+            version = db.schema_version(conn)
+            count = conn.execute("SELECT COUNT(*) FROM bookmarks").fetchone()[0] if version else 0
+        finally:
+            conn.close()
+        print(f"  Database        {path} (schema {version}, {count} bookmarks)")
+    else:
+        print(f"  Database        {path} (not created yet)")
+    print(f"  Settings folder {settings.config_dir()}")
+    source = settings.token_source()
+    print(f"  Notion token    {'set, from ' + source if source else 'not set'}")
+    if args.offline:
+        return 0
+    ok, detail = _check_notion_reachable()
+    print(f"  Notion          {detail}")
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Bookmark Atlas")
     parser.add_argument("--version", action="version", version=f"atlas {__version__}")
@@ -326,6 +372,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ui.add_argument("--no-browser", action="store_true", help="do not open the browser")
     ui.set_defaults(func=_cmd_ui)
+
+    doctor = commands.add_parser("doctor", help="check that this installation works")
+    doctor.add_argument("--offline", action="store_true", help="skip the Notion connection check")
+    doctor.set_defaults(func=_cmd_doctor)
 
     return parser
 

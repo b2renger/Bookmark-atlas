@@ -77,7 +77,7 @@ CSV export ──────┴──> importer ──> SQLite <─────
 
 | Part | Choice | Why |
 | --- | --- | --- |
-| Desktop shell | Tauri 2 | Small binaries, web frontend for visualisation |
+| Desktop shell | Electron, electron-builder, electron-updater | Same as ComfyQ and LlmOnLan: unsigned installer that updates itself from GitHub Releases |
 | Frontend | TypeScript, framework chosen in phase 4 | Views are web-native |
 | Data, grooming, analysis | Python package with a command line | e-means ships as Python in Faiss; scripts are easy to write |
 | Storage | SQLite, one file | Readable from nearly any tool or language |
@@ -87,12 +87,18 @@ Everything the interface does is a call to the Python package, so every
 feature also works from the command line and can be tested without a UI.
 
 The interface is a web page served by the Python package on this computer only
-(`atlas ui`). It needs nothing but Python, which is how the first builds are
-used. The Tauri shell wraps the same page later, as a packaging step.
+(`atlas ui`). The desktop app is an Electron shell that starts that backend
+with a bundled standalone Python and shows the page in a window. Tauri was the
+first idea; Electron replaced it on 2026-11-11 to reuse the release and
+self-update setup already proven in the owner's other repositories.
+
+Releases are built by GitHub Actions on a `vX.Y.Z` tag: tests, Windows
+installer, a smoke test of the packaged app, then publication to GitHub
+Releases with the `latest.yml` update manifest.
 
 ### Checked facts
 
-- Tauri core crate: 2.12.3, released 2026-10-10. No Tauri 3 on the release page.
+- Tauri core crate: 2.12.3, released 2026-10-10 (no longer the chosen shell).
 - Notion API: latest version is 2026-03-11. Since 2025-09-03, tables are
   queried through `POST /v1/data_sources/{data_source_id}/query`, not by
   database ID. A database lists its data sources when retrieved. In 2026-03-11
@@ -379,7 +385,7 @@ Each phase ends with something usable and a short written check.
 
 ### Phase 4: desktop shell, table, map, grooming panel
 
-- Tauri app driving the Python package.
+- Electron shell driving the Python package (done early, see the dev log).
 - Table with shared filters: tags, both date ranges, domain, cluster, search.
 - Inline editing and soft delete, recorded in the journal.
 - Grooming panel: script list, parameter form, preview diff, apply, undo,
@@ -421,7 +427,7 @@ Each phase ends with something usable and a short written check.
 | Imports undo local curation | Source records kept apart; tombstones; pending review |
 | A user script does something unsafe | Loaded only from the user's own folder; never shipped in snapshots |
 | e-means brings nothing at this scale | Phase 3 measures it; k-means stays as fallback |
-| Packaging Python inside a desktop app is heavy | Narrow interface between shell and package; revisit after phase 4 |
+| Packaging Python inside a desktop app is heavy | Standalone Python bundled today (standard library only). When analysis adds large libraries, ship them as a separate download, as LlmOnLan does for its sidecar |
 | Notion API changes again | Version header pinned; all Notion code in one module |
 | Private data leaks through git or snapshots | `.gitignore` covers data files; snapshot export strips by default |
 

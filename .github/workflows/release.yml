@@ -1,0 +1,148 @@
+# Build the Windows installer and, on a version tag, publish it to GitHub
+# Releases, where installed copies find their updates.
+#
+#   push a tag vX.Y.Z   -> test, build, smoke-test, publish release vX.Y.Z
+#   "Run workflow"      -> test, build, smoke-test; the installer is attached
+#                          to the run as an artifact and nothing is published
+#
+# The app version comes from the tag, so cutting a release is only a tag.
+# Builds are unsigned (no paid certificate), like ComfyQ and LlmOnLan.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Needed to create the release and upload to it.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest ruff
+      - run: ruff check .
+      - run: python -m pytest -q
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Decide the version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Tag $GITHUB_REF_NAME is not of the form vX.Y.Z" >&2
+              exit 1
+            fi
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building version $version"
+
+      - name: Install shell dependencies
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      # Standalone Python + the atlas package into desktop/backend.
+      - name: Prepare the backend
+        working-directory: desktop
+        run: node scripts/prepare-backend.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The bundled Python must be able to reach Notion over HTTPS with
+      # certificate checks on. A made-up token answered with 401 proves it.
+      - name: Check the bundled backend
+        working-directory: desktop
+        shell: bash
+        run: |
+          backend/python/python.exe -I -u backend/run_atlas.py --db "$RUNNER_TEMP/doctor.sqlite" doctor
+
+      # Build only. Publishing is done below with gh, onto a release made
+      # first: electron-builder's own publisher races to create the release.
+      # --publish never still writes latest.yml and the blockmap.
+      - name: Build the installer
+        working-directory: desktop
+        run: npx --no-install electron-builder --win --publish never "-c.extraMetadata.version=${{ steps.version.outputs.version }}"
+
+      # Start the packaged app for real: backend up, page loaded, API reached.
+      - name: Smoke-test the packaged app
+        shell: pwsh
+        run: |
+          $env:ATLAS_SMOKE_OUT = Join-Path $env:RUNNER_TEMP 'smoke.json'
+          $env:ATLAS_USER_DATA = Join-Path $env:RUNNER_TEMP 'atlas-data'
+          $exe = 'desktop\dist\win-unpacked\Bookmark Atlas.exe'
+          if (-not (Test-Path $exe)) { throw "Packaged app not found at $exe" }
+          $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru
+          if (-not $process.WaitForExit(150000)) { $process.Kill(); Write-Host 'Timed out.' }
+          $log = Join-Path $env:ATLAS_USER_DATA 'backend.log'
+          if (Test-Path $log) { Write-Host '--- backend.log'; Get-Content $log }
+          if (Test-Path $env:ATLAS_SMOKE_OUT) { Write-Host '--- result'; Get-Content $env:ATLAS_SMOKE_OUT } else { throw 'The smoke test wrote no result.' }
+          $result = Get-Content $env:ATLAS_SMOKE_OUT -Raw | ConvertFrom-Json
+          if (-not $result.ok) { throw "Smoke test failed: $($result.error)" }
+          if ($result.version -ne '${{ steps.version.outputs.version }}') { throw "Version mismatch: app reports $($result.version)" }
+          if (-not $result.packaged) { throw 'The smoke test did not run the packaged app.' }
+
+      - name: List what was built
+        shell: bash
+        run: ls -la desktop/dist | cat
+
+      - name: Attach the installer to this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bookmark-Atlas-${{ steps.version.outputs.version }}-windows-x64
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/latest.yml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish to GitHub Releases
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          files=(desktop/dist/*.exe desktop/dist/*.blockmap desktop/dist/latest.yml)
+          if [[ ! -f desktop/dist/latest.yml ]]; then
+            echo "latest.yml is missing: installed copies could not update." >&2
+            exit 1
+          fi
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            {
+              echo "**Windows:** download \`Bookmark-Atlas-Setup-${GITHUB_REF_NAME#v}-windows-x64.exe\` and run it."
+              echo ""
+              echo "The installer is not signed, so Windows shows \"Windows protected your PC\" the first time: choose **More info**, then **Run anyway**."
+              echo ""
+              echo "Once installed, the app updates itself from these releases. Your bookmarks stay in your user data folder and are kept across updates and uninstalls."
+            } > "$RUNNER_TEMP/notes.md"
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+          fi
+          echo "Uploading ${#files[@]} file(s): ${files[*]}"
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber

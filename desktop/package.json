@@ -1,0 +1,21 @@
+{
+  "name": "bookmark-atlas-desktop",
+  "version": "0.1.0",
+  "description": "Desktop app for Bookmark Atlas: explore and groom a bookmark collection",
+  "author": "b2renger",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "prepare-backend": "node scripts/prepare-backend.mjs",
+    "dist": "electron-builder --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^42.5.0",
+    "electron-builder": "^26.0.12"
+  }
+}

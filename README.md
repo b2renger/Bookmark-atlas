@@ -13,33 +13,43 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 ## Status
 
-Phase 1 of 7. A first usable build exists: a local interface to connect Notion,
-pick a table, import it and browse the result. Grooming, clustering and the
-visual views come next.
+Phase 1 of 7. A first usable build exists: connect Notion or load a CSV export,
+import, and browse the result. Grooming, clustering and the visual views come
+next.
 
-**The Notion import has not been run against the real Notion API yet.** It is
-tested against a stand-in built from Notion's documentation. Use Preview before
-the first import and report what it shows.
+**The Notion import has not been run against the real Notion API with a real
+token yet.** It is tested against a stand-in built from Notion's documentation.
+Use Preview before the first import and report what it shows. The CSV import
+has been checked on a real 962-row export.
 
 - Where development stands: [docs/DEVLOG.md](docs/DEVLOG.md)
 - Where it is going: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
-## Run it
+## Install (Windows)
 
-Needs Python 3.11 or later and nothing else.
+1. Open the [latest release](https://github.com/b2renger/Bookmark-atlas/releases/latest)
+   and download `Bookmark-Atlas-Setup-<version>-windows-x64.exe`.
+2. Run it. The installer is not signed, so Windows shows "Windows protected
+   your PC" the first time: choose **More info**, then **Run anyway**.
+3. The app opens. Nothing else to install: Python is included.
 
-```sh
-git clone https://github.com/b2renger/Bookmark-atlas.git
-cd Bookmark-atlas
-python3 -m pip install -e .
-atlas ui
-```
+The app updates itself. It checks GitHub Releases at start, downloads a new
+version in the background and offers to restart. **Atlas > Check for updates…**
+checks on demand.
 
-Without installing: `PYTHONPATH=src python3 -m atlas ui` (on Windows,
-`set PYTHONPATH=src` first, then `python -m atlas ui`).
+Your bookmarks are in `%APPDATA%\Bookmark Atlas\atlas.sqlite`
+(**Atlas > Open data folder**). Updates and uninstalling leave that folder
+alone.
 
-`atlas ui` creates `data/atlas.sqlite` if needed, starts the interface on this
-computer only and opens it in the browser. Stop it with Ctrl+C.
+macOS and Linux builds are not produced yet.
+
+## Use it
+
+In **Settings** you can load data two ways, and combine them:
+
+- **Import a CSV file**: an export of the table from Notion. No token needed.
+- **Notion**: connect with a token, pick the table, import. Later imports only
+  fetch rows edited since.
 
 ### Connect Notion
 
@@ -70,7 +80,16 @@ In **Settings**:
 Links are compared after normalisation, so `twitter.com` and `x.com`, tracking
 parameters, or a trailing slash do not create duplicates.
 
-### Command line
+## For developers
+
+Needs Python 3.11 or later; the backend uses the standard library only.
+
+```sh
+python3 -m pip install -e .
+atlas ui                                # the interface, in your browser
+python -m pytest
+ruff check . && ruff format --check .
+```
 
 Everything the interface does is also a command:
 
@@ -85,18 +104,27 @@ atlas sync --dry-run
 atlas sync                              # --full reads the whole table again
 atlas status
 atlas export --format json -o bookmarks.json
+atlas doctor                            # check the installation and Notion access
 ```
 
 The database path is `data/atlas.sqlite`, or `$ATLAS_DB`, or `--db PATH`. The
 `data/` folder is ignored by git, so bookmarks never end up in the repository.
 The token can also be given as the `NOTION_TOKEN` environment variable.
 
-## Development
+### Desktop app and releases
 
-```sh
-python -m pytest
-ruff check . && ruff format --check .
-```
+`desktop/` is an Electron shell. It starts the Python backend, shows its page
+in a window and updates itself with electron-updater, the same way ComfyQ and
+LlmOnLan do. The installer bundles a standalone Python, so users install
+nothing else.
+
+- **Release:** push a tag `vX.Y.Z`. `.github/workflows/release.yml` runs the
+  tests, builds the installer, starts the packaged app to check it works, and
+  publishes it with the update manifest. The version comes from the tag.
+- **Trial build:** run the workflow by hand from the Actions tab. The installer
+  is attached to the run and nothing is published.
+- Self-update reads public GitHub Releases, so it needs the repository to stay
+  public.
 
 ## Planned shape
 

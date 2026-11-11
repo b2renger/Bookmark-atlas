@@ -4,6 +4,75 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: desktop app, installer and self-update
+
+**Works (written, verified only as far as stated below)**
+
+- `desktop/`: Electron shell. Starts the bundled Python backend, waits for its
+  `ATLAS_READY` line, shows the page in a sandboxed window, opens bookmark
+  links in the user's browser, stops the backend on quit.
+- Self-update with electron-updater from GitHub Releases: check at start,
+  background download, "Restart now / Later", install on quit. Menu entry to
+  check on demand.
+- `desktop/scripts/prepare-backend.mjs`: downloads a standalone Python 3.12
+  (python-build-standalone), prunes it, copies the `atlas` package beside it.
+- `.github/workflows/release.yml`: tag `vX.Y.Z` builds and publishes the
+  Windows installer; a manual run builds without publishing.
+- `.github/workflows/ci.yml`: lint and tests on Linux and Windows.
+- Settings can import a CSV file, so no command line is needed for the first
+  data. Checked in Chrome with the real 962-row export: 956 created, 6 held.
+- `atlas doctor`: reports versions, paths, token presence, and whether Notion
+  is reachable (a made-up token answered with 401 proves network, TLS and
+  certificates).
+
+**Verified how**
+
+- The Electron code could not be run in the development environment (no
+  package installs there). It is checked by CI instead: the release workflow
+  starts the packaged app with `--smoke-test`, which waits for the page header
+  to show the bookmark count and the app version, both of which only appear
+  after the page has reached the backend API. See the run results in the
+  Actions tab for whether this currently passes.
+- The same workflow runs `atlas doctor` with the bundled Python, which is the
+  first contact between this code and the real Notion API.
+- Not verified by anything: the update path itself (an installed older version
+  finding, downloading and installing a newer one). It needs two releases and
+  a real Windows machine.
+
+**Decided**
+
+- Electron instead of Tauri, to reuse the unsigned-installer and self-update
+  setup of ComfyQ and LlmOnLan: NSIS one-click per-user install,
+  `releaseType: release`, artifact names without spaces, `--publish never`
+  then `gh release upload` onto a release created first.
+- Windows only for now. macOS needs the ad-hoc signing step those repositories
+  use; Linux needs an AppImage target. Both are additions to the same files.
+- The app version comes from the git tag (`extraMetadata.version`), so a
+  release is a tag and nothing else. The shell passes it to the backend, which
+  shows it in the page header.
+- Python is bundled in the installer because the backend has no dependencies
+  yet. When embeddings and clustering bring large libraries, they should be a
+  separate download, as LlmOnLan does.
+- The backend runs in Python's isolated mode, so a Python installed on the
+  user's machine cannot interfere.
+- Data lives in the app's user data folder: `atlas.sqlite`, `secrets.json`
+  (the Notion token) and `backend.log`. Uninstalling keeps it.
+- No `package-lock.json` yet: it could not be generated in the development
+  environment. CI uses `npm install` with the version ranges LlmOnLan uses.
+  Committing a lockfile produced by CI would make builds reproducible.
+
+**Known gaps**
+
+- On Windows the token file is protected by the user profile's folder
+  permissions only. Electron's `safeStorage` would encrypt it.
+- No macOS or Linux build.
+- The update path is untested (see above).
+
+**Next**
+
+- Tag `v0.1.0`, install it on Windows, import the CSV, try the Notion token.
+- Phase 2 grooming, tested on the real extract.
+
 ## 2026-11-11: first usable build, local interface
 
 **Works**
