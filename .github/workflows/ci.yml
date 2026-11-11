@@ -25,7 +25,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install test tools
-        run: python -m pip install pytest ruff tzdata
+        run: python -m pip install pytest ruff tzdata numpy
 
       - name: Lint
         run: |

@@ -89,6 +89,10 @@ def connect(path: Path | str, *, create: bool = False) -> sqlite3.Connection:
     return conn
 
 
+# Deleting a run relies on ON DELETE CASCADE, which needs foreign_keys = ON:
+# always open the database through connect().
+
+
 def open_ready(path: Path | str) -> sqlite3.Connection:
     """Open an existing database and refuse to work on an outdated schema."""
     conn = connect(path)

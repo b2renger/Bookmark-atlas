@@ -88,13 +88,13 @@ async function main() {
     for (const name of ['test', 'idlelib', 'tkinter', 'turtledemo', 'lib2to3']) removeIfPresent(path.join(lib, name));
     for (const name of ['tcl', 'include', 'libs', 'share']) removeIfPresent(path.join(pythonDir, name));
 
-    // 3. Time zone database. Windows has none that Python can read, and Notion
-    //    dates may name a zone.
+    // 3. Packages. tzdata: Windows has no time zone database Python can read,
+    //    and Notion dates may name a zone. numpy: vectors and clustering.
     const pythonExe = process.platform === 'win32'
         ? path.join(pythonDir, 'python.exe')
         : path.join(pythonDir, 'bin', 'python3');
-    execFileSync(pythonExe, ['-I', '-m', 'pip', 'install', '--no-warn-script-location', '--disable-pip-version-check', 'tzdata'], { stdio: 'inherit' });
-    execFileSync(pythonExe, ['-I', '-c', 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Paris")'], { stdio: 'inherit' });
+    execFileSync(pythonExe, ['-I', '-m', 'pip', 'install', '--no-warn-script-location', '--disable-pip-version-check', 'tzdata', 'numpy'], { stdio: 'inherit' });
+    execFileSync(pythonExe, ['-I', '-c', 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Paris"); import numpy; print("numpy", numpy.__version__)'], { stdio: 'inherit' });
 
     // 4. The atlas package.
     const appDir = path.join(backend, 'app');

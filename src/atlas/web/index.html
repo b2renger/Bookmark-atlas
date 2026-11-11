@@ -77,6 +77,14 @@
   .selrow input[type=text], .selrow select { width: auto; flex: 1 1 150px; max-width: 260px; background: var(--panel); }
   #selbar .note { margin-top: 2px; }
   td.pick, th.pick { width: 28px; padding-right: 0; }
+  .clgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .clcard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .clcard h3 { font-size: 15px; margin: 0 0 2px; overflow-wrap: anywhere; }
+  .clcard .size { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+  .clcard ul { margin: 8px 0 10px; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .clcard li { overflow-wrap: anywhere; }
+  .clcard .acts { display: flex; gap: 14px; }
+  #filterchip { display: inline-flex; gap: 8px; align-items: center; background: var(--chip); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
   .script { border-top: 1px solid var(--line); padding: 16px 0; }
   .script:first-child { border-top: 0; padding-top: 4px; }
   .script h3 { font-size: 15px; margin: 0 0 2px; }
@@ -104,6 +112,7 @@
   <h1>Bookmark Atlas</h1>
   <nav>
     <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
+    <button id="tab-clusters">Clusters</button>
     <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
   </nav>
@@ -116,6 +125,9 @@
       <div class="toolbar">
         <input type="search" id="search" placeholder="Search titles, summaries, links and tags" aria-label="Search bookmarks">
         <span class="count" id="count"></span>
+      </div>
+      <div style="margin-bottom:10px" id="filterrow" hidden>
+        <span id="filterchip"><span id="filtertext"></span><button class="linkish" id="filterclear">remove filter</button></span>
       </div>
       <div id="selbar" hidden>
         <div class="selrow">
@@ -139,6 +151,31 @@
         <button class="action" id="more" hidden>Show more</button>
       </div>
     </section>
+  </div>
+
+  <div id="view-clusters" hidden>
+    <section class="card">
+      <h2>Group by topic</h2>
+      <p class="help">Bookmarks that use related words in their title, summary and tags are grouped
+        together. “Auto” tries several numbers of groups and keeps the one where groups are best
+        separated. Each run is kept, so you can compare them.</p>
+      <div class="row">
+        <div><label for="cl-k">Number of clusters</label>
+          <input type="text" id="cl-k" value="auto" inputmode="numeric" style="width:110px"></div>
+        <div><label for="cl-algo">Method</label>
+          <select id="cl-algo" style="width:auto">
+            <option value="k-means">k-means (default)</option>
+            <option value="e-means">e-means</option>
+            <option value="e-means++">e-means, k-means++ start</option>
+          </select></div>
+        <button class="action primary" id="cl-run">Cluster</button>
+        <div class="grow"></div>
+        <div><label for="cl-runs">Shown run</label><select id="cl-runs" style="width:auto"></select></div>
+        <button class="action" id="cl-delete" hidden>Delete run</button>
+      </div>
+      <div class="note" id="cl-note"></div>
+    </section>
+    <div class="clgrid" id="cl-grid"></div>
   </div>
 
   <div id="view-grooming" hidden>
@@ -279,7 +316,7 @@ async function busy(button, work) {
 }
 
 function showView(name) {
-  for (const view of ["bookmarks", "grooming", "settings"]) {
+  for (const view of ["bookmarks", "clusters", "grooming", "settings"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -475,6 +512,78 @@ async function runSync(button, dryRun) {
 $("preview-sync").onclick = () => runSync($("preview-sync"), true);
 $("run-sync").onclick = () => runSync($("run-sync"), false);
 
+/* ---- clusters ---- */
+
+let clusterFilter = null;  // { key: "<run id>:<number>", label }
+
+function setClusterFilter(filter) {
+  clusterFilter = filter;
+  $("filterrow").hidden = !filter;
+  if (filter) $("filtertext").textContent = "Cluster: " + filter.label;
+}
+$("filterclear").onclick = () => { setClusterFilter(null); loadBookmarks(true).catch(() => {}); };
+
+function renderRun(run) {
+  const grid = $("cl-grid");
+  grid.replaceChildren();
+  $("cl-delete").hidden = !run;
+  if (!run) { note("cl-note", "No clustering yet. Press Cluster to make one.", "muted"); return; }
+  const m = run.metrics;
+  note("cl-note", run.clusters.length + " clusters of " + run.params.bookmarks + " bookmarks with " + run.algorithm
+    + ". Separation " + (m.silhouette || 0).toFixed(2) + " (0 = overlapping, 1 = clearly apart). Made "
+    + new Date(run.created_at).toLocaleString() + ".", "muted");
+  for (const item of run.clusters) {
+    const title = el("h3", { textContent: item.label });
+    const rename = el("button", { className: "linkish", textContent: "rename" });
+    rename.onclick = () => {
+      const input = el("input", { type: "text", value: item.label });
+      input.setAttribute("aria-label", "Cluster name");
+      const save = async () => {
+        try { renderRun((await api("POST", "/api/clusters/label", { run_id: run.run_id, cluster: item.cluster, label: input.value })).run); }
+        catch (error) { note("cl-note", error.message, "bad"); }
+      };
+      input.onkeydown = (event) => { if (event.key === "Enter") save(); if (event.key === "Escape") renderRun(run); };
+      input.onblur = save;
+      title.replaceWith(input); input.focus(); input.select();
+    };
+    const show = el("button", { className: "linkish", textContent: "show bookmarks" });
+    show.onclick = () => {
+      setClusterFilter({ key: run.run_id + ":" + item.cluster, label: item.label });
+      $("search").value = ""; showView("bookmarks"); loadBookmarks(true).catch(() => {});
+    };
+    grid.append(el("div", { className: "clcard" }, [title,
+      el("div", { className: "size", textContent: item.size + (item.size === 1 ? " bookmark" : " bookmarks") }),
+      el("div", { className: "chips" }, item.top_tags.map((t) => el("span", { className: "chip", textContent: t.name + " " + t.count }))),
+      el("ul", {}, item.samples.slice(0, 4).map((s) => el("li", { textContent: s }))),
+      el("div", { className: "acts" }, [show, rename])]));
+  }
+}
+
+async function loadClusters(runId) {
+  const runs = (await api("GET", "/api/clusters/runs")).runs;
+  const select = $("cl-runs");
+  select.replaceChildren();
+  for (const run of runs) {
+    select.append(el("option", { value: run.run_id, selected: run.run_id === runId,
+      textContent: new Date(run.created_at).toLocaleString() + " · " + run.k + " clusters · " + run.algorithm }));
+  }
+  select.disabled = runs.length === 0;
+  const wanted = runId || (runs[0] && runs[0].run_id);
+  renderRun(wanted ? (await api("GET", "/api/clusters/run?id=" + encodeURIComponent(wanted))).run : null);
+}
+$("cl-runs").onchange = () => loadClusters($("cl-runs").value).catch((e) => note("cl-note", e.message, "bad"));
+$("cl-run").onclick = () => busy($("cl-run"), async () => {
+  note("cl-note", "Clustering…", "muted");
+  try {
+    const run = (await api("POST", "/api/clusters/run", { k: $("cl-k").value.trim() || "auto", algorithm: $("cl-algo").value })).run;
+    await loadClusters(run.run_id);
+  } catch (error) { note("cl-note", error.message, "bad"); }
+});
+$("cl-delete").onclick = async () => {
+  try { await api("POST", "/api/clusters/delete", { run_id: $("cl-runs").value }); if (clusterFilter) setClusterFilter(null); await loadClusters(); }
+  catch (error) { note("cl-note", error.message, "bad"); }
+};
+
 /* ---- grooming ---- */
 
 const previews = {};  // script name -> last preview
@@ -615,7 +724,8 @@ function safeLink(url) {
 async function loadBookmarks(reset) {
   if (reset) shown = 0;
   const q = $("search").value.trim();
-  const data = await api("GET", "/api/bookmarks?limit=100&offset=" + shown + "&q=" + encodeURIComponent(q));
+  const data = await api("GET", "/api/bookmarks?limit=100&offset=" + shown + "&q=" + encodeURIComponent(q)
+    + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : ""));
   total = data.total;
   const holder = $("list");
   if (reset) holder.replaceChildren();
@@ -680,7 +790,7 @@ function refreshSelection() {
   $("sel-count").textContent = n + (n === 1 ? " bookmark selected" : " bookmarks selected");
   const q = $("search").value.trim();
   $("sel-all").hidden = n >= total;
-  $("sel-all").textContent = "select all " + total + (q ? " matching" : "");
+  $("sel-all").textContent = "select all " + total + (q || clusterFilter ? " matching" : "");
   const all = $("pick-all");
   if (all) { const boxes = [...document.querySelectorAll("td.pick input")]; all.checked = boxes.length > 0 && boxes.every((b) => b.checked); }
   clearTimeout(tagsTimer);
@@ -739,7 +849,8 @@ $("sel-delete").onclick = () => {
 $("sel-clear").onclick = () => { keepNote = false; selection.clear(); for (const box of document.querySelectorAll("td.pick input")) box.checked = false; refreshSelection(); };
 $("sel-all").onclick = async () => {
   try {
-    const ids = (await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent($("search").value.trim()))).ids;
+    const ids = (await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent($("search").value.trim())
+      + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : ""))).ids;
     for (const id of ids) selection.add(id);
     for (const box of document.querySelectorAll("td.pick input")) box.checked = selection.has(box.dataset.id);
     refreshSelection();
@@ -761,6 +872,7 @@ $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeou
 $("more").onclick = () => loadBookmarks(false);
 $("tab-bookmarks").onclick = () => showView("bookmarks");
 $("tab-settings").onclick = () => showView("settings");
+$("tab-clusters").onclick = () => { showView("clusters"); loadClusters().catch((e) => note("cl-note", e.message, "bad")); };
 $("tab-grooming").onclick = () => { showView("grooming"); loadGrooming().catch((e) => note("scripts-note", e.message, "bad")); };
 
 (async () => {

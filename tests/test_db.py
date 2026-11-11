@@ -58,7 +58,7 @@ def test_doctor_offline_reports_the_installation(tmp_path, capsys, monkeypatch):
 
     main(["--db", str(path), "init"])
     assert main(["--db", str(path), "doctor", "--offline"]) == 0
-    assert "schema 1, 0 bookmarks" in capsys.readouterr().out
+    assert f"schema {db.latest_version()}, 0 bookmarks" in capsys.readouterr().out
 
 
 def test_doctor_judges_the_notion_answer(tmp_path, capsys, monkeypatch):

@@ -4,6 +4,60 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: phase 3, vectors, clusters and the e-means test
+
+**Published before this:** v0.2.1 (portable data folder), with both smoke
+tests green.
+
+**Works**
+
+- `atlas embed`, `atlas cluster [--k N|auto] [--algo ...]`, `atlas compare`.
+- Schema version 2: `embeddings`, `runs`, `run_items`, `run_artifacts`,
+  `cluster_edits`.
+- Clusters tab: run, list of runs, cluster cards, rename, delete run, "show
+  bookmarks" (a cluster filter on the list that works with search, selection
+  and export).
+- e-means vendored from Faiss in `src/atlas/vendor/e_means` (MIT, commit
+  f777f7d), with a NumPy replacement for `faiss.knn`.
+
+**Checked on the real collection (956 bookmarks, groomed)**
+
+- Full comparison in `docs/reports/e-means-test.md`: e-means equals k-means in
+  quality at this size.
+- Auto picks 16 clusters; they read as topics.
+- Clusters tab driven in Chrome: auto run, e-means run with 24, rename, filter
+  the list by cluster, select the whole cluster, delete a run. No page errors.
+
+**Decided**
+
+- k-means is the default engine. e-means and e-means++ are selectable.
+- Vectors are LSA (TF-IDF then truncated SVD), 48 directions stored, the first
+  16 used for clustering. Chosen from measurements, not taste: see the report.
+- Vectors are rebuilt whenever a bookmark's text changed; a run stores its
+  labels and centroids, so an old run stays viewable.
+- NumPy is the only new dependency. It is optional for the Python package
+  (`pip install .[analysis]`) and bundled in the installer.
+- The k-means baseline keeps the best of 3 starts, as libraries do.
+
+**Found along the way**
+
+- Plain e-means with random starts merges topics on very small sets (15 of 20
+  seeds correct on a 72-item toy, against 20 of 20 for k-means), and its
+  scaling laws pick odd settings far below the sizes the paper studied.
+- With one start, my k-means missed the optimum on a toy set; restarts fixed
+  it and scikit-learn now agrees to 0.1%.
+
+**Known gaps**
+
+- LSA vectors only. No neural embedding model yet.
+- Vocabulary is capped at 6,000 terms and the matrix is dense: fine for
+  thousands of bookmarks, not designed for hundreds of thousands.
+- No 2D map yet: that is phase 4.
+
+**Next**
+
+- Publish 0.3.0. Phase 4: the map.
+
 ## 2026-11-11: v0.2.0 published; portable data folder (0.2.1)
 
 **Published**

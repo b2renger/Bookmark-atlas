@@ -4,12 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bookmark-atlas"
-version = "0.2.1"
+version = "0.3.0"
 description = "Explore and groom a bookmark collection stored in a local SQLite file"
 readme = "README.md"
 requires-python = ">=3.11"
 # Phase 1 uses the standard library only. Dependencies arrive with later phases.
 dependencies = []
+
+[project.optional-dependencies]
+# Vectors and clustering. The desktop app bundles it.
+analysis = ["numpy"]
 
 [project.scripts]
 atlas = "atlas.cli:main"
@@ -18,7 +22,7 @@ atlas = "atlas.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-atlas = ["migrations/*.sql", "web/*.html"]
+atlas = ["migrations/*.sql", "web/*.html", "vendor/e_means/LICENSE", "vendor/e_means/README.md"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "tests"]
@@ -26,6 +30,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["src/atlas/vendor"]
 src = ["src", "tests"]
 
 [tool.ruff.lint]

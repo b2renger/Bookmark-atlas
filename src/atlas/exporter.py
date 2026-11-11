@@ -20,9 +20,18 @@ EXPORT_FIELDS = [
 ]
 
 
-def search_clause(text: str | None) -> tuple[str, list]:
-    """WHERE clause and parameters for live bookmarks matching a search text."""
+def search_clause(text: str | None, cluster: str | None = None) -> tuple[str, list]:
+    """WHERE clause and parameters for live bookmarks matching a search text
+    and, optionally, belonging to one cluster of a run (``"<run id>:<number>"``)."""
     where, params = "deleted_at IS NULL", []
+    if cluster:
+        run_id, _, number = cluster.partition(":")
+        try:
+            number = int(number)
+        except ValueError:
+            raise ValueError("A cluster filter looks like <run id>:<number>.") from None
+        where += " AND id IN (SELECT bookmark_id FROM run_items WHERE run_id = ? AND cluster = ?)"
+        params = [run_id, number]
     text = (text or "").strip()
     if text:
         like = f"%{text}%"
@@ -31,12 +40,14 @@ def search_clause(text: str | None) -> tuple[str, list]:
             "SELECT bookmark_id FROM bookmark_tags JOIN tags ON tags.id = tag_id "
             "WHERE name LIKE ?))"
         )
-        params = [like, like, like, like, like]
+        params = [*params, like, like, like, like, like]
     return where, params
 
 
-def matching_ids(conn: sqlite3.Connection, text: str | None) -> list[str]:
-    where, params = search_clause(text)
+def matching_ids(
+    conn: sqlite3.Connection, text: str | None, cluster: str | None = None
+) -> list[str]:
+    where, params = search_clause(text, cluster)
     return [row[0] for row in conn.execute(f"SELECT id FROM bookmarks WHERE {where}", params)]
 
 

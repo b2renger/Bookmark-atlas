@@ -164,7 +164,11 @@ class App:
     def bookmark_ids(self, query: dict) -> dict:
         conn = self._conn()
         try:
-            return {"ids": matching_ids(conn, (query.get("q") or [""])[0])}
+            return {
+                "ids": matching_ids(
+                    conn, (query.get("q") or [""])[0], (query.get("cluster") or [None])[0]
+                )
+            }
         finally:
             conn.close()
 
@@ -197,6 +201,69 @@ class App:
         conn = self._conn()
         try:
             return bundle.export_bundle(conn, None if ids is None else [str(i) for i in ids])
+        finally:
+            conn.close()
+
+    def cluster_runs(self) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            return {"runs": store.list_runs(conn), "default_algorithm": store.DEFAULT_ALGORITHM}
+        finally:
+            conn.close()
+
+    def cluster_show(self, query: dict) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            run_id = (query.get("id") or [""])[0] or store.latest_run_id(conn)
+            return {"run": store.describe_run(conn, run_id) if run_id else None}
+        finally:
+            conn.close()
+
+    def cluster_new(self, body: dict) -> dict:
+        from atlas.analysis import store
+
+        k = body.get("k")
+        if k in (None, "", "auto"):
+            k = None
+        else:
+            try:
+                k = int(k)
+            except (TypeError, ValueError):
+                raise ValueError("The number of clusters must be a whole number.") from None
+        conn = self._conn()
+        try:
+            run = store.cluster_run(
+                conn,
+                k,
+                algorithm=str(body.get("algorithm") or store.DEFAULT_ALGORITHM),
+                seed=int(body.get("seed") or 0),
+            )
+            return {"run": run}
+        finally:
+            conn.close()
+
+    def cluster_label(self, body: dict) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            run_id = str(body.get("run_id") or "")
+            store.set_cluster_label(conn, run_id, int(body.get("cluster")), body.get("label"))
+            return {"run": store.describe_run(conn, run_id)}
+        finally:
+            conn.close()
+
+    def cluster_delete(self, body: dict) -> dict:
+        from atlas.analysis import store
+
+        conn = self._conn()
+        try:
+            store.delete_run(conn, str(body.get("run_id") or ""))
+            return {"runs": store.list_runs(conn)}
         finally:
             conn.close()
 
@@ -263,7 +330,7 @@ class App:
         text = (query.get("q") or [""])[0].strip()
         limit = max(1, min(int((query.get("limit") or ["100"])[0]), 500))
         offset = max(0, int((query.get("offset") or ["0"])[0]))
-        where, params = search_clause(text)
+        where, params = search_clause(text, (query.get("cluster") or [None])[0])
         conn = self._conn()
         try:
             total = conn.execute(
@@ -365,6 +432,11 @@ def make_handler(app: App):
                 ("POST", "/api/bookmarks/tags"): lambda: app.selection_tags(self._body()),
                 ("POST", "/api/bookmarks/batch"): lambda: app.batch_edit(self._body()),
                 ("POST", "/api/bookmarks/export"): lambda: app.export_selection(self._body()),
+                ("GET", "/api/clusters/runs"): lambda: app.cluster_runs(),
+                ("GET", "/api/clusters/run"): lambda: app.cluster_show(parse_qs(url.query)),
+                ("POST", "/api/clusters/run"): lambda: app.cluster_new(self._body()),
+                ("POST", "/api/clusters/label"): lambda: app.cluster_label(self._body()),
+                ("POST", "/api/clusters/delete"): lambda: app.cluster_delete(self._body()),
                 ("GET", "/api/groom/scripts"): lambda: app.groom_scripts(),
                 ("GET", "/api/groom/history"): lambda: app.groom_history(),
                 ("POST", "/api/groom/preview"): lambda: app.groom_preview(self._body()),

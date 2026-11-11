@@ -451,6 +451,65 @@ def _cmd_groom_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_embed(args: argparse.Namespace) -> int:
+    from atlas.analysis import store
+
+    conn = db.open_ready(args.db)
+    try:
+        info = store.embed(conn, dim=args.dim)
+    finally:
+        conn.close()
+    print(
+        f"Built {info['documents']} vectors ({info['model']}) from a vocabulary of "
+        f"{info['vocabulary']} terms."
+    )
+    return 0
+
+
+def _print_run(run: dict) -> None:
+    metrics = run["metrics"]
+    print(
+        f"{run['algorithm']}, {len(run['clusters'])} clusters, "
+        f"loss {metrics.get('mse', 0):.4f}, silhouette {metrics.get('silhouette', 0):.3f}, "
+        f"{metrics.get('seconds', 0) * 1000:.0f} ms  (run {run['run_id'][:8]})"
+    )
+    for item in run["clusters"]:
+        print(f"  {item['size']:>4}  {item['label']}")
+        for title in item["samples"][:3]:
+            print(f"          {title[:90]}")
+
+
+def _cmd_cluster(args: argparse.Namespace) -> int:
+    from atlas.analysis import store
+
+    conn = db.open_ready(args.db)
+    try:
+        k = None if args.k in (None, "auto") else int(args.k)
+        run = store.cluster_run(conn, k, algorithm=args.algo, seed=args.seed, epochs=args.epochs)
+    finally:
+        conn.close()
+    _print_run(run)
+    return 0
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    from atlas.analysis import store
+
+    ks = [int(item) for item in args.k.split(",")] if args.k else None
+    conn = db.open_ready(args.db)
+    try:
+        data = store.compare(conn, ks, seeds=args.seeds, dims=args.dims)
+    finally:
+        conn.close()
+    text = store.comparison_markdown(data)
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+        print(f"Wrote {args.output}.")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Bookmark Atlas")
     parser.add_argument("--version", action="version", version=f"atlas {__version__}")
@@ -567,6 +626,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     groom_history = groom_commands.add_parser("history", help="list past runs")
     groom_history.set_defaults(func=_cmd_groom_history)
+
+    embed = commands.add_parser("embed", help="build the text vectors used for clustering")
+    embed.add_argument("--dim", type=int, default=48)
+    embed.set_defaults(func=_cmd_embed)
+
+    cluster = commands.add_parser("cluster", help="group the bookmarks into clusters")
+    cluster.add_argument("--k", default="auto", help="number of clusters, or auto (default)")
+    cluster.add_argument("--algo", choices=["k-means", "e-means", "e-means++"], default="k-means")
+    cluster.add_argument("--seed", type=int, default=0)
+    cluster.add_argument(
+        "--epochs", type=int, help="passes over the data (engine default if unset)"
+    )
+    cluster.set_defaults(func=_cmd_cluster)
+
+    compare = commands.add_parser("compare", help="compare e-means with k-means on your data")
+    compare.add_argument("--k", help="numbers of clusters, comma-separated (default: a spread)")
+    compare.add_argument("--seeds", type=int, default=5)
+    compare.add_argument("--dims", type=int, default=16, help="vector directions used (default 16)")
+    compare.add_argument("-o", "--output", type=Path, help="write the table to a Markdown file")
+    compare.set_defaults(func=_cmd_compare)
 
     return parser
 

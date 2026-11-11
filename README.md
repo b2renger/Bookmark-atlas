@@ -13,8 +13,10 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 ## Status
 
-Phase 2 of 7. Import (Notion or CSV), browse, and groom the collection with
-scripts. Clustering and the visual views come next.
+Phase 3 of 7. Import (Notion or CSV), browse, groom the collection with
+scripts, and group it into topic clusters. The map and the other visual views
+come next. The e-means test is done: see
+[docs/reports/e-means-test.md](docs/reports/e-means-test.md).
 
 **The Notion import has not been run against the real Notion API with a real
 token yet.** It is tested against a stand-in built from Notion's documentation.
@@ -66,6 +68,10 @@ In **Bookmarks**, tick rows (or "select all matching" a search) to add or
 remove a tag, delete, or **export the selection** as a file another Atlas user
 can import from Settings.
 
+In **Clusters**, group the collection by topic. Each cluster shows its telling
+tags and a few bookmarks; rename it, or "show bookmarks" to work on it in the
+list.
+
 Then clean it in **Grooming**: merge duplicates, merge tag spellings, set
 platforms and fix dates. Every script shows a preview first, makes a backup
 before writing, and can be undone. You can add your own scripts: see
@@ -105,7 +111,7 @@ parameters, or a trailing slash do not create duplicates.
 Needs Python 3.11 or later; the backend uses the standard library only.
 
 ```sh
-python3 -m pip install -e .
+python3 -m pip install -e ".[analysis]"
 atlas ui                                # the interface, in your browser
 python -m pytest
 ruff check . && ruff format --check .
@@ -128,6 +134,8 @@ atlas groom list                        # grooming scripts
 atlas groom preview normalize-tags      # what it would change
 atlas groom apply normalize-tags
 atlas groom undo last
+atlas cluster                           # group by topic (needs numpy)
+atlas compare                           # e-means against k-means on your data
 atlas doctor                            # check the installation and Notion access
 ```
 

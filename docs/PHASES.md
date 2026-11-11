@@ -9,8 +9,8 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 0 | Scaffolding | v0.2.0 | done |
 | 1 | Local store and import | v0.2.0 | done, Notion token import untried with a real token |
 | 2 | Grooming, batch edits, sharing | v0.2.0, v0.2.1 | done, four planned scripts still to write |
-| 3 | Embeddings and the e-means test | | next |
-| 4 | Map view | | |
+| 3 | Vectors, clusters and the e-means test | v0.3.0 | done |
+| 4 | Map view | | next |
 | 5 | Saved views and snapshots | | |
 | 6 | Self-organising map and pearl tree | | |
 | 7 | Links and tendencies | | |
@@ -61,3 +61,26 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Left for later:** similar-title duplicates, tag synonyms, publication
   dates fetched from the platforms, dead-link check, review screen for rows
   edited in Notion.
+
+## Phase 3: vectors, clusters and the e-means test
+
+- **Vectors without a model download.** Each bookmark becomes a vector from
+  the words of its title, summary and tags (latent semantic analysis, NumPy
+  only). Rebuilt automatically when the text changes.
+- **Clusters tab.** Auto or chosen number of clusters, three methods, cluster
+  cards with telling tags and sample bookmarks, rename, and "show bookmarks"
+  which filters the list so a whole cluster can be selected, tagged or
+  exported.
+- **e-means is the reference code.** The NumPy class from the Faiss repository
+  is vendored unmodified; only its nearest-centroid search is replaced by an
+  exact NumPy one.
+- **Verdict on e-means:** equal to k-means at this size (losses within about
+  1% either way, same repeatability). Its advantage is speed on data a
+  thousand times larger. k-means stays the default; e-means is selectable.
+  Report: [reports/e-means-test.md](reports/e-means-test.md).
+- **What mattered more than the algorithm:** the vectors. Using 16 directions
+  gave separated, repeatable clusters (stability 0.8); using 128 gave mush
+  (0.4).
+- **On the real collection:** auto picks 16 clusters, and they read as topics.
+- **Left for later:** a neural embedding model, which should separate topics
+  better and would need a download.
