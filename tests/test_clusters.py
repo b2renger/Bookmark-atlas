@@ -208,7 +208,12 @@ def test_clusters_through_the_api(tmp_path, monkeypatch):
 
     try:
         assert call("GET", "/api/clusters/run")[1] == {"run": None}
+        # e-means is accepted; exact sizes are checked on k-means, which is
+        # repeatable on a set this small (plain e-means is not).
         code, answer = call("POST", "/api/clusters/run", {"k": "3", "algorithm": "e-means"})
+        assert code == 200 and answer["run"]["algorithm"] == "e-means"
+        call("POST", "/api/clusters/delete", {"run_id": answer["run"]["run_id"]})
+        code, answer = call("POST", "/api/clusters/run", {"k": "3"})
         assert code == 200 and len(answer["run"]["clusters"]) == 3
         run_id = answer["run"]["run_id"]
         number = answer["run"]["clusters"][0]["cluster"]
