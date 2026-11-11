@@ -67,6 +67,57 @@ def _cmd_import_csv(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export(args: argparse.Namespace) -> int:
+    from atlas.exporter import export_bookmarks, write_csv, write_json
+
+    conn = db.open_ready(args.db)
+    try:
+        rows = export_bookmarks(conn, include_deleted=args.include_deleted)
+    finally:
+        conn.close()
+
+    write = write_csv if args.format == "csv" else write_json
+    if args.output:
+        with open(args.output, "w", encoding="utf-8", newline="") as handle:
+            write(rows, handle)
+        print(f"Wrote {len(rows)} bookmarks to {args.output}.")
+    else:
+        write(rows, sys.stdout)
+    return 0
+
+
+def _cmd_status(args: argparse.Namespace) -> int:
+    from atlas.exporter import status
+
+    conn = db.open_ready(args.db)
+    try:
+        info = status(conn)
+        version = db.schema_version(conn)
+    finally:
+        conn.close()
+
+    print(f"{args.db} (schema version {version})")
+    lines = [
+        ("bookmarks", info["bookmarks"]),
+        ("deleted or merged", info["deleted"]),
+        ("source records", info["source_records"]),
+        ("waiting for review", info["pending_review"]),
+        ("tags", info["tags"]),
+        ("tags used once", info["tags_used_once"]),
+        ("bookmarks without tags", info["without_tags"]),
+        ("without save date", info["without_saved_at"]),
+        ("without publication date", info["without_published_at"]),
+        ("without platform", info["without_platform"]),
+    ]
+    for label, count in lines:
+        print(f"  {label:<26}{count:>6}")
+    if info["top_domains"]:
+        print("  top domains")
+        for domain, count in info["top_domains"]:
+            print(f"    {domain:<24}{count:>6}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="atlas", description="Bookmark Atlas")
     parser.add_argument("--version", action="version", version=f"atlas {__version__}")
@@ -92,6 +143,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="report what would happen without writing"
     )
     import_csv.set_defaults(func=_cmd_import_csv)
+
+    export = commands.add_parser("export", help="write the bookmarks as CSV or JSON")
+    export.add_argument("--format", choices=["csv", "json"], default="csv")
+    export.add_argument(
+        "-o", "--output", type=Path, help="file to write (default: standard output)"
+    )
+    export.add_argument(
+        "--include-deleted", action="store_true", help="also export deleted and merged bookmarks"
+    )
+    export.set_defaults(func=_cmd_export)
+
+    status = commands.add_parser("status", help="summarise the state of the collection")
+    status.set_defaults(func=_cmd_status)
 
     return parser
 

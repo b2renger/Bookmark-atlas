@@ -4,6 +4,41 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: phase 1, export and status
+
+**Works**
+
+- `atlas export --format csv|json [-o FILE] [--include-deleted]`.
+- `atlas status`: counts of bookmarks, deleted, source records, records waiting
+  for review, tags, and fields still empty.
+- README explains how to run everything so far.
+
+**Checked on the real export**
+
+- CSV and JSON exports both hold 956 bookmarks, in the same order, with the
+  same tags.
+- Status after import: 6 records waiting for review, 1,843 of 2,368 tags used
+  only once, 439 bookmarks without a save date, none with a publication date or
+  platform yet. These are the numbers phase 2 should move.
+
+**Decided**
+
+- Exports contain curated fields only: no source records, no journal.
+- In CSV, tags share one column joined by ", ", as Notion does. In JSON they
+  are a list.
+- Deleted and merged bookmarks are left out unless `--include-deleted` is given.
+
+**Not done in phase 1 yet**
+
+- Notion sync (`atlas connect`, `atlas sync`). It needs a Notion connection
+  token and the table shared with it, and should be tested against the real
+  API, not only against fakes.
+
+**Next**
+
+- Either the Notion sync, or phase 2 grooming on the CSV-imported data. The
+  two are independent.
+
 ## 2026-11-11: phase 1, CSV import
 
 **Works**
