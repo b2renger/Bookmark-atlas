@@ -4,6 +4,17 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: v0.7.1 replaces a wrong v0.7.0
+
+**What happened:** the 0.7.0 release run was started seconds after the push,
+and GitHub built it from the previous commit. The installer named 0.7.0
+contains phase 6 only. Its release page now says so.
+
+**Fix:** version 0.7.1 from the right commit. The release workflow now
+refuses to publish a version that is not the one in `pyproject.toml` at the
+commit being built. Before starting a release, check that `main` on GitHub
+is the commit just pushed.
+
 ## 2026-11-11: v0.6.0 published; phase 7, links and tendencies
 
 **Published:** v0.6.0.

@@ -13,7 +13,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 4 | Map view | v0.4.0 | done |
 | 5 | Saved views and snapshots | v0.5.0 | done |
 | 6 | Self-organising map and pearl tree | v0.6.0 | done, drag and drop, merge and split left out |
-| 7 | Links and tendencies | v0.7.0 | done |
+| 7 | Links and tendencies | v0.7.1 | done (v0.7.0 was built from the wrong commit) |
 
 ## Phase 0: scaffolding
 

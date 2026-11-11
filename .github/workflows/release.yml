@@ -7,8 +7,8 @@
 #   "Run workflow" with the version left empty -> test, build, smoke-test; the
 #                          installer is attached to the run, nothing published
 #
-# The app version comes from the version given, so cutting a release is one
-# click in the Actions tab (it works from a phone).
+# The version given must be the one written in pyproject.toml at that commit,
+# so a release cannot be built from the wrong commit. Trial builds need nothing.
 # Builds are unsigned (no paid certificate), like ComfyQ and LlmOnLan.
 
 name: release
@@ -76,6 +76,15 @@ jobs:
               exit 1
             fi
             echo "publish=true" >> "$GITHUB_OUTPUT"
+            # A release must be built from the commit that carries its version.
+            # (v0.7.0 was once built from the commit before, because the run
+            # was started while the push was still arriving.)
+            declared="$(sed -n 's/^version = "\([^"]*\)".*$/\1/p' pyproject.toml | head -1)"
+            if [[ "$declared" != "$version" ]]; then
+              echo "Asked to publish $version, but this commit is version $declared (pyproject.toml)." >&2
+              echo "Bump the version in pyproject.toml, src/atlas/__init__.py and desktop/package.json, push, then run again." >&2
+              exit 1
+            fi
             echo "tag=v$version" >> "$GITHUB_OUTPUT"
           else
             version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
