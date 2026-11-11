@@ -310,37 +310,49 @@ def import_csv(
     dry_run: bool = False,
 ) -> ImportReport:
     """Import a CSV export. All rows succeed together or nothing is written."""
-    report = ImportReport(dry_run=dry_run)
     with open(path, encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if not reader.fieldnames:
-            raise ValueError(f"{path} has no header row.")
-        mapping = resolve_columns(list(reader.fieldnames), columns)
-        try:
-            # Row numbers match what a spreadsheet shows: the header is row 1.
-            for number, row in enumerate(reader, start=2):
-                report.rows += 1
-                url = (row.get(mapping["url"]) or "").strip()
-                if not url:
-                    report.skipped.append((number, "no URL"))
-                    continue
-                try:
-                    import_record(
-                        conn,
-                        report,
-                        source="csv",
-                        raw={key: value for key, value in row.items() if key is not None},
-                        url=url,
-                        title=row.get(mapping.get("title", "")),
-                        summary=row.get(mapping.get("summary", "")),
-                        tags=split_tags(row.get(mapping.get("tags", ""))),
-                        date_text=row.get(mapping.get("date", "")),
-                    )
-                except ValueError as error:
-                    report.skipped.append((number, str(error)))
-        except BaseException:
-            conn.rollback()
-            raise
+        return import_csv_stream(conn, handle, columns=columns, dry_run=dry_run, name=str(path))
+
+
+def import_csv_stream(
+    conn: sqlite3.Connection,
+    handle,
+    *,
+    columns: dict[str, str] | None = None,
+    dry_run: bool = False,
+    name: str = "the file",
+) -> ImportReport:
+    """Import CSV text from an open stream, under the same rules as a file."""
+    report = ImportReport(dry_run=dry_run)
+    reader = csv.DictReader(handle)
+    if not reader.fieldnames:
+        raise ValueError(f"{name} has no header row.")
+    mapping = resolve_columns(list(reader.fieldnames), columns)
+    try:
+        # Row numbers match what a spreadsheet shows: the header is row 1.
+        for number, row in enumerate(reader, start=2):
+            report.rows += 1
+            url = (row.get(mapping["url"]) or "").strip()
+            if not url:
+                report.skipped.append((number, "no URL"))
+                continue
+            try:
+                import_record(
+                    conn,
+                    report,
+                    source="csv",
+                    raw={key: value for key, value in row.items() if key is not None},
+                    url=url,
+                    title=row.get(mapping.get("title", "")),
+                    summary=row.get(mapping.get("summary", "")),
+                    tags=split_tags(row.get(mapping.get("tags", ""))),
+                    date_text=row.get(mapping.get("date", "")),
+                )
+            except ValueError as error:
+                report.skipped.append((number, str(error)))
+    except BaseException:
+        conn.rollback()
+        raise
     if dry_run:
         conn.rollback()
     else:

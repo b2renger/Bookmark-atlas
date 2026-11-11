@@ -223,3 +223,78 @@ def test_unexpected_failure_does_not_leak_details(site, monkeypatch, capsys):
     assert code == 500
     assert "ZeroDivision" not in json.dumps(answer)
     assert "ZeroDivisionError" in capsys.readouterr().err
+
+
+def test_csv_import_through_the_api(site):
+    content = FIXTURE.read_text(encoding="utf-8")  # keeps the byte-order mark, as a browser would
+
+    code, answer = site.call(
+        "POST", "/api/import-csv", {"filename": "export.csv", "content": content, "dry_run": True}
+    )
+    assert code == 200 and answer["report"]["created"] == 5 and answer["status"]["bookmarks"] == 0
+
+    code, answer = site.call(
+        "POST", "/api/import-csv", {"filename": "export.csv", "content": content}
+    )
+    assert code == 200
+    assert answer["report"]["created"] == 5 and answer["report"]["pending"] == 1
+    assert answer["report"]["skipped"][0] == {"id": "8", "reason": "no URL"}
+    assert answer["status"]["bookmarks"] == 5
+
+    code, answer = site.call(
+        "POST", "/api/import-csv", {"filename": "export.csv", "content": content}
+    )
+    assert answer["report"]["created"] == 0 and answer["report"]["unchanged"] == 6
+
+
+def test_csv_import_errors_are_messages(site):
+    code, answer = site.call("POST", "/api/import-csv", {})
+    assert code == 400 and "Choose a CSV file" in answer["error"]
+    code, answer = site.call(
+        "POST",
+        "/api/import-csv",
+        {"filename": "odd.csv", "content": "Name,Address\nA,https://example.org\n"},
+    )
+    assert code == 400 and "No URL column" in answer["error"]
+
+
+def test_state_reports_the_app_version(site, monkeypatch):
+    assert site.call("GET", "/api/state")[1]["version"] == "0.1.0"
+    monkeypatch.setenv("ATLAS_APP_VERSION", "9.9.9")
+    assert site.call("GET", "/api/state")[1]["version"] == "9.9.9"
+
+
+def test_announce_prints_a_machine_readable_address(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).parent.parent / "src")}
+    env["ATLAS_CONFIG_DIR"] = str(tmp_path / "config")
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-u",
+            "-m",
+            "atlas",
+            "--db",
+            str(tmp_path / "new" / "atlas.sqlite"),
+            "ui",
+            "--port",
+            "0",
+            "--announce",
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    try:
+        line = process.stdout.readline()
+        assert line.startswith("ATLAS_READY ")
+        url = json.loads(line.split(" ", 1)[1])["url"]
+        with urllib.request.urlopen(url, timeout=5) as response:
+            assert "Bookmark Atlas" in response.read().decode()
+        assert (tmp_path / "new" / "atlas.sqlite").exists()
+    finally:
+        process.terminate()
+        process.wait(timeout=5)

@@ -240,9 +240,14 @@ def _cmd_ui(args: argparse.Namespace) -> int:
         db.migrate(conn)
     finally:
         conn.close()
-    if not existed:
+    if not existed and not args.announce:
         print(f"Created {args.db}.")
-    serve(args.db, port=args.port, open_browser=not args.no_browser)
+    serve(
+        args.db,
+        port=args.port,
+        open_browser=not (args.no_browser or args.announce),
+        announce=args.announce,
+    )
     return 0
 
 
@@ -311,7 +316,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync.set_defaults(func=_cmd_sync)
 
     ui = commands.add_parser("ui", help="open the interface in the browser")
-    ui.add_argument("--port", type=int, default=8765, help="local port (default: 8765)")
+    ui.add_argument(
+        "--port", type=int, default=8765, help="local port (default: 8765; 0 picks a free one)"
+    )
+    ui.add_argument(
+        "--announce",
+        action="store_true",
+        help="print the address as one machine-readable line (used by the desktop app)",
+    )
     ui.add_argument("--no-browser", action="store_true", help="do not open the browser")
     ui.set_defaults(func=_cmd_ui)
 

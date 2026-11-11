@@ -36,7 +36,7 @@
   .step { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center;
     border-radius: 50%; background: var(--chip); font-size: 12px; font-weight: 700; margin-right: 8px; }
   label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-  input[type=text], input[type=password], input[type=search], select {
+  input[type=text], input[type=password], input[type=search], input[type=file], select {
     width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
     background: var(--bg); color: var(--ink); font: inherit; }
   input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -153,6 +153,23 @@
       <div class="note" id="sync-note"></div>
       <dl class="report" id="report" hidden></dl>
     </section>
+
+    <section class="card">
+      <h2>Import a CSV file</h2>
+      <p class="help">An export of your table from Notion (••• menu, Export, CSV) can be imported
+        directly, without a token. Links already in the collection are not duplicated, so a CSV
+        import and a Notion import can be combined.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="csv-file">File</label>
+          <input type="file" id="csv-file" accept=".csv,text/csv">
+        </div>
+        <button class="action" id="preview-csv" disabled>Preview</button>
+        <button class="action primary" id="run-csv" disabled>Import file</button>
+      </div>
+      <div class="note" id="csv-note"></div>
+      <dl class="report" id="csv-report" hidden></dl>
+    </section>
   </div>
 </main>
 
@@ -208,7 +225,7 @@ async function refreshState() {
   state = await api("GET", "/api/state");
   const s = state.status;
   $("summary").textContent = s.bookmarks + " bookmarks · " + s.tags + " tags"
-    + (s.pending_review ? " · " + s.pending_review + " to review" : "");
+    + (s.pending_review ? " · " + s.pending_review + " to review" : "") + " · v" + state.version;
 
   const n = state.notion;
   $("forget-token").hidden = !n.token_set || n.token_source === "environment";
@@ -304,6 +321,48 @@ $("save-selection").onclick = () => busy($("save-selection"), async () => {
 });
 
 /* ---- settings: import ---- */
+
+function showCsvReport(report) {
+  const rows = [
+    ["Rows read", report.rows, ""],
+    ["Bookmarks created", report.created, ""],
+    ["Already imported", report.unchanged, ""],
+    ["Same link as an existing bookmark", report.pending, "kept for review, not merged"],
+    ["Deleted here, left deleted", report.tombstoned, ""],
+    ["Dates without a time of day", report.date_only, "left for the date clean-up script"],
+    ["Unreadable dates", report.unreadable_dates, ""],
+    ["Rows skipped", report.skipped.length, report.skipped.slice(0, 3).map((s) => "row " + s.id + ": " + s.reason).join("; ")],
+  ];
+  const list = $("csv-report");
+  list.replaceChildren();
+  for (const [label, value, hint] of rows) {
+    if (!value && label !== "Rows read" && label !== "Bookmarks created") continue;
+    list.append(el("dt", { textContent: label }), el("dd", { textContent: value }), el("span", { textContent: hint }));
+  }
+  list.hidden = false;
+}
+
+async function runCsv(button, dryRun) {
+  const file = $("csv-file").files[0];
+  if (!file) return;
+  await busy(button, async () => {
+    note("csv-note", "Reading " + file.name + "…", "muted");
+    try {
+      const content = await file.text();
+      const result = await api("POST", "/api/import-csv", { filename: file.name, content, dry_run: dryRun });
+      note("csv-note", dryRun ? "Preview only, nothing was written." : "Import finished.", dryRun ? "muted" : "good");
+      showCsvReport(result.report);
+      if (!dryRun) { await refreshState(); await loadBookmarks(true); }
+    } catch (error) { note("csv-note", error.message, "bad"); $("csv-report").hidden = true; }
+  });
+}
+$("csv-file").onchange = () => {
+  const has = $("csv-file").files.length > 0;
+  $("preview-csv").disabled = $("run-csv").disabled = !has;
+  note("csv-note", "", "muted"); $("csv-report").hidden = true;
+};
+$("preview-csv").onclick = () => runCsv($("preview-csv"), true);
+$("run-csv").onclick = () => runCsv($("run-csv"), false);
 
 function showReport(report) {
   const rows = [

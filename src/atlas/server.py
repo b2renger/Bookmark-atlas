@@ -15,25 +15,34 @@ Three guards keep other programs and web pages away from the API:
 
 from __future__ import annotations
 
+import io
 import json
+import os
 import secrets
 import sys
 import traceback
 import webbrowser
 from collections.abc import Callable
+from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from atlas import db, settings
+from atlas import __version__, db, settings
 from atlas.exporter import status
+from atlas.importer import import_csv_stream
 from atlas.notion import NotionClient, NotionError
 from atlas.notion_sync import guess_property_map, select_data_source, selected, sync
 
 DEFAULT_PORT = 8765
-MAX_BODY = 1_000_000
+MAX_BODY = 25_000_000  # room for a CSV export sent by the page
 USER_ERRORS = (ValueError, NotionError, ConnectionError, FileNotFoundError, RuntimeError)
+
+
+def app_version() -> str:
+    """Version shown in the interface: the installed app's, else the package's."""
+    return os.environ.get("ATLAS_APP_VERSION") or __version__
 
 
 def _default_client() -> NotionClient:
@@ -67,6 +76,7 @@ class App:
         try:
             return {
                 "database": str(self.db_path),
+                "version": app_version(),
                 "status": status(conn),
                 "notion": {
                     "token_set": settings.get_token() is not None,
@@ -119,6 +129,24 @@ class App:
                 dry_run=bool(body.get("dry_run")),
             )
             return {"report": report.as_dict(), "status": status(conn)}
+        finally:
+            conn.close()
+
+    def import_csv(self, body: dict) -> dict:
+        content = body.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("Choose a CSV file first.")
+        conn = self._conn()
+        try:
+            report = import_csv_stream(
+                conn,
+                io.StringIO(content.lstrip("\ufeff"), newline=""),
+                dry_run=bool(body.get("dry_run")),
+                name=str(body.get("filename") or "the file"),
+            )
+            data = asdict(report)
+            data["skipped"] = [{"id": str(key), "reason": why} for key, why in report.skipped]
+            return {"report": data, "status": status(conn)}
         finally:
             conn.close()
 
@@ -230,6 +258,7 @@ def make_handler(app: App):
                 ("DELETE", "/api/notion/token"): lambda: app.forget_token(),
                 ("POST", "/api/notion/select"): lambda: app.select(self._body()),
                 ("POST", "/api/notion/sync"): lambda: app.sync(self._body()),
+                ("POST", "/api/import-csv"): lambda: app.import_csv(self._body()),
             }
             route = routes.get((method, url.path))
             if route is None:
@@ -263,7 +292,18 @@ def make_server(app: App, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
     return server
 
 
-def serve(db_path: Path | str, *, port: int = DEFAULT_PORT, open_browser: bool = True) -> None:
+def serve(
+    db_path: Path | str,
+    *,
+    port: int = DEFAULT_PORT,
+    open_browser: bool = True,
+    announce: bool = False,
+) -> None:
+    """Run the interface until interrupted.
+
+    With ``announce``, the address is printed as one machine-readable line
+    (``ATLAS_READY {"url": ...}``) for the desktop shell that started us.
+    """
     app = App(db_path)
     try:
         server = make_server(app, port)
@@ -272,13 +312,17 @@ def serve(db_path: Path | str, *, port: int = DEFAULT_PORT, open_browser: bool =
             raise
         server = make_server(app, 0)  # the usual port is taken: use any free one
     address = f"http://127.0.0.1:{server.server_address[1]}/"
-    print(f"Bookmark Atlas is running at {address}")
-    print("Press Ctrl+C to stop.")
+    if announce:
+        print("ATLAS_READY " + json.dumps({"url": address}), flush=True)
+    else:
+        print(f"Bookmark Atlas is running at {address}", flush=True)
+        print("Press Ctrl+C to stop.", flush=True)
     if open_browser:
         webbrowser.open(address)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopped.")
+        if not announce:
+            print("\nStopped.")
     finally:
         server.server_close()
