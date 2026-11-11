@@ -8,7 +8,9 @@ short form, so `git log` reads as a history of the project's state.
 
 **What happened:** the 0.7.0 release run was started seconds after the push,
 and GitHub built it from the previous commit. The installer named 0.7.0
-contains phase 6 only. Its release page now says so.
+contains phase 6 only. Its release page still describes nothing of this:
+releases cannot be edited from the development session, so the page has to
+be renamed or deleted by hand on GitHub.
 
 **Fix:** version 0.7.1 from the right commit. The release workflow now
 refuses to publish a version that is not the one in `pyproject.toml` at the
