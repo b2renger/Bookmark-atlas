@@ -4,6 +4,60 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-11: first usable build, local interface
+
+**Works**
+
+- `atlas ui` starts a local web page and opens it in the browser.
+- Settings: token field (checked with Notion before it is stored), list of
+  tables, column mapping with a guess, Preview and Import, report.
+- Bookmarks: list with search over titles, summaries, links and tags.
+- The page reopens on the selected table and mapping after a reload.
+
+**Tested how**
+
+- Server and API: automated tests (`tests/test_server.py`).
+- The page itself: driven in Chrome through the whole flow against the fake
+  Notion: wrong token, right token, list, pick, bad mapping, preview, import,
+  second import, list, show more, search, reload. Light and dark, wide and
+  420 px wide. This browser run is not part of the test suite yet.
+- Bookmark text containing HTML is shown as text, and a `javascript:` link is
+  refused at import.
+- Still not run against the real Notion API.
+
+**Decided**
+
+- The first build is a local web interface served by the Python package, not
+  the Tauri shell. It needs only Python to run, and the same page will be
+  wrapped by the desktop shell later. Tauri moves from "phase 4 prerequisite"
+  to "packaging step".
+- The page calls a JSON API under `/api`; each call lands in the same functions
+  as the command line.
+- The server listens on 127.0.0.1 only, refuses requests addressed to any
+  other host name, and requires a random per-run token on every API call, so
+  other web pages open in the browser cannot reach it. A content security
+  policy forbids loading anything from elsewhere.
+- The API never sends the Notion token back, only a masked hint.
+- `atlas ui` creates the database if it does not exist. Other commands still
+  refuse a missing database.
+- Help text names both token kinds Notion offers: personal access token (no
+  sharing step) and internal connection token (database must be shared).
+
+**Known gaps**
+
+- No review screen yet for records waiting for review. `atlas status` and the
+  header show the count.
+- No CSV import from the interface, only from the command line.
+- Imports run inside the request. Fine for a thousand rows; a progress display
+  is needed before much larger tables.
+- No continuous integration.
+
+**Next**
+
+- Run Preview and Import against the real table and compare with the CSV
+  profile (956 bookmarks expected).
+- Phase 2 grooming.
+
 ## 2026-11-11: phase 1, Notion connection and sync
 
 **Works**

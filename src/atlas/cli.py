@@ -191,7 +191,8 @@ def _cmd_notion_select(args: argparse.Namespace) -> int:
 def _print_sync_report(report) -> None:
     kind = "full" if report.full else "incremental"
     prefix = "Dry run, nothing written: " if report.dry_run else "Synced "
-    print(f"{prefix}{report.table} ({kind}, {report.requests} requests)")
+    requests = f"{report.requests} request" + ("" if report.requests == 1 else "s")
+    print(f"{prefix}{report.table} ({kind}, {requests})")
     lines = [
         ("rows received", report.rows, ""),
         ("bookmarks created", report.created, ""),
@@ -226,6 +227,22 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     finally:
         conn.close()
     _print_sync_report(report)
+    return 0
+
+
+def _cmd_ui(args: argparse.Namespace) -> int:
+    from atlas.server import serve
+
+    # The interface is the first thing a new user runs: set the database up.
+    existed = Path(args.db).exists()
+    conn = db.connect(args.db, create=True)
+    try:
+        db.migrate(conn)
+    finally:
+        conn.close()
+    if not existed:
+        print(f"Created {args.db}.")
+    serve(args.db, port=args.port, open_browser=not args.no_browser)
     return 0
 
 
@@ -292,6 +309,11 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--full", action="store_true", help="read the whole table again")
     sync.add_argument("--dry-run", action="store_true", help="report without writing")
     sync.set_defaults(func=_cmd_sync)
+
+    ui = commands.add_parser("ui", help="open the interface in the browser")
+    ui.add_argument("--port", type=int, default=8765, help="local port (default: 8765)")
+    ui.add_argument("--no-browser", action="store_true", help="do not open the browser")
+    ui.set_defaults(func=_cmd_ui)
 
     return parser
 

@@ -81,10 +81,14 @@ CSV export ──────┴──> importer ──> SQLite <─────
 | Frontend | TypeScript, framework chosen in phase 4 | Views are web-native |
 | Data, grooming, analysis | Python package with a command line | e-means ships as Python in Faiss; scripts are easy to write |
 | Storage | SQLite, one file | Readable from nearly any tool or language |
-| Secrets | OS keychain | The Notion token never touches the data file |
+| Secrets | OS keychain when `keyring` is installed, else an owner-only file | The Notion token never touches the data file |
 
 Everything the interface does is a call to the Python package, so every
 feature also works from the command line and can be tested without a UI.
+
+The interface is a web page served by the Python package on this computer only
+(`atlas ui`). It needs nothing but Python, which is how the first builds are
+used. The Tauri shell wraps the same page later, as a packaging step.
 
 ### Checked facts
 

@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmark Atlas</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b675f; --line: #dedad1;
+    --accent: #2f5d50; --accent-ink: #ffffff; --warn: #9a5b12; --bad: #a3322b; --good: #2f6b3a;
+    --chip: #ece9e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171715; --panel: #201f1c; --ink: #ecebe6; --muted: #a19d93; --line: #35332e;
+      --accent: #7fb8a4; --accent-ink: #10201b; --warn: #e0a557; --bad: #ef8a80; --good: #8fcf9a;
+      --chip: #2b2a26;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 24px; padding: 14px 24px;
+    border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .01em; }
+  nav { display: flex; gap: 4px; }
+  nav button { background: none; border: 0; color: var(--muted); padding: 6px 12px; border-radius: 6px;
+    font: inherit; cursor: pointer; }
+  nav button[aria-current="page"] { background: var(--chip); color: var(--ink); font-weight: 600; }
+  #summary { margin-left: auto; color: var(--muted); font-size: 13px; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px; }
+  section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 22px; margin-bottom: 18px; }
+  section.card h2 { font-size: 16px; margin: 0 0 4px; }
+  section.card > p.help { color: var(--muted); margin: 0 0 14px; max-width: 70ch; }
+  .step { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center;
+    border-radius: 50%; background: var(--chip); font-size: 12px; font-weight: 700; margin-right: 8px; }
+  label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  input[type=text], input[type=password], input[type=search], select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); font: inherit; }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .row > .grow { flex: 1 1 280px; }
+  button.action { padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: .5; cursor: default; }
+  .note { margin-top: 10px; font-size: 14px; }
+  .note.good { color: var(--good); } .note.bad { color: var(--bad); } .note.muted { color: var(--muted); }
+  ul.tables { list-style: none; margin: 0 0 12px; padding: 0; border: 1px solid var(--line); border-radius: 8px; }
+  ul.tables li { border-bottom: 1px solid var(--line); }
+  ul.tables li:last-child { border-bottom: 0; }
+  ul.tables label { display: flex; gap: 10px; align-items: baseline; padding: 10px 12px; margin: 0;
+    font-weight: 400; font-size: 15px; cursor: pointer; }
+  ul.tables small { color: var(--muted); }
+  .mapping { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  dl.report { display: grid; grid-template-columns: max-content max-content 1fr; gap: 2px 14px; margin: 12px 0 0; }
+  dl.report dt { color: var(--muted); } dl.report dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+  dl.report span { color: var(--muted); font-size: 13px; }
+  table.list { width: 100%; border-collapse: collapse; }
+  table.list th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.list td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.list a { color: var(--ink); font-weight: 600; text-decoration: none; }
+  table.list a:hover { text-decoration: underline; }
+  .sum { color: var(--muted); font-size: 13px; margin-top: 2px; max-width: 75ch; }
+  .chips { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+  .nowrap { white-space: nowrap; color: var(--muted); font-size: 13px; }
+  .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .toolbar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+  [hidden] { display: none !important; }
+  @media (max-width: 620px) { #summary { display: none; } header { gap: 12px; padding: 12px 16px; } main { padding: 16px; } }
+  code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bookmark Atlas</h1>
+  <nav>
+    <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
+    <button id="tab-settings">Settings</button>
+  </nav>
+  <div id="summary"></div>
+</header>
+
+<main>
+  <div id="view-bookmarks">
+    <section class="card">
+      <div class="toolbar">
+        <input type="search" id="search" placeholder="Search titles, summaries, links and tags" aria-label="Search bookmarks">
+        <span class="count" id="count"></span>
+      </div>
+      <div id="list"></div>
+      <div class="row" style="justify-content:center; margin-top:14px">
+        <button class="action" id="more" hidden>Show more</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="view-settings" hidden>
+    <section class="card">
+      <h2><span class="step">1</span>Notion token</h2>
+      <p class="help">Create a token in Notion's Developer portal. A personal access token sees what
+        you can see, with nothing to share. An internal connection token only sees the pages and
+        databases shared with that connection. The token is stored on this computer, outside the
+        bookmark database.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="token">Token</label>
+          <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="ntn_…">
+        </div>
+        <button class="action primary" id="save-token">Check and save</button>
+        <button class="action" id="forget-token" hidden>Forget token</button>
+      </div>
+      <div class="note" id="token-note"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">2</span>Table to import</h2>
+      <p class="help">These are the tables the token can see. If yours is missing and you use an
+        internal connection, share its database with the connection in Notion, then refresh.</p>
+      <ul class="tables" id="tables" hidden></ul>
+      <div class="row">
+        <button class="action" id="load-tables">List tables</button>
+      </div>
+      <div class="note" id="tables-note"></div>
+    </section>
+
+    <section class="card" id="mapping-card" hidden>
+      <h2><span class="step">3</span>Columns</h2>
+      <p class="help">Which column of <strong id="mapping-title"></strong> feeds each field. The
+        guess is usually right; only the link is required.</p>
+      <div class="mapping" id="mapping"></div>
+      <div class="row">
+        <button class="action primary" id="save-selection">Use this table</button>
+      </div>
+      <div class="note" id="selection-note"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">4</span>Import</h2>
+      <p class="help" id="sync-help"></p>
+      <div class="row">
+        <button class="action" id="preview-sync">Preview</button>
+        <button class="action primary" id="run-sync">Import now</button>
+        <label style="display:flex; gap:6px; align-items:center; font-weight:400; margin:0 0 8px 6px">
+          <input type="checkbox" id="full-sync"> Read the whole table again
+        </label>
+      </div>
+      <div class="note" id="sync-note"></div>
+      <dl class="report" id="report" hidden></dl>
+    </section>
+  </div>
+</main>
+
+<script>
+"use strict";
+const SESSION = "__ATLAS_SESSION_TOKEN__";
+const FIELDS = [["title", "Title"], ["url", "Link (required)"], ["summary", "Summary"], ["tags", "Tags"], ["date", "Date"]];
+const $ = (id) => document.getElementById(id);
+let state = null, tables = [], chosen = null, shown = 0, total = 0;
+
+async function api(method, path, body) {
+  const response = await fetch(path, {
+    method,
+    headers: { "X-Atlas-Token": SESSION, ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {};
+  try { data = await response.json(); } catch (error) { /* empty or non-JSON answer */ }
+  if (!response.ok) throw new Error(data.error || "The request failed (" + response.status + ").");
+  return data;
+}
+
+function note(id, text, kind) {
+  const el = $(id);
+  el.textContent = text || "";
+  el.className = "note " + (kind || "muted");
+}
+
+function el(tag, props, children) {
+  const node = document.createElement(tag);
+  Object.assign(node, props || {});
+  for (const child of children || []) node.append(child);
+  return node;
+}
+
+async function busy(button, work) {
+  const label = button.textContent;
+  button.disabled = true; button.textContent = "Working…";
+  try { return await work(); } finally { button.disabled = false; button.textContent = label; }
+}
+
+function showView(name) {
+  for (const view of ["bookmarks", "settings"]) {
+    $("view-" + view).hidden = view !== name;
+    if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
+    else $("tab-" + view).removeAttribute("aria-current");
+  }
+}
+
+/* ---- state ---- */
+
+async function refreshState() {
+  state = await api("GET", "/api/state");
+  const s = state.status;
+  $("summary").textContent = s.bookmarks + " bookmarks · " + s.tags + " tags"
+    + (s.pending_review ? " · " + s.pending_review + " to review" : "");
+
+  const n = state.notion;
+  $("forget-token").hidden = !n.token_set || n.token_source === "environment";
+  if (n.token_set && !$("token-note").textContent) {
+    const where = { environment: "the NOTION_TOKEN environment variable", keychain: "the system keychain", file: "a private file on this computer" }[n.token_source];
+    note("token-note", "A token is set (" + n.token_hint + "), read from " + where + ".", "muted");
+  }
+  const sel = n.selected;
+  $("sync-help").textContent = sel
+    ? "Selected table: " + sel.title + ". " + (sel.last_synced_time
+        ? "Last import covered edits up to " + new Date(sel.last_synced_time).toLocaleString() + ". The next one only asks for rows edited since."
+        : "Not imported yet: the first import reads the whole table.")
+    : "Choose a table above first.";
+  $("preview-sync").disabled = $("run-sync").disabled = !sel || !n.token_set;
+}
+
+/* ---- settings: token ---- */
+
+$("save-token").onclick = () => busy($("save-token"), async () => {
+  try {
+    const result = await api("POST", "/api/notion/token", { token: $("token").value });
+    $("token").value = "";
+    const who = result.connection.name || "connection";
+    const space = result.connection.workspace ? " in " + result.connection.workspace : "";
+    note("token-note", "Connected as " + who + space + ". Token stored in "
+      + (result.stored_in === "keychain" ? "the system keychain." : "a private file on this computer."), "good");
+    await refreshState();
+    await loadTables();
+  } catch (error) { note("token-note", error.message, "bad"); }
+});
+
+$("forget-token").onclick = async () => {
+  try {
+    await api("DELETE", "/api/notion/token");
+    note("token-note", "Token removed from this computer.", "muted");
+    $("tables").hidden = true; $("mapping-card").hidden = true;
+    await refreshState();
+  } catch (error) { note("token-note", error.message, "bad"); }
+};
+
+/* ---- settings: tables and columns ---- */
+
+async function loadTables() {
+  note("tables-note", "Asking Notion…", "muted");
+  try {
+    tables = (await api("GET", "/api/notion/tables")).tables;
+  } catch (error) { note("tables-note", error.message, "bad"); return; }
+  const list = $("tables");
+  list.replaceChildren();
+  const current = state.notion.selected && state.notion.selected.data_source_id;
+  for (const table of tables) {
+    const radio = el("input", { type: "radio", name: "table", value: table.id, checked: table.id === current });
+    radio.onchange = () => chooseTable(table.id);
+    list.append(el("li", {}, [el("label", {}, [radio, el("span", { textContent: table.title }),
+      el("small", { textContent: table.columns.length + " columns" })])]));
+  }
+  list.hidden = tables.length === 0;
+  $("load-tables").textContent = "Refresh";
+  note("tables-note", tables.length ? "" : "No table is shared with this connection yet.", "muted");
+  if (current && tables.some((t) => t.id === current)) chooseTable(current);
+}
+$("load-tables").onclick = () => busy($("load-tables"), loadTables).then(() => { $("load-tables").textContent = "Refresh"; });
+
+function chooseTable(id) {
+  chosen = tables.find((table) => table.id === id);
+  const saved = state.notion.selected && state.notion.selected.data_source_id === id
+    ? state.notion.selected.property_map : null;
+  const map = saved || chosen.guess;
+  $("mapping-title").textContent = chosen.title;
+  const grid = $("mapping");
+  grid.replaceChildren();
+  for (const [field, label] of FIELDS) {
+    const select = el("select", { id: "map-" + field });
+    select.append(el("option", { value: "", textContent: "— none —" }));
+    for (const column of chosen.columns) {
+      select.append(el("option", { value: column.name, textContent: column.name + " (" + column.type.replace("_", " ") + ")",
+        selected: map[field] === column.name }));
+    }
+    grid.append(el("div", {}, [el("label", { htmlFor: "map-" + field, textContent: label }), select]));
+  }
+  $("mapping-card").hidden = false;
+  note("selection-note", saved ? "This table is the one currently selected." : "", "muted");
+}
+
+$("save-selection").onclick = () => busy($("save-selection"), async () => {
+  const property_map = {};
+  for (const [field] of FIELDS) { const v = $("map-" + field).value; if (v) property_map[field] = v; }
+  try {
+    await api("POST", "/api/notion/select", { data_source_id: chosen.id, property_map });
+    note("selection-note", "Saved. You can import below.", "good");
+    await refreshState();
+  } catch (error) { note("selection-note", error.message, "bad"); }
+});
+
+/* ---- settings: import ---- */
+
+function showReport(report) {
+  const rows = [
+    ["Rows received", report.rows, ""],
+    ["Bookmarks created", report.created, ""],
+    ["Already up to date", report.unchanged, ""],
+    ["Linked to existing bookmarks", report.linked, "same content, nothing to review"],
+    ["Changed in Notion", report.pending, "kept for review, bookmarks untouched"],
+    ["Deleted here, left deleted", report.tombstoned, ""],
+    ["Empty save dates filled", report.filled_saved_at, "from Notion creation time"],
+    ["In Notion's trash", report.in_trash, "ignored"],
+    ["Dates without a time of day", report.date_only, "left for the date clean-up script"],
+    ["Rows skipped", report.skipped.length, report.skipped.slice(0, 3).map((s) => s.reason).join("; ")],
+  ];
+  const list = $("report");
+  list.replaceChildren();
+  for (const [label, value, hint] of rows) {
+    if (!value && label !== "Rows received" && label !== "Bookmarks created") continue;
+    list.append(el("dt", { textContent: label }), el("dd", { textContent: value }), el("span", { textContent: hint }));
+  }
+  if (report.created_time_compared) {
+    list.append(el("dt", { textContent: "Creation time matches Date column" }),
+      el("dd", { textContent: report.created_time_agrees + " / " + report.created_time_compared }),
+      el("span", { textContent: "on rows that have both" }));
+  }
+  list.hidden = false;
+}
+
+async function runSync(button, dryRun) {
+  await busy(button, async () => {
+    note("sync-note", "Talking to Notion…", "muted");
+    try {
+      const result = await api("POST", "/api/notion/sync", { dry_run: dryRun, full: $("full-sync").checked });
+      const r = result.report;
+      note("sync-note", (dryRun ? "Preview only, nothing was written. " : "Import finished. ")
+        + r.requests + (r.requests === 1 ? " request" : " requests") + " to Notion.", dryRun ? "muted" : "good");
+      showReport(r);
+      if (!dryRun) { $("full-sync").checked = false; await refreshState(); await loadBookmarks(true); }
+    } catch (error) { note("sync-note", error.message, "bad"); $("report").hidden = true; }
+  });
+}
+$("preview-sync").onclick = () => runSync($("preview-sync"), true);
+$("run-sync").onclick = () => runSync($("run-sync"), false);
+
+/* ---- bookmarks ---- */
+
+function safeLink(url) {
+  try { const u = new URL(url); return u.protocol === "http:" || u.protocol === "https:" ? u.href : null; }
+  catch (error) { return null; }
+}
+
+async function loadBookmarks(reset) {
+  if (reset) shown = 0;
+  const q = $("search").value.trim();
+  const data = await api("GET", "/api/bookmarks?limit=100&offset=" + shown + "&q=" + encodeURIComponent(q));
+  total = data.total;
+  const holder = $("list");
+  if (reset) holder.replaceChildren();
+  if (!total) {
+    holder.replaceChildren(el("div", { className: "empty", textContent: q
+      ? "Nothing matches this search."
+      : "No bookmarks yet. Open Settings to connect Notion and import your table." }));
+  } else {
+    let body = holder.querySelector("tbody");
+    if (!body) {
+      body = el("tbody");
+      holder.append(el("table", { className: "list" }, [el("thead", {}, [el("tr", {}, [
+        el("th", { textContent: "Bookmark" }), el("th", { textContent: "Site" }), el("th", { textContent: "Saved" })])]), body]));
+    }
+    for (const item of data.items) {
+      const href = safeLink(item.url);
+      const title = href
+        ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title || item.url })
+        : el("span", { textContent: item.title || item.url });
+      const cell = el("td", {}, [title]);
+      if (item.summary) cell.append(el("div", { className: "sum", textContent: item.summary }));
+      if (item.tags.length) cell.append(el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))));
+      body.append(el("tr", {}, [cell, el("td", { className: "nowrap", textContent: item.domain }),
+        el("td", { className: "nowrap", textContent: item.saved_at ? item.saved_at.slice(0, 10) : "—" })]));
+    }
+    shown += data.items.length;
+  }
+  $("count").textContent = total ? shown + " of " + total : "";
+  $("more").hidden = shown >= total;
+}
+
+let searchTimer = null;
+$("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadBookmarks(true).catch(() => {}), 200); };
+$("more").onclick = () => loadBookmarks(false);
+$("tab-bookmarks").onclick = () => showView("bookmarks");
+$("tab-settings").onclick = () => showView("settings");
+
+(async () => {
+  try {
+    await refreshState();
+    await loadBookmarks(true);
+    if (!state.status.bookmarks) showView("settings");
+    if (state.notion.token_set) loadTables();
+  } catch (error) {
+    $("list").replaceChildren(el("div", { className: "empty", textContent: error.message }));
+  }
+})();
+</script>
+</body>
+</html>

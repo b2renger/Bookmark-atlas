@@ -13,44 +13,83 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 ## Status
 
-Phase 1 of 7, in progress. The local store, CSV import and export work from
-the command line. There is no desktop interface yet.
+Phase 1 of 7. A first usable build exists: a local interface to connect Notion,
+pick a table, import it and browse the result. Grooming, clustering and the
+visual views come next.
+
+**The Notion import has not been run against the real Notion API yet.** It is
+tested against a stand-in built from Notion's documentation. Use Preview before
+the first import and report what it shows.
 
 - Where development stands: [docs/DEVLOG.md](docs/DEVLOG.md)
 - Where it is going: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
-## Try it
+## Run it
 
-Needs Python 3.11 or later. Nothing to install: this phase uses the standard
-library only.
+Needs Python 3.11 or later and nothing else.
 
 ```sh
-export PYTHONPATH=src            # or: pip install -e .
-
-python -m atlas init                               # creates data/atlas.sqlite
-python -m atlas import-csv export.csv --dry-run    # report only
-python -m atlas import-csv export.csv
-python -m atlas status
-python -m atlas export --format json -o bookmarks.json
+git clone https://github.com/b2renger/Bookmark-atlas.git
+cd Bookmark-atlas
+python3 -m pip install -e .
+atlas ui
 ```
 
-`export.csv` is a Notion table exported as CSV. The importer looks for columns
-named Name, URL, Description, Keywords and Date. Other names can be given with
-`--column`, for example `--column url=Link`.
+Without installing: `PYTHONPATH=src python3 -m atlas ui` (on Windows,
+`set PYTHONPATH=src` first, then `python -m atlas ui`).
 
-The database path is `data/atlas.sqlite`, or `$ATLAS_DB`, or `--db PATH`. The
-`data/` folder is ignored by git, so bookmarks never end up in the repository.
+`atlas ui` creates `data/atlas.sqlite` if needed, starts the interface on this
+computer only and opens it in the browser. Stop it with Ctrl+C.
+
+### Connect Notion
+
+In **Settings**:
+
+1. **Token.** Create one in Notion's Developer portal and paste it. Either kind
+   works:
+   - a *personal access token* sees what you can see, with nothing to share;
+   - an *internal connection* token sees only what is shared with the
+     connection. Share the bookmarks database with it, from the connection's
+     Content access tab or from the database's ••• menu under Connections.
+
+   The token is checked with Notion before it is stored, and it is stored on
+   your computer outside the database file.
+2. **Table.** List the tables the token can see and pick yours.
+3. **Columns.** Check the guessed mapping. Only the link column is required.
+4. **Import.** *Preview* shows what would happen without writing anything.
+   *Import now* does it. Later imports only ask Notion for rows edited since.
 
 ### What an import does
 
 - A link not seen before becomes a bookmark.
-- A link already known is kept as a source record for review. It never
-  overwrites what is in the database.
+- A row edited in Notion later is kept for review. It never overwrites what is
+  in the database.
 - A bookmark you deleted stays deleted.
-- Importing the same file again changes nothing.
+- Importing again changes nothing if Notion has not changed.
 
 Links are compared after normalisation, so `twitter.com` and `x.com`, tracking
 parameters, or a trailing slash do not create duplicates.
+
+### Command line
+
+Everything the interface does is also a command:
+
+```sh
+atlas init                              # create or upgrade the database
+atlas import-csv export.csv --dry-run   # a Notion CSV export, report only
+atlas import-csv export.csv
+atlas notion token                      # enter the token (input hidden)
+atlas notion tables                     # list tables with their IDs
+atlas notion select <table-id>
+atlas sync --dry-run
+atlas sync                              # --full reads the whole table again
+atlas status
+atlas export --format json -o bookmarks.json
+```
+
+The database path is `data/atlas.sqlite`, or `$ATLAS_DB`, or `--db PATH`. The
+`data/` folder is ignored by git, so bookmarks never end up in the repository.
+The token can also be given as the `NOTION_TOKEN` environment variable.
 
 ## Development
 
