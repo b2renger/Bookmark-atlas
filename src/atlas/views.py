@@ -36,6 +36,9 @@ def _clean_state(state) -> dict:
             else default
         )
 
+    chosen = state.get("facets") if isinstance(state.get("facets"), dict) else {}
+    tags = chosen.get("tags") if isinstance(chosen.get("tags"), list) else []
+    kind = chosen.get("date_kind")
     cluster = state.get("cluster") if isinstance(state.get("cluster"), dict) else None
     map_state = state.get("map") if isinstance(state.get("map"), dict) else {}
     focus = map_state.get("focus")
@@ -43,6 +46,13 @@ def _clean_state(state) -> dict:
         "tab": tab,
         "tree_path": [item for item in ids(state.get("tree_path")) if len(item) <= 20][:4],
         "search": text(state.get("search")),
+        "facets": {
+            "tags": [text(tag, 200) for tag in tags if isinstance(tag, str) and tag.strip()][:10],
+            "platform": text(chosen.get("platform"), 100),
+            "date_from": text(chosen.get("date_from"), 10),
+            "date_to": text(chosen.get("date_to"), 10),
+            "date_kind": kind if kind in ("when", "saved", "published") else "when",
+        },
         "cluster": {"key": text(cluster.get("key"), 100), "label": text(cluster.get("label"), 200)}
         if cluster and cluster.get("key")
         else None,
@@ -56,6 +66,9 @@ def _clean_state(state) -> dict:
             "ty": number(map_state.get("ty"), 0.0),
             "search": text(map_state.get("search")),
             "clusters_run": text(map_state.get("clusters_run"), 64) or None,
+            "layout": map_state.get("layout")
+            if map_state.get("layout") in ("similarity", "timeline", "grid", "spacetime")
+            else "similarity",
         },
     }
 

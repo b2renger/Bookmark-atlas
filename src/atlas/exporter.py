@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+from datetime import date
 from typing import TextIO
 
 EXPORT_FIELDS = [
@@ -20,9 +21,77 @@ EXPORT_FIELDS = [
 ]
 
 
-def search_clause(text: str | None, cluster: str | None = None) -> tuple[str, list]:
+DATE_KINDS = {
+    "when": "COALESCE(saved_at, published_at)",
+    "saved": "saved_at",
+    "published": "published_at",
+}
+
+
+def facet_clause(facets: dict | None) -> tuple[str, list]:
+    """Extra conditions for the shared filter: tags (all of them), platform,
+    and a range of days on the saved date, the published date, or the saved
+    date falling back on the published one (``date_kind`` "when")."""
+    where, params = "", []
+    facets = facets or {}
+    for tag in [t for t in (facets.get("tags") or []) if str(t).strip()][:10]:
+        where += (
+            " AND id IN (SELECT bookmark_id FROM bookmark_tags JOIN tags ON tags.id = tag_id "
+            "WHERE name = ? COLLATE NOCASE)"
+        )
+        params.append(str(tag).strip())
+    platform = str(facets.get("platform") or "").strip()
+    if platform:
+        where += " AND platform = ? COLLATE NOCASE"
+        params.append(platform)
+    column = DATE_KINDS.get(str(facets.get("date_kind") or "when"))
+    if column is None:
+        raise ValueError("The date to filter on is one of: when, saved, published.")
+    for key, operator in (("date_from", ">="), ("date_to", "<=")):
+        day = str(facets.get(key) or "").strip()
+        if not day:
+            continue
+        try:
+            date.fromisoformat(day)
+        except ValueError:
+            raise ValueError("Dates in a filter look like 2026-03-15.") from None
+        where += f" AND substr({column}, 1, 10) {operator} ?"
+        params.append(day)
+    return where, params
+
+
+def facet_options(conn: sqlite3.Connection) -> dict:
+    """What the filter bar offers: the most used tags, the platforms, the span of dates."""
+    tags = [
+        {"name": row[0], "count": row[1]}
+        for row in conn.execute(
+            "SELECT t.name, COUNT(*) AS n FROM bookmark_tags bt JOIN tags t ON t.id = bt.tag_id "
+            "JOIN bookmarks b ON b.id = bt.bookmark_id WHERE b.deleted_at IS NULL "
+            "GROUP BY t.id ORDER BY n DESC, t.name COLLATE NOCASE LIMIT 200"
+        )
+    ]
+    platforms = [
+        {"name": row[0], "count": row[1]}
+        for row in conn.execute(
+            "SELECT platform, COUNT(*) AS n FROM bookmarks WHERE deleted_at IS NULL "
+            "AND platform IS NOT NULL AND platform != '' GROUP BY platform "
+            "ORDER BY n DESC, platform COLLATE NOCASE"
+        )
+    ]
+    span = conn.execute(
+        "SELECT MIN(substr(COALESCE(saved_at, published_at), 1, 10)), "
+        "MAX(substr(COALESCE(saved_at, published_at), 1, 10)) FROM bookmarks "
+        "WHERE deleted_at IS NULL"
+    ).fetchone()
+    return {"tags": tags, "platforms": platforms, "first_day": span[0], "last_day": span[1]}
+
+
+def search_clause(
+    text: str | None, cluster: str | None = None, facets: dict | None = None
+) -> tuple[str, list]:
     """WHERE clause and parameters for live bookmarks matching a search text
-    and, optionally, belonging to one cluster of a run (``"<run id>:<number>"``)."""
+    and, optionally, belonging to one cluster of a run (``"<run id>:<number>"``)
+    and passing the shared filter (see ``facet_clause``)."""
     where, params = "deleted_at IS NULL", []
     if cluster:
         run_id, _, number = cluster.partition(":")
@@ -41,13 +110,17 @@ def search_clause(text: str | None, cluster: str | None = None) -> tuple[str, li
             "WHERE name LIKE ?))"
         )
         params = [*params, like, like, like, like, like]
-    return where, params
+    extra, extra_params = facet_clause(facets)
+    return where + extra, [*params, *extra_params]
 
 
 def matching_ids(
-    conn: sqlite3.Connection, text: str | None, cluster: str | None = None
+    conn: sqlite3.Connection,
+    text: str | None,
+    cluster: str | None = None,
+    facets: dict | None = None,
 ) -> list[str]:
-    where, params = search_clause(text, cluster)
+    where, params = search_clause(text, cluster, facets)
     return [row[0] for row in conn.execute(f"SELECT id FROM bookmarks WHERE {where}", params)]
 
 

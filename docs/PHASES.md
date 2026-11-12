@@ -14,6 +14,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 5 | Saved views and snapshots | v0.5.0 | done |
 | 6 | Self-organising map and pearl tree | v0.6.0 | done, drag and drop, merge and split left out |
 | 7 | Links and tendencies | v0.7.1 | done (v0.7.0 was built from the wrong commit) |
+| 8 | Shared filter, animated layouts, timeline, 3D | v0.8.0 | done for list, map and grid |
 
 ## Phase 0: scaffolding
 
@@ -167,3 +168,27 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   6 days of publication. 438 bookmarks have no save date yet, so the rising and
   fading figures will shift once Notion supplies them.
 - **Left out:** a graph of single bookmarks, choice of the periods compared.
+
+## Phase 8: shared filter, animated layouts, timeline, 3D
+
+- **One filter bar for the list, the map and the grid:** tags (all must
+  match), site, a range of dates, and which date is used. On the map,
+  bookmarks left out become small and faint and cannot be picked; the grid
+  counts only what passes.
+- **Four arrangements of the same dots on the map,** with a 0.9 s glide
+  between them: similarity, timeline (one row per topic), grid, and space and
+  time in 3D (the map lies flat, time is the height, drag to turn).
+- **Play and a time slider:** only what existed on a given day is shown, in
+  any arrangement.
+- **One mechanism under all of it:** every arrangement places each dot in a
+  unit cube and a camera looks at the cube, from above for the flat ones. A
+  change of arrangement is one animation of positions and camera.
+- **No library added.** The package registry cannot be reached from the
+  development session, so regl-scatterplot and three.js could not be tried.
+  At under a thousand dots the existing canvas redraws every frame without
+  effort; WebGL becomes worth it in the tens of thousands.
+- **The time axis starts at the third percentile of dates;** older bookmarks
+  sit in an "earlier" strip, so a few old ones do not squeeze the rest.
+- **Saved views remember the filter and the arrangement.**
+- **Left out:** the filter does not yet apply to Tree, Links and Trends; no
+  brush on a histogram to pick dates; no 3D link graph.

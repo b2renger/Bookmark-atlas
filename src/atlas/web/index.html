@@ -41,7 +41,7 @@
   .step { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center;
     border-radius: 50%; background: var(--chip); font-size: 12px; font-weight: 700; margin-right: 8px; }
   label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-  input[type=text], input[type=password], input[type=search], input[type=file], select {
+  input[type=text], input[type=password], input[type=search], input[type=file], input[type=date], select {
     width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
     background: var(--bg); color: var(--ink); font: inherit; }
   input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -90,8 +90,20 @@
   #maptip small { display: block; color: var(--muted); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 0; font-size: 13px; color: var(--muted); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+  #facetbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; margin: 0 0 14px; padding: 10px 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  #facetbar label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+  #facetbar input, #facetbar select { width: auto; }
+  #facetbar input[type=text] { width: 150px; }
+  #facet-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  #facet-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #map-views { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-bottom: 12px; }
+  #map-views select { width: auto; }
+  #map-time { width: 100%; min-width: 180px; padding: 0; }
+  #map-when { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 190px; }
   .maptools { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 12px; }
-  .maptools select, .maptools input[type=search] { width: auto; min-width: 180px; }
+  .maptools select, .maptools input[type=search] { width: auto; min-width: 180px; max-width: 300px; }
+  input[type=date] { color-scheme: light dark; }
   #mapdetail h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
   #mapdetail a { color: var(--ink); }
   #snapbanner { background: var(--chip); border: 1px solid var(--line); border-left: 4px solid var(--accent);
@@ -213,6 +225,20 @@
 </header>
 
 <main>
+  <div id="facetbar">
+    <div><label for="facet-tag">Filter by tag</label>
+      <input type="text" id="facet-tag" list="facet-known" placeholder="Tag"><datalist id="facet-known"></datalist>
+      <button class="action" id="facet-tag-go">Add</button></div>
+    <div id="facet-tags"></div>
+    <div><label for="facet-platform">Site</label><select id="facet-platform"><option value="">Any site</option></select></div>
+    <div><label for="facet-from">From</label><input type="date" id="facet-from"></div>
+    <div><label for="facet-to">To</label><input type="date" id="facet-to"></div>
+    <div><label for="facet-kind">Date used</label><select id="facet-kind">
+      <option value="when">Saved, else published</option><option value="saved">Saved</option><option value="published">Published</option></select></div>
+    <button class="linkish" id="facet-clear" hidden>clear the filter</button>
+    <span id="facet-count"></span>
+    <span class="note bad" id="facet-note"></span>
+  </div>
   <div id="snapbanner" hidden></div>
   <div id="view-bookmarks">
     <section class="card">
@@ -259,6 +285,14 @@
         <button class="action" id="map-in" aria-label="Zoom in">+</button>
         <button class="action" id="map-out" aria-label="Zoom out">−</button>
         <button class="action" id="map-reset">Reset view</button>
+      </div>
+      <div id="map-views" hidden>
+        <div><label for="map-layout">Arrange by</label><select id="map-layout">
+          <option value="similarity">Similarity</option><option value="timeline">Timeline</option>
+          <option value="grid">Grid</option><option value="spacetime">Space and time (3D)</option></select></div>
+        <button class="action" id="map-play">Play</button>
+        <div class="grow"><label for="map-time">Time</label><input type="range" id="map-time" min="0" max="1000" value="1000"></div>
+        <span id="map-when"></span>
       </div>
       <div id="mapwrap">
         <canvas id="mapcanvas" role="img" aria-label="Map of the bookmarks: similar bookmarks are drawn close together"></canvas>
@@ -569,6 +603,9 @@ function showView(name) {
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
   }
+  $("facetbar").hidden = !["bookmarks", "map", "grid"].includes(name);
+  if (!$("facetbar").hidden && typeof loadFacetOptions === "function") loadFacetOptions();
+  if (name !== "map" && typeof stopPlaying === "function") stopPlaying();
   if (typeof refreshSelection === "function") refreshSelection();
 }
 
@@ -770,23 +807,233 @@ async function runSync(button, dryRun) {
 $("preview-sync").onclick = () => runSync($("preview-sync"), true);
 $("run-sync").onclick = () => runSync($("run-sync"), false);
 
+/* ---- shared filter ---- */
+// One filter for the list, the map and the grid: tags, platform and a range of dates.
+
+const facets = { tags: [], platform: "", from: "", to: "", kind: "when" };
+let facetIds = null;        // Set of bookmark IDs that pass, or null when nothing is filtered
+let facetOptionsAt = 0;
+
+function facetsActive() { return facets.tags.length > 0 || !!facets.platform || !!facets.from || !!facets.to; }
+function facetQuery() {
+  let query = "";
+  for (const tag of facets.tags) query += "&tag=" + encodeURIComponent(tag);
+  if (facets.platform) query += "&platform=" + encodeURIComponent(facets.platform);
+  if (facets.from) query += "&from=" + encodeURIComponent(facets.from);
+  if (facets.to) query += "&to=" + encodeURIComponent(facets.to);
+  if (facets.from || facets.to) query += "&dates=" + facets.kind;
+  return query;
+}
+function facetBody() { return { tags: facets.tags, platform: facets.platform, date_from: facets.from, date_to: facets.to, date_kind: facets.kind }; }
+function passes(id) { return !facetIds || facetIds.has(id); }
+
+function renderFacets() {
+  const chips = $("facet-tags");
+  chips.replaceChildren(...facets.tags.map((tag) => {
+    const remove = el("button", { className: "linkish", textContent: "×" });
+    remove.setAttribute("aria-label", "Remove the tag " + tag);
+    remove.onclick = () => { facets.tags = facets.tags.filter((t) => t !== tag); applyFacets(); };
+    return el("span", { className: "chip" }, [tag + " ", remove]);
+  }));
+  $("facet-platform").value = facets.platform; $("facet-from").value = facets.from; $("facet-to").value = facets.to; $("facet-kind").value = facets.kind;
+  $("facet-clear").hidden = !facetsActive();
+  $("facet-count").textContent = facetIds ? facetIds.size + (facetIds.size === 1 ? " bookmark passes" : " bookmarks pass") : "";
+}
+
+async function applyFacets(relayout) {
+  try { facetIds = facetsActive() ? new Set((await api("GET", "/api/bookmarks/ids?q=" + facetQuery())).ids) : null; note("facet-note", "", "muted"); }
+  catch (error) { facetIds = null; note("facet-note", error.message, "bad"); }
+  renderFacets();
+  if (relayout && map.data) mapRelayout(true);
+  if (currentView === "bookmarks") loadBookmarks(true).catch(() => {});
+  if (currentView === "map") { mapLegend(); drawMap(); }
+  if (currentView === "grid" && grid.data) drawGrid();
+}
+
+async function loadFacetOptions() {
+  if (Date.now() - facetOptionsAt < 20000) return;
+  facetOptionsAt = Date.now();
+  try {
+    const options = await api("GET", "/api/facets");
+    $("facet-known").replaceChildren(...options.tags.map((t) => el("option", { value: t.name, label: t.count + " bookmarks" })));
+    $("facet-platform").replaceChildren(el("option", { value: "", textContent: "Any site" }),
+      ...options.platforms.map((p) => el("option", { value: p.name, textContent: p.name + " (" + p.count + ")" })));
+    $("facet-platform").value = facets.platform;
+  } catch (error) { facetOptionsAt = 0; }
+}
+
+function addFacetTag() {
+  const tag = $("facet-tag").value.trim();
+  $("facet-tag").value = "";
+  if (!tag || facets.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return;
+  facets.tags.push(tag); applyFacets();
+}
+$("facet-tag-go").onclick = addFacetTag;
+$("facet-tag").onkeydown = (event) => { if (event.key === "Enter") addFacetTag(); };
+$("facet-platform").onchange = () => { facets.platform = $("facet-platform").value; applyFacets(); };
+$("facet-from").onchange = () => { facets.from = $("facet-from").value; applyFacets(); };
+$("facet-to").onchange = () => { facets.to = $("facet-to").value; applyFacets(); };
+$("facet-kind").onchange = () => { facets.kind = $("facet-kind").value; applyFacets(true); };
+$("facet-clear").onclick = () => { facets.tags = []; facets.platform = ""; facets.from = ""; facets.to = ""; applyFacets(); };
+
 /* ---- map ---- */
 // Colour carries state, never cluster identity: with sixteen topics there are
 // not sixteen colours that stay distinguishable. Topics are named by labels
 // drawn on the map; focus, search matches and selection each get one colour.
+//
+// The same dots can be laid out four ways (by similarity, along time, on the
+// grid, and by similarity with time as height). Every layout gives each dot a
+// place in a unit cube; a camera looks at the cube from above for the flat
+// layouts and from the side for the last one, so moving between layouts is one
+// animation of positions and camera.
 
-const map = { data: null, scale: 1, tx: 0, ty: 0, focus: null, matches: null, hover: null, box: null, drag: null, labels: [] };
+const LAYOUTS = {
+  similarity: { name: "Similarity", cam: { yaw: 0, pitch: 0, persp: 0 } },
+  timeline: { name: "Timeline", cam: { yaw: 0, pitch: 0, persp: 0 } },
+  grid: { name: "Grid", cam: { yaw: 0, pitch: 0, persp: 0 } },
+  spacetime: { name: "Space and time (3D)", cam: { yaw: -0.55, pitch: 1.08, persp: 1 } },
+};
+const map = { data: null, scale: 1, tx: 0, ty: 0, focus: null, matches: null, hover: null, box: null, drag: null, labels: [],
+  layout: "similarity", cam: { yaw: 0, pitch: 0, persp: 0 }, anim: null, guides: { labels: [], ticks: [] }, time: null, cut: null, playing: null, cells: null };
 const canvas = $("mapcanvas");
+const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function dayNumber(text) { return text ? Date.UTC(Number(text.slice(0, 4)), Number(text.slice(5, 7)) - 1, Number(text.slice(8, 10))) / 864e5 : null; }
+function dayText(number) { return new Date(number * 864e5).toISOString().slice(0, 10); }
+function pointDay(point) {
+  return dayNumber(facets.kind === "saved" ? point.saved : facets.kind === "published" ? point.published : (point.saved || point.published));
+}
+function hashUnit(text) { let h = 2166136261; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 10000) / 10000; }
+
+// The span of time shown. A few very old bookmarks would squeeze everything
+// else into a corner, so the axis starts at the third percentile; what is
+// older sits in an "earlier" strip.
+function timeSpan(points) {
+  const days = points.map(pointDay).filter((d) => d !== null).sort((a, b) => a - b);
+  if (!days.length) return null;
+  const lo = days[Math.floor(days.length * 0.03)], hi = days[days.length - 1];
+  return { lo, hi: hi > lo ? hi : lo + 1, first: days[0], dated: days.length };
+}
+const T_NONE = 0.0, T_EARLY = 0.045, T_START = 0.1;
+function timeUnit(day) {
+  if (day === null) return T_NONE;
+  if (day < map.time.lo) return T_EARLY;
+  return T_START + (1 - T_START) * (day - map.time.lo) / (map.time.hi - map.time.lo);
+}
+// On the timeline the left quarter holds the names of the rows.
+const ROW_NAMES = 0.25;
+function timelineX(unit) { return ROW_NAMES + (1 - ROW_NAMES) * unit; }
+
+function computeLayout(name) {
+  const data = map.data, targets = new Map(), guides = { labels: [], ticks: [] };
+  map.time = timeSpan(data.points);
+  const topicLabels = () => data.clusters.map((c) => ({ text: c.label, x: c.x, y: c.y, z: 0, cluster: c, size: c.size }));
+  if (name === "similarity" || !map.time && name !== "grid") {
+    for (const p of data.points) targets.set(p.id, [p.x, p.y, 0]);
+    guides.labels = topicLabels();
+  } else if (name === "spacetime") {
+    for (const p of data.points) targets.set(p.id, [p.x, p.y, timeUnit(pointDay(p))]);
+    guides.labels = topicLabels();
+    guides.ticks = yearTicks().map((t) => ({ ...t, vertical: true }));
+  } else if (name === "timeline") {
+    const lanes = [...data.clusters].sort((a, b) => b.size - a.size);
+    const laneOf = new Map(lanes.map((c, i) => [c.cluster, i]));
+    const count = lanes.length + (data.points.some((p) => !laneOf.has(p.cluster)) ? 1 : 0) || 1;
+    for (const p of data.points) {
+      const lane = laneOf.has(p.cluster) ? laneOf.get(p.cluster) : count - 1;
+      const day = pointDay(p);
+      const spread = day === null || day < map.time.lo ? (hashUnit(p.id + "x") - 0.5) * 0.03 : 0;
+      targets.set(p.id, [timelineX(timeUnit(day) + Math.abs(spread)), (lane + 0.5 + (hashUnit(p.id) - 0.5) * 0.7) / count, 0]);
+    }
+    guides.labels = lanes.map((c, i) => ({ text: c.label, x: 0, y: (i + 0.5) / count, z: 0, cluster: c, size: c.size, align: "left", lane: true }));
+    guides.ticks = [{ at: timelineX(T_NONE), text: "no date", soft: true }, ...yearTicks().map((t) => ({ ...t, at: timelineX(t.at) }))];
+    guides.lanes = count;
+  } else if (name === "grid") {
+    const cells = map.cells;
+    const placed = new Set();
+    for (const cell of cells.cells) {
+      cell.ids.forEach((id, j) => {
+        const r = Math.sqrt((j + 0.5) / cell.ids.length), angle = j * 2.399963;
+        targets.set(id, [(cell.col + 0.5 + 0.42 * r * Math.cos(angle)) / cells.grid.cols, (cell.row + 0.5 + 0.42 * r * Math.sin(angle)) / cells.grid.rows, 0]);
+        placed.add(id);
+      });
+      if (cell.size && cell.tags.length) guides.labels.push({ text: cell.tags[0], x: (cell.col + 0.5) / cells.grid.cols, y: (cell.row + 0.5) / cells.grid.rows, z: 0, size: cell.size, plain: true });
+    }
+    for (const p of data.points) if (!placed.has(p.id)) targets.set(p.id, [p.x, p.y, 0]);
+  }
+  return { targets, guides };
+}
+
+function yearTicks() {
+  if (!map.time) return [];
+  const ticks = [{ at: T_EARLY, text: "earlier", soft: true }];
+  const first = new Date(map.time.lo * 864e5), last = new Date(map.time.hi * 864e5);
+  const months = (last.getUTCFullYear() - first.getUTCFullYear()) * 12 + last.getUTCMonth() - first.getUTCMonth();
+  const step = months > 48 ? 12 : months > 18 ? 3 : 1;
+  for (let y = first.getUTCFullYear(), m = first.getUTCMonth(); ; ) {
+    m += 1; if (m > 11) { m = 0; y += 1; }
+    const day = Date.UTC(y, m, 1) / 864e5;
+    if (day > map.time.hi) break;
+    if (m % step) continue;
+    ticks.push({ at: timeUnit(day), text: m === 0 ? String(y) : MONTH[m] + (step === 1 && m % 3 ? "" : " " + String(y).slice(2)), strong: m === 0 });
+  }
+  return ticks;
+}
+
+// Move to a layout. Positions and camera glide there unless `snap` is set.
+function mapRelayout(snap) {
+  if (!map.data) return;
+  const { targets, guides } = computeLayout(map.layout);
+  const cam = LAYOUTS[map.layout].cam;
+  const moves = [];
+  for (const p of map.data.points) {
+    const to = targets.get(p.id);
+    if (p.cx === undefined) { [p.cx, p.cy, p.cz] = to; }
+    moves.push([p, p.cx, p.cy, p.cz, to[0], to[1], to[2]]);
+  }
+  map.guides = guides;
+  syncTimeControls();
+  if (snap || reducedMotion || currentView !== "map") {
+    for (const m of moves) { m[0].cx = m[4]; m[0].cy = m[5]; m[0].cz = m[6]; }
+    Object.assign(map.cam, cam); map.anim = null; drawMap(); return;
+  }
+  map.anim = { start: performance.now(), duration: 900, moves, from: { ...map.cam }, to: { ...cam } };
+  requestAnimationFrame(stepMap);
+}
+function stepMap(now) {
+  const a = map.anim;
+  if (!a) return;
+  const t = Math.min(1, (now - a.start) / a.duration);
+  const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  for (const m of a.moves) { m[0].cx = m[1] + (m[4] - m[1]) * e; m[0].cy = m[2] + (m[5] - m[2]) * e; m[0].cz = m[3] + (m[6] - m[3]) * e; }
+  for (const key of ["yaw", "pitch", "persp"]) map.cam[key] = a.from[key] + (a.to[key] - a.from[key]) * e;
+  if (t >= 1) map.anim = null;
+  drawMap();
+  if (map.anim) requestAnimationFrame(stepMap);
+}
 
 function mapFrame() {
   const rect = canvas.getBoundingClientRect();
   const pad = 36;
   return { w: rect.width, h: rect.height, pad, sx: Math.max(rect.width - 2 * pad, 10), sy: Math.max(rect.height - 2 * pad, 10) };
 }
-function toScreen(point, frame) {
-  return [(frame.pad + point.x * frame.sx) * map.scale + map.tx, (frame.pad + point.y * frame.sy) * map.scale + map.ty];
+// A place in the unit cube to a place on screen. Seen from above (pitch 0,
+// no perspective) this is the plain flat map.
+function project(x, y, z, frame) {
+  const cam = map.cam;
+  const u = x - 0.5, v = y - 0.5, w = (z - 0.45 * cam.persp) * 0.85;
+  const u1 = u * Math.cos(cam.yaw) - v * Math.sin(cam.yaw), v1 = u * Math.sin(cam.yaw) + v * Math.cos(cam.yaw);
+  const sy = v1 * Math.cos(cam.pitch) - w * Math.sin(cam.pitch), depth = v1 * Math.sin(cam.pitch) + w * Math.cos(cam.pitch);
+  const s = 1 / (1 - 0.32 * cam.persp * depth);
+  return [(frame.pad + (0.5 + u1 * s * (1 - 0.4 * cam.persp)) * frame.sx) * map.scale + map.tx,
+    (frame.pad + (0.5 + sy * s * (1 - 0.3 * cam.persp) - 0.1 * cam.persp) * frame.sy) * map.scale + map.ty, s, depth];
+}
+function toScreen(point, frame) { return project(point.cx, point.cy, point.cz, frame); }
+function hiddenByTime(point) {
+  if (map.cut === null) return false;
+  const day = pointDay(point);
+  return day !== null && day > map.cut;
 }
 function stateOf(point) {
   if (selection.has(point.id)) return "selected";
@@ -794,6 +1041,7 @@ function stateOf(point) {
   if (map.focus !== null && point.cluster === map.focus) return "focus";
   return "neutral";
 }
+const LAYER = { out: 0, neutral: 1, focus: 2, match: 3, selected: 4 };
 
 function drawMap() {
   if (!map.data || currentView !== "map") return;
@@ -804,48 +1052,104 @@ function drawMap() {
   }
   const g = canvas.getContext("2d");
   g.setTransform(ratio, 0, 0, ratio, 0, 0);
-  const surface = css("--viz-surface");
+  const surface = css("--viz-surface"), ink = css("--ink"), muted = css("--muted"), line = css("--line");
   g.fillStyle = surface; g.fillRect(0, 0, frame.w, frame.h);
-  const colours = { neutral: css("--viz-neutral"), focus: css("--viz-focus"), match: css("--viz-match"), selected: css("--viz-selected") };
+  const colours = { out: css("--viz-neutral"), neutral: css("--viz-neutral"), focus: css("--viz-focus"), match: css("--viz-match"), selected: css("--viz-selected") };
   const anyState = map.focus !== null || map.matches || selection.size > 0;
+  const tilted = map.cam.persp > 0.02;
+  const settled = !map.anim;
+  g.font = "12px system-ui, -apple-system, 'Segoe UI', sans-serif";
 
-  // Neutral points first, then the states on top, each with a ring in the
-  // surface colour so overlapping marks stay separate.
-  for (const layer of ["neutral", "focus", "match", "selected"]) {
-    for (const point of map.data.points) {
-      if (stateOf(point) !== layer) continue;
-      const [x, y] = toScreen(point, frame);
-      if (x < -10 || y < -10 || x > frame.w + 10 || y > frame.h + 10) continue;
-      g.beginPath(); g.arc(x, y, layer === "neutral" ? 4 : 5, 0, Math.PI * 2);
-      g.globalAlpha = layer === "neutral" && anyState ? 0.7 : 1;
-      g.fillStyle = colours[layer]; g.fill();
-      g.globalAlpha = 1; g.lineWidth = 2; g.strokeStyle = surface; g.stroke();
+  // Guides under the dots: the time axis, and in 3D the floor the map lies on.
+  if (tilted) {
+    g.strokeStyle = line; g.lineWidth = 1; g.globalAlpha = Math.min(1, map.cam.persp * 1.5);
+    g.beginPath();
+    [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]].forEach(([x, y], i) => { const [px, py] = project(x, y, 0, frame); if (i) g.lineTo(px, py); else g.moveTo(px, py); });
+    g.stroke();
+    // The time axis stands on the corner nearest to the viewer on the left.
+    const corners = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([x, y]) => ({ x, y, p: project(x, y, 0, frame) })).sort((a, b) => a.p[0] - b.p[0]);
+    const post = corners[0];
+    const [bx, by] = post.p, [tx2, ty2] = project(post.x, post.y, 1, frame);
+    g.beginPath(); g.moveTo(bx, by); g.lineTo(tx2, ty2); g.stroke();
+    if (settled && map.layout === "spacetime") {
+      g.fillStyle = muted; g.textAlign = "right"; g.textBaseline = "middle";
+      let lastY = Infinity;
+      for (const tick of map.guides.ticks) {
+        const [px, py] = project(post.x, post.y, tick.at, frame);
+        g.beginPath(); g.moveTo(px - 4, py); g.lineTo(px, py); g.stroke();
+        if (lastY - py < 13) continue;
+        lastY = py; g.fillText(tick.text, px - 7, py);
+      }
+    }
+    g.globalAlpha = 1;
+  } else if (settled && map.layout === "timeline") {
+    g.textBaseline = "alphabetic";
+    let lastX = -Infinity;
+    for (const tick of map.guides.ticks) {
+      const [px, top] = project(tick.at, 0, 0, frame), [, bottom] = project(tick.at, 1, 0, frame);
+      if (!tick.soft) { g.strokeStyle = line; g.lineWidth = 1; g.globalAlpha = tick.strong ? 1 : 0.5; g.beginPath(); g.moveTo(px, Math.max(top, 0)); g.lineTo(px, Math.min(bottom, frame.h - 18)); g.stroke(); g.globalAlpha = 1; }
+      if (px - lastX < 46 || px < 0 || px > frame.w) continue;
+      lastX = px; g.fillStyle = muted; g.textAlign = "center"; g.fillText(tick.text, px, Math.min(bottom + 16, frame.h - 5));
+    }
+    for (let i = 1; i < (map.guides.lanes || 0); i++) {
+      const [x0, y] = project(ROW_NAMES - 0.01, i / map.guides.lanes, 0, frame), [x1] = project(1, i / map.guides.lanes, 0, frame);
+      g.strokeStyle = line; g.globalAlpha = 0.5; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); g.globalAlpha = 1;
     }
   }
-  if (map.hover) {
+
+  // Dots: those the filter leaves out first and faint, then neutral ones, then
+  // the states on top. In 3D the far ones are drawn before the near ones.
+  const drawn = [];
+  for (const point of map.data.points) {
+    if (hiddenByTime(point)) continue;
+    const [x, y, s, depth] = toScreen(point, frame);
+    if (x < -10 || y < -10 || x > frame.w + 10 || y > frame.h + 10) continue;
+    drawn.push({ x, y, s, depth, layer: passes(point.id) ? stateOf(point) : "out" });
+  }
+  drawn.sort((a, b) => LAYER[a.layer] - LAYER[b.layer] || a.depth - b.depth);
+  for (const d of drawn) {
+    const base = d.layer === "out" ? 2.5 : d.layer === "neutral" ? 4 : 5;
+    g.beginPath(); g.arc(d.x, d.y, base * (tilted ? Math.max(0.6, Math.min(1.5, d.s)) : 1), 0, Math.PI * 2);
+    g.globalAlpha = d.layer === "out" ? 0.22 : d.layer === "neutral" && anyState ? 0.7 : 1;
+    g.fillStyle = colours[d.layer]; g.fill();
+    g.globalAlpha = 1;
+    if (d.layer !== "out") { g.lineWidth = tilted ? 1.5 : 2; g.strokeStyle = surface; g.stroke(); }
+  }
+  if (map.hover && !hiddenByTime(map.hover)) {
     const [x, y] = toScreen(map.hover, frame);
-    g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.lineWidth = 2; g.strokeStyle = css("--ink"); g.stroke();
+    if (tilted) { const [fx, fy] = project(map.hover.cx, map.hover.cy, 0, frame); g.strokeStyle = muted; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(fx, fy); g.stroke(); }
+    g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.lineWidth = 2; g.strokeStyle = ink; g.stroke();
   }
 
-  // Topic labels, biggest topics first; a label that would cover another is
-  // left out (it stays reachable through "Focus on").
+  // Labels, biggest first; a label that would cover another is left out (a
+  // topic stays reachable through "Focus on"). Hidden while things move.
   map.labels = [];
-  const ink = css("--ink");
-  const ordered = [...map.data.clusters].sort((a, b) => (b.cluster === map.focus) - (a.cluster === map.focus) || b.size - a.size);
-  for (const cluster of ordered) {
-    const focused = cluster.cluster === map.focus;
-    g.font = (focused ? "700 " : "600 ") + "13px system-ui, -apple-system, 'Segoe UI', sans-serif";
-    const text = cluster.label.length > 34 ? cluster.label.slice(0, 33) + "…" : cluster.label;
-    const [x, y] = toScreen(cluster, frame);
-    const width = g.measureText(text).width;
-    const box = { x: x - width / 2 - 4, y: y - 11, w: width + 8, h: 22, cluster };
-    if (box.x + box.w < 0 || box.y + box.h < 0 || box.x > frame.w || box.y > frame.h) continue;
-    if (!focused && map.labels.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue;
-    map.labels.push(box);
-    g.textAlign = "center"; g.textBaseline = "middle";
-    g.lineWidth = 4; g.lineJoin = "round"; g.strokeStyle = surface; g.strokeText(text, x, y);
-    g.fillStyle = ink; g.fillText(text, x, y);
-    if (focused) { g.fillStyle = colours.focus; g.fillRect(x - width / 2, y + 10, width, 2); }
+  if (settled) {
+    const ordered = [...map.guides.labels].sort((a, b) => (!!b.cluster && b.cluster.cluster === map.focus) - (!!a.cluster && a.cluster.cluster === map.focus) || b.size - a.size);
+    for (const label of ordered) {
+      const focused = !!label.cluster && label.cluster.cluster === map.focus;
+      g.font = (focused ? "700 " : label.plain || label.lane ? "500 " : "600 ") + (label.plain || label.lane ? "12px" : "13px") + " system-ui, -apple-system, 'Segoe UI', sans-serif";
+      const limit = label.lane ? 30 : 34;
+      const text = label.text.length > limit ? label.text.slice(0, limit - 1) + "…" : label.text;
+      const [x, y] = project(label.x, label.y, label.z, frame);
+      const width = g.measureText(text).width;
+      const left = label.align === "left" ? x : x - width / 2;
+      const box = { x: left - 4, y: y - 11, w: width + 8, h: 22, cluster: label.cluster || null };
+      if (box.x + box.w < 0 || box.y + box.h < 0 || box.x > frame.w || box.y > frame.h) continue;
+      if (!focused && map.labels.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue;
+      map.labels.push(box);
+      g.textAlign = "left"; g.textBaseline = "middle";
+      g.lineWidth = 4; g.lineJoin = "round"; g.strokeStyle = surface; g.strokeText(text, left, y);
+      g.fillStyle = label.plain ? muted : ink; g.fillText(text, left, y);
+      if (focused) { g.fillStyle = colours.focus; g.fillRect(left, y + 10, width, 2); }
+    }
+  }
+  if (map.cut !== null) {
+    const date = new Date(map.cut * 864e5);
+    g.font = "700 22px system-ui, -apple-system, 'Segoe UI', sans-serif"; g.textAlign = "right"; g.textBaseline = "top";
+    g.lineWidth = 5; g.lineJoin = "round"; g.strokeStyle = surface; g.fillStyle = ink;
+    const text = MONTH[date.getUTCMonth()] + " " + date.getUTCFullYear();
+    g.strokeText(text, frame.w - 14, 12); g.fillText(text, frame.w - 14, 12);
   }
   if (map.box) {
     g.fillStyle = "rgba(127,127,127,.15)"; g.strokeStyle = colours.selected; g.lineWidth = 1;
@@ -862,9 +1166,13 @@ function mapLegend() {
   if (focused) rows.push(["--viz-focus", "Focused topic: " + focused.label + " (" + focused.size + ")"]);
   if (map.matches) rows.push(["--viz-match", "Matches “" + $("map-search").value.trim() + "” (" + map.data.points.filter((p) => map.matches.has(p.id)).length + ")"]);
   if (selection.size) rows.push(["--viz-selected", "Selected (" + map.data.points.filter((p) => selection.has(p.id)).length + ")"]);
-  rows.push(["--viz-neutral", rows.length ? "Other bookmarks" : "One dot per bookmark; similar bookmarks sit close together"]);
-  for (const [colour, text] of rows) {
+  const what = { similarity: "similar bookmarks sit close together", timeline: "left to right is time, one row per topic",
+    grid: "one group per cell of the grid", spacetime: "the map lies flat and time rises from it: the higher, the more recent" }[map.layout];
+  rows.push(["--viz-neutral", rows.length ? "Other bookmarks" : "One dot per bookmark; " + what]);
+  if (facetIds) rows.push(["--viz-neutral", "Small faint dots: left out by the filter (" + map.data.points.filter((p) => !facetIds.has(p.id)).length + ")", true]);
+  for (const [colour, text, faint] of rows) {
     const dot = el("i"); dot.style.background = "var(" + colour + ")";
+    if (faint) { dot.style.opacity = "0.35"; dot.style.transform = "scale(.6)"; }
     holder.append(el("span", {}, [dot, text]));
   }
 }
@@ -873,6 +1181,7 @@ function mapPointAt(mx, my) {
   const frame = mapFrame();
   let best = null, bestDistance = 12 * 12;   // the hit target is larger than the dot
   for (const point of map.data.points) {
+    if (hiddenByTime(point) || !passes(point.id)) continue;
     const [x, y] = toScreen(point, frame);
     const d = (x - mx) * (x - mx) + (y - my) * (y - my);
     if (d < bestDistance) { best = point; bestDistance = d; }
@@ -913,6 +1222,7 @@ function zoomAt(factor, cx, cy) {
   drawMap();
 }
 function mousePos(event) { const r = canvas.getBoundingClientRect(); return [event.clientX - r.left, event.clientY - r.top]; }
+function resetMapView() { map.scale = 1; map.tx = 0; map.ty = 0; if (!map.anim) Object.assign(map.cam, LAYOUTS[map.layout].cam); drawMap(); }
 
 canvas.addEventListener("wheel", (event) => {
   if (!map.data) return;
@@ -924,7 +1234,9 @@ canvas.addEventListener("pointerdown", (event) => {
   if (!map.data) return;
   const [x, y] = mousePos(event);
   canvas.setPointerCapture(event.pointerId);
-  map.drag = { x, y, tx: map.tx, ty: map.ty, moved: false, selecting: event.shiftKey };
+  // In 3D a plain drag turns the view; Alt+drag moves it.
+  const turning = map.layout === "spacetime" && !map.anim && !event.shiftKey && !event.altKey;
+  map.drag = { x, y, tx: map.tx, ty: map.ty, yaw: map.cam.yaw, pitch: map.cam.pitch, moved: false, selecting: event.shiftKey, turning };
   if (event.shiftKey) { map.box = { x0: x, y0: y, x1: x, y1: y }; canvas.classList.add("selecting"); }
 });
 canvas.addEventListener("pointermove", (event) => {
@@ -933,16 +1245,21 @@ canvas.addEventListener("pointermove", (event) => {
   if (map.drag) {
     if (Math.abs(x - map.drag.x) + Math.abs(y - map.drag.y) > 4) map.drag.moved = true;
     if (map.drag.selecting) { map.box.x1 = x; map.box.y1 = y; }
+    else if (map.drag.moved && map.drag.turning) {
+      map.cam.yaw = map.drag.yaw - (x - map.drag.x) * 0.008;
+      map.cam.pitch = Math.max(0.2, Math.min(1.5, map.drag.pitch - (y - map.drag.y) * 0.006));
+    }
     else if (map.drag.moved) { map.tx = map.drag.tx + x - map.drag.x; map.ty = map.drag.ty + y - map.drag.y; }
     $("maptip").hidden = true; drawMap(); return;
   }
-  const point = mapPointAt(x, y);
+  const point = map.anim ? null : mapPointAt(x, y);
   if (point !== map.hover) { map.hover = point; drawMap(); }
   const tip = $("maptip");
   if (!point) { tip.hidden = true; return; }
   const cluster = map.data.clusters.find((c) => c.cluster === point.cluster);
+  const dates = [point.saved ? "saved " + point.saved : "", point.published ? "published " + point.published : ""].filter(Boolean).join(" · ");
   tip.replaceChildren(el("strong", { textContent: point.title.length > 90 ? point.title.slice(0, 89) + "…" : point.title }),
-    el("small", { textContent: point.domain + (cluster ? " · " + cluster.label : "") }));
+    el("small", { textContent: point.domain + (cluster ? " · " + cluster.label : "") }), el("small", { textContent: dates || "no date" }));
   tip.hidden = false;
   const frame = mapFrame();
   tip.style.left = Math.min(x + 14, frame.w - tip.offsetWidth - 6) + "px";
@@ -958,24 +1275,77 @@ canvas.addEventListener("pointerup", (event) => {
     const [x0, x1, y0, y1] = [Math.min(b.x0, b.x1), Math.max(b.x0, b.x1), Math.min(b.y0, b.y1), Math.max(b.y0, b.y1)];
     const frame = mapFrame();
     for (const point of map.data.points) {
+      if (hiddenByTime(point) || !passes(point.id)) continue;
       const [px, py] = toScreen(point, frame);
       if (px >= x0 && px <= x1 && py >= y0 && py <= y1) selection.add(point.id);
     }
     refreshSelection(); mapLegend(); return;
   }
   if (drag.moved) return;
-  const label = map.labels.find((o) => x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h);
+  const label = map.labels.find((o) => o.cluster && x >= o.x && x <= o.x + o.w && y >= o.y && y <= o.y + o.h);
   const point = mapPointAt(x, y);
   if (point) showDetail(point);
   else if (label) setFocus(label.cluster.cluster === map.focus ? null : label.cluster.cluster);
   else setFocus(null);
 });
-canvas.addEventListener("dblclick", () => { map.scale = 1; map.tx = 0; map.ty = 0; drawMap(); });
+canvas.addEventListener("dblclick", resetMapView);
 $("map-in").onclick = () => { const f = mapFrame(); zoomAt(1.3, f.w / 2, f.h / 2); };
 $("map-out").onclick = () => { const f = mapFrame(); zoomAt(1 / 1.3, f.w / 2, f.h / 2); };
-$("map-reset").onclick = () => { map.scale = 1; map.tx = 0; map.ty = 0; drawMap(); };
+$("map-reset").onclick = resetMapView;
 $("map-focus").onchange = () => setFocus($("map-focus").value === "" ? null : Number($("map-focus").value));
 window.addEventListener("resize", drawMap);
+
+async function setMapLayout(name, snap) {
+  if (name === "grid" && map.data && map.data.layout) {
+    try { map.cells = await api("GET", "/api/grid"); } catch (error) { map.cells = null; }
+    if (!map.cells || !map.cells.grid) {
+      note("map-note", "The grid layout needs a grid: open the Grid tab and press Draw the grid, then come back.", "bad");
+      $("map-layout").value = map.layout; return;
+    }
+  }
+  map.layout = LAYOUTS[name] ? name : "similarity";
+  $("map-layout").value = map.layout;
+  map.scale = 1; map.tx = 0; map.ty = 0;
+  canvas.setAttribute("aria-label", "Bookmarks as dots. " + { similarity: "Similar bookmarks are drawn close together.", timeline: "Left to right is time, with one row per topic.",
+    grid: "Bookmarks are gathered in the cells of the grid.", spacetime: "The map lies flat and time rises from it." }[map.layout]);
+  if (map.data && map.data.layout) { mapNote(); mapLegend(); mapRelayout(snap); }
+}
+$("map-layout").onchange = () => setMapLayout($("map-layout").value);
+
+// Playing time: only what existed on a given day is shown.
+function syncTimeControls() {
+  const has = !!map.time;
+  $("map-play").disabled = !has; $("map-time").disabled = !has;
+  if (!has) { map.cut = null; $("map-when").textContent = "no dates"; return; }
+  if (map.cut !== null) map.cut = Math.max(map.time.lo, Math.min(map.time.hi, map.cut));
+  $("map-time").value = map.cut === null ? 1000 : Math.round(1000 * (map.cut - map.time.lo) / (map.time.hi - map.time.lo));
+  describeTime();
+}
+function describeTime() {
+  const shown = map.data.points.filter((p) => !hiddenByTime(p)).length;
+  $("map-when").textContent = map.cut === null ? "all " + shown : "up to " + dayText(map.cut) + " · " + shown + " of " + map.data.points.length;
+}
+function setCut(unit) {   // 0..1 along the span; 1 means everything
+  map.cut = unit >= 1 ? null : Math.round(map.time.lo + unit * (map.time.hi - map.time.lo));
+  $("map-time").value = Math.round(unit * 1000);
+  describeTime(); drawMap();
+}
+function stopPlaying() { if (map.playing) cancelAnimationFrame(map.playing.frame); map.playing = null; $("map-play").textContent = "Play"; }
+$("map-time").oninput = () => { stopPlaying(); if (map.time) setCut(Number($("map-time").value) / 1000); };
+$("map-play").onclick = () => {
+  if (map.playing) { stopPlaying(); return; }
+  if (!map.time) return;
+  const from = Number($("map-time").value) >= 1000 ? 0 : Number($("map-time").value) / 1000;
+  const started = performance.now(), length = 14000 * (1 - from);
+  $("map-play").textContent = "Pause";
+  const tick = (now) => {
+    const unit = Math.min(1, from + (1 - from) * (now - started) / Math.max(length, 1));
+    setCut(unit);
+    if (unit >= 1 || currentView !== "map") { stopPlaying(); return; }
+    map.playing.frame = requestAnimationFrame(tick);
+  };
+  map.playing = { frame: requestAnimationFrame(tick) };
+};
 
 let mapSearchTimer = null;
 $("map-search").oninput = () => {
@@ -988,8 +1358,24 @@ $("map-search").oninput = () => {
   }, 250);
 };
 
+function mapNote() {
+  const data = map.data;
+  const how = map.layout === "spacetime"
+    ? "Drag to turn, Alt+drag to move, scroll to zoom, Shift+drag to select an area, click a dot for details."
+    : "Drag to move, scroll to zoom, Shift+drag to select an area, click a dot for details, click a topic name to focus it.";
+  let text = data.points.length + " bookmarks. " + how;
+  if (map.time && map.layout !== "similarity" && map.layout !== "grid") {
+    const undated = data.points.length - map.time.dated;
+    text += " Dates: " + { when: "the day saved, or published when the save date is missing", saved: "the day saved", published: "the day published" }[facets.kind]
+      + " (change it in the filter bar)." + (undated ? " " + undated + " without that date " + (map.layout === "timeline" ? "sit at the far left." : "stay on the floor.") : "");
+  }
+  if (data.missing > 0) text += " " + data.missing + " bookmarks were added since the map was drawn and are not on it: redraw to include them.";
+  note("map-note", text, data.missing > 0 ? "bad" : "muted");
+}
+
 function applyMapData(data) {
-  map.data = data;
+  stopPlaying();
+  map.data = data; map.cut = null; map.hover = null;
   if (map.focus !== null && !data.clusters.some((c) => c.cluster === map.focus)) map.focus = null;
   const focus = $("map-focus");
   focus.replaceChildren(el("option", { value: "", textContent: "No topic" }));
@@ -998,13 +1384,11 @@ function applyMapData(data) {
   }
   $("map-run").textContent = data.layout ? "Redraw the map" : "Draw the map";
   $("map-run").className = data.layout ? "action" : "action primary";
-  if (!data.layout) note("map-note", "No map yet. Drawing it takes a few seconds: similar bookmarks are placed close together.", "muted");
-  else {
-    let text = data.points.length + " bookmarks. Drag to move, scroll to zoom, Shift+drag to select an area, click a dot for details, click a topic name to focus it.";
-    if (data.missing > 0) text += " " + data.missing + " bookmarks were added since the map was drawn and are not on it: redraw to include them.";
-    note("map-note", text, data.missing > 0 ? "bad" : "muted");
-  }
-  mapLegend(); drawMap();
+  $("map-views").hidden = !data.layout;
+  if (!data.layout) { note("map-note", "No map yet. Drawing it takes a few seconds: similar bookmarks are placed close together.", "muted"); mapLegend(); drawMap(); return; }
+  if (map.layout === "grid" && !(map.cells && map.cells.grid)) map.layout = "similarity";
+  $("map-layout").value = map.layout;
+  mapNote(); mapLegend(); mapRelayout(true);
 }
 
 async function loadMap(clusterRun) {
@@ -1017,14 +1401,19 @@ async function loadMap(clusterRun) {
       textContent: run.k + " clusters · " + run.algorithm + " · " + new Date(run.created_at).toLocaleDateString() }));
   }
   select.disabled = runs.length === 0;
+  if (map.layout === "grid") { try { map.cells = await api("GET", "/api/grid"); } catch (error) { map.cells = null; } }
   applyMapData(data);
 }
 $("map-clusters").onchange = () => { map.focus = null; loadMap($("map-clusters").value).catch((e) => note("map-note", e.message, "bad")); };
-$("map-run").onclick = () => busy($("map-run"), async () => {
-  note("map-note", "Placing the bookmarks. This takes a few seconds…", "muted");
-  try { await api("POST", "/api/map", {}); await loadMap(); }
-  catch (error) { note("map-note", error.message, "bad"); }
-});
+$("map-run").onclick = async () => {
+  await busy($("map-run"), async () => {
+    note("map-note", "Placing the bookmarks. This takes a few seconds…", "muted");
+    try { await api("POST", "/api/map", {}); await loadMap(); }
+    catch (error) { note("map-note", error.message, "bad"); }
+  });
+  // busy() puts the old label back; the map now exists.
+  if (map.data && map.data.layout) { $("map-run").textContent = "Redraw the map"; $("map-run").className = "action"; }
+};
 
 /* ---- clusters ---- */
 
@@ -1127,7 +1516,10 @@ function drawGrid() {
   holder.style.gridTemplateColumns = "repeat(" + data.grid.cols + ", minmax(78px, 1fr))";
   const largest = Math.max(1, ...data.cells.map((c) => c.size));
   let anySelected = false, matched = 0;
-  for (const cell of data.cells) {
+  for (const whole of data.cells) {
+    // With the shared filter on, a cell counts only the bookmarks that pass.
+    const cell = facetIds ? { ...whole, ids: whole.ids.filter(passes) } : whole;
+    if (facetIds) cell.size = cell.ids.length;
     const selected = cell.ids.filter((id) => selection.has(id)).length;
     const hits = grid.matches ? cell.ids.filter((id) => grid.matches.has(id)).length : 0;
     anySelected = anySelected || selected > 0; matched += hits;
@@ -1516,7 +1908,8 @@ function captureView() {
     selection_filter: !!selectionFilter && !selectionFilterLabel,
     tree_path: tree.path.slice(),
     clusters_run: $("cl-runs").value || null,
-    map: { focus: map.focus, scale: map.scale, tx: map.tx, ty: map.ty, search: $("map-search").value.trim(), clusters_run: $("map-clusters").value || null },
+    facets: facetBody(),
+    map: { focus: map.focus, scale: map.scale, tx: map.tx, ty: map.ty, search: $("map-search").value.trim(), clusters_run: $("map-clusters").value || null, layout: map.layout },
   };
 }
 
@@ -1528,14 +1921,18 @@ async function restoreView(state) {
   if (state.cluster) setClusterFilter(state.cluster);
   else if (state.selection_filter && state.selection.length) setSelectionFilter([...state.selection]);
   else setClusterFilter(null);
-  map.focus = state.map.focus; map.scale = state.map.scale; map.tx = state.map.tx; map.ty = state.map.ty;
+  const saved = state.facets || {};
+  facets.tags = saved.tags || []; facets.platform = saved.platform || ""; facets.from = saved.date_from || ""; facets.to = saved.date_to || ""; facets.kind = saved.date_kind || "when";
+  try { facetIds = facetsActive() ? new Set((await api("GET", "/api/bookmarks/ids?q=" + facetQuery())).ids) : null; } catch (error) { facetIds = null; }
+  renderFacets();
+  map.focus = state.map.focus; map.layout = state.map.layout || "similarity";
   $("map-search").value = state.map.search;
   map.matches = null;
   if (state.map.search) {
     try { map.matches = new Set((await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent(state.map.search))).ids); } catch (error) { /* shown without highlight */ }
   }
   showView(state.tab);
-  if (state.tab === "map") await loadMap(state.map.clusters_run || undefined);
+  if (state.tab === "map") { await loadMap(state.map.clusters_run || undefined); map.scale = state.map.scale; map.tx = state.map.tx; map.ty = state.map.ty; drawMap(); }
   else if (state.tab === "clusters") await loadClusters(state.clusters_run || undefined);
   else if (state.tab === "grid") await loadGrid();
   else if (state.tab === "links") await loadLinks();
@@ -1549,6 +1946,8 @@ function describeCurrent() {
   if ($("search").value.trim()) parts.push("the search “" + $("search").value.trim() + "”");
   if (clusterFilter) parts.push("the filter on “" + clusterFilter.label + "”");
   if (selection.size) parts.push(selection.size + " selected bookmarks");
+  if (facetsActive()) parts.push("the filter (" + [...facets.tags, facets.platform, facets.from && "from " + facets.from, facets.to && "to " + facets.to].filter(Boolean).join(", ") + ")");
+  if (lastWorkView === "map" && map.layout !== "similarity") parts.push("the “" + LAYOUTS[map.layout].name + "” arrangement");
   if (lastWorkView === "map" && map.focus !== null && map.data) {
     const focused = map.data.clusters.find((c) => c.cluster === map.focus);
     if (focused) parts.push("the focus on “" + focused.label + "”");
@@ -1752,15 +2151,15 @@ async function loadBookmarks(reset) {
   if (reset) shown = 0;
   const q = $("search").value.trim();
   const data = selectionFilter
-    ? await api("POST", "/api/bookmarks/list", { ids: selectionFilter, q, limit: 100, offset: shown })
+    ? await api("POST", "/api/bookmarks/list", { ids: selectionFilter, q, limit: 100, offset: shown, facets: facetBody() })
     : await api("GET", "/api/bookmarks?limit=100&offset=" + shown + "&q=" + encodeURIComponent(q)
-      + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : ""));
+      + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : "") + facetQuery());
   total = data.total;
   const holder = $("list");
   if (reset) holder.replaceChildren();
   if (!total) {
-    holder.replaceChildren(el("div", { className: "empty", textContent: q
-      ? "Nothing matches this search."
+    holder.replaceChildren(el("div", { className: "empty", textContent: q || facetsActive()
+      ? "Nothing matches this search and filter."
       : "No bookmarks yet. Open Settings to connect Notion and import your table." }));
   } else {
     let body = holder.querySelector("tbody");
@@ -1906,7 +2305,7 @@ $("sel-export").onclick = () => busy($("sel-export"), async () => {
 let searchTimer = null;
 $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadBookmarks(true).catch(() => {}), 200); };
 $("more").onclick = () => loadBookmarks(false);
-$("tab-bookmarks").onclick = () => showView("bookmarks");
+$("tab-bookmarks").onclick = () => { showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
 $("tab-settings").onclick = () => showView("settings");
 $("tab-views").onclick = () => { showView("views"); loadViews().catch((e) => note("view-note-msg", e.message, "bad")); };
 $("tab-map").onclick = () => { showView("map"); loadMap($("map-clusters").value || undefined).catch((e) => note("map-note", e.message, "bad")); };

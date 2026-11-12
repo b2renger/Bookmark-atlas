@@ -30,7 +30,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from atlas import __version__, batch, bundle, db, groom, settings, snapshot, views
-from atlas.exporter import matching_ids, search_clause, status
+from atlas.exporter import facet_options, matching_ids, search_clause, status
 from atlas.importer import import_csv_stream
 from atlas.notion import NotionClient, NotionError
 from atlas.notion_sync import guess_property_map, select_data_source, selected, sync
@@ -167,9 +167,19 @@ class App:
         try:
             return {
                 "ids": matching_ids(
-                    conn, (query.get("q") or [""])[0], (query.get("cluster") or [None])[0]
+                    conn,
+                    (query.get("q") or [""])[0],
+                    (query.get("cluster") or [None])[0],
+                    _facets(query),
                 )
             }
+        finally:
+            conn.close()
+
+    def facets(self) -> dict:
+        conn = self._conn()
+        try:
+            return facet_options(conn)
         finally:
             conn.close()
 
@@ -517,13 +527,19 @@ class App:
             "limit": [str(body.get("limit") or 100)],
             "offset": [str(body.get("offset") or 0)],
         }
+        chosen = body.get("facets") if isinstance(body.get("facets"), dict) else {}
+        tags = chosen.get("tags") if isinstance(chosen.get("tags"), list) else []
+        query["tag"] = [str(tag) for tag in tags]
+        for key, name in (("platform", "platform"), ("date_from", "from"), ("date_to", "to")):
+            query[name] = [str(chosen.get(key) or "")]
+        query["dates"] = [str(chosen.get("date_kind") or "when")]
         return self.bookmarks(query, only=[str(i) for i in ids])
 
     def bookmarks(self, query: dict, only: list[str] | None = None) -> dict:
         text = (query.get("q") or [""])[0].strip()
         limit = max(1, min(int((query.get("limit") or ["100"])[0]), 500))
         offset = max(0, int((query.get("offset") or ["0"])[0]))
-        where, params = search_clause(text, (query.get("cluster") or [None])[0])
+        where, params = search_clause(text, (query.get("cluster") or [None])[0], _facets(query))
         conn = self._conn()
         try:
             if only is not None:
@@ -555,6 +571,18 @@ class App:
             return {"total": total, "items": items}
         finally:
             conn.close()
+
+
+def _facets(query: dict) -> dict:
+    """The shared filter, as it arrives in a query string."""
+    first = lambda key: (query.get(key) or [""])[0]  # noqa: E731
+    return {
+        "tags": query.get("tag") or [],
+        "platform": first("platform"),
+        "date_from": first("from"),
+        "date_to": first("to"),
+        "date_kind": first("dates") or "when",
+    }
 
 
 def _page(app: App) -> bytes:
@@ -629,6 +657,7 @@ def make_handler(app: App):
                 ("POST", "/api/notion/sync"): lambda: app.sync(self._body()),
                 ("POST", "/api/import-csv"): lambda: app.import_csv(self._body()),
                 ("GET", "/api/bookmarks/ids"): lambda: app.bookmark_ids(parse_qs(url.query)),
+                ("GET", "/api/facets"): lambda: app.facets(),
                 ("POST", "/api/bookmarks/tags"): lambda: app.selection_tags(self._body()),
                 ("POST", "/api/bookmarks/batch"): lambda: app.batch_edit(self._body()),
                 ("POST", "/api/bookmarks/export"): lambda: app.export_selection(self._body()),

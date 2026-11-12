@@ -54,6 +54,7 @@ def test_save_list_open_delete_a_view(conn):
         "ty": 12.5,
         "search": "audio",
         "clusters_run": "abc",
+        "layout": "similarity",
     }
     listed = views.list_views(conn)
     assert [v["name"] for v in listed] == ["Splat corner"] and "state" not in listed[0]
@@ -85,8 +86,10 @@ def test_a_view_keeps_only_what_a_view_may_hold(conn):
         "ty": 0.0,
         "search": "",
         "clusters_run": None,
+        "layout": "similarity",
     }
     assert set(state) == {
+        "facets",
         "tab",
         "tree_path",
         "search",

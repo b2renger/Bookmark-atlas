@@ -4,6 +4,51 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-12: phase 8, shared filter and an animated map with four arrangements
+
+**Asked:** better dataviz, animated, 3D, timelines with filters and different
+views.
+
+**Research (read at the source):** regl-scatterplot (animated transitions,
+lasso, filter; MIT), 3d-force-graph (MIT), Apple Embedding Atlas (cross-filter
+pattern), vis-timeline (DOM based). None could be installed or tried here: the
+package registry is unreachable from the session. Whether they pass the
+app's content security policy is unknown.
+
+**Works**
+
+- `exporter.facet_clause` and `facet_options`; `/api/facets`; the list and
+  `/api/bookmarks/ids` take `tag` (repeatable), `platform`, `from`, `to`,
+  `dates`. Map points carry `saved` and `published` days.
+- Filter bar shown on Bookmarks, Map and Grid.
+- Map: `Arrange by` (similarity, timeline, grid, space and time), Play, time
+  slider. Positions live in a unit cube; `project()` is the camera.
+- Saved views keep `facets` and `map.layout`.
+
+**Decisions**
+
+- Canvas 2D kept. Measured need, not fashion: 956 dots.
+- 3D is one arrangement among four and never the default; its height means
+  time, so the third dimension carries information.
+- The date used by the timeline, the 3D view, Play and the date filter is one
+  setting ("Date used"), so they never disagree.
+- Dots left out by the filter stay visible but faint, to keep the shape of
+  the whole in view.
+
+**Verified how**
+
+- 7 new Python tests for the filter (234 in all).
+- Browser run on the real collection, light and dark: each arrangement, the
+  3D turn, hover and click in 3D, slider, Play and Pause, filter by tag and
+  date across map, list and grid, a saved view reopened with its filter and
+  arrangement. The five earlier browser checks still pass.
+
+**Not done**
+
+- Filter on Tree, Links, Trends. Date brush. 3D link graph. Density contours.
+
+**Next:** publish 0.8.0.
+
 ## 2026-11-11: v0.7.1 replaces a wrong v0.7.0
 
 **What happened:** the 0.7.0 release run was started seconds after the push,

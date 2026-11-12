@@ -363,9 +363,12 @@ def map_data(conn: sqlite3.Connection, cluster_run_id: str | None = None) -> dic
             "title": row["title"] or row["url"],
             "domain": row["domain"],
             "cluster": membership.get(row["id"]),
+            "saved": (row["saved_at"] or "")[:10] or None,
+            "published": (row["published_at"] or "")[:10] or None,
         }
         for row in conn.execute(
-            "SELECT b.id, b.title, b.url, b.domain, ri.x, ri.y FROM run_items ri "
+            "SELECT b.id, b.title, b.url, b.domain, b.saved_at, b.published_at, ri.x, ri.y "
+            "FROM run_items ri "
             "JOIN bookmarks b ON b.id = ri.bookmark_id "
             "WHERE ri.run_id = ? AND b.deleted_at IS NULL ORDER BY b.id",
             (layout["id"],),

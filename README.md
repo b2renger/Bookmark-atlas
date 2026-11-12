@@ -77,6 +77,15 @@ In **Clusters**, group the collection by topic. Each cluster shows its telling
 tags and a few bookmarks; rename it, or "show bookmarks" to work on it in the
 list.
 
+A **filter bar** sits above the list, the map and the grid: tags, site, and a
+range of dates (saved, published, or saved with published as a fallback). What
+you set there applies to all three.
+
+On the **Map**, "Arrange by" moves the same dots between four layouts, with an
+animation: by similarity, along a timeline with one row per topic, on the
+grid, or in 3D with the map lying flat and time rising from it (drag to turn).
+**Play** replays the collection as it grew; the slider goes to any day.
+
 The **Grid** is a self-organising map: every bookmark sits in one cell,
 neighbouring cells hold related bookmarks, and a larger disc means more
 bookmarks. It shows where the collection is dense. Click a cell to read it,
