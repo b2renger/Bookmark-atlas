@@ -80,7 +80,7 @@ def test_a_bookmark_between_two_topics_is_a_bridge(path):  # noqa: F811
 
 def test_old_bookmarks_close_to_recent_ones_resurface(path):  # noqa: F811
     conn = db.open_ready(path)
-    assert links.resurface.__defaults__ == (45, 180, 15)
+    assert links.resurface.__defaults__ == (45, 180, 15, None)
     fill(conn)  # undated: they can be neither recent nor old
     old = add(
         conn,

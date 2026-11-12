@@ -262,16 +262,22 @@ class App:
                 node=body.get("node"),
                 name=body.get("name"),
                 family=body.get("family"),
+                other=body.get("other"),
             )
         finally:
             conn.close()
 
-    def links_show(self) -> dict:
+    def links_show(self, query: dict | None = None) -> dict:
         from atlas.analysis import links
 
         conn = self._conn()
         try:
-            return {**links.overview(conn), "resurface": links.resurface(conn)}
+            only = _passing(conn, query or {})
+            return {
+                **links.overview(conn, only=only),
+                "resurface": links.resurface(conn, only=only),
+                "filtered": only is not None,
+            }
         finally:
             conn.close()
 
@@ -298,14 +304,8 @@ class App:
 
         conn = self._conn()
         try:
-            chosen = _facets(query or {})
-            filtered = bool(
-                [t for t in chosen["tags"] if t.strip()]
-                or chosen["platform"]
-                or chosen["date_from"]
-                or chosen["date_to"]
-            )
-            only = set(matching_ids(conn, "", None, chosen)) if filtered else None
+            only = _passing(conn, query or {})
+            filtered = only is not None
             run_id, names = None, None
             try:
                 from atlas.analysis import store
@@ -634,6 +634,18 @@ class App:
             conn.close()
 
 
+def _passing(conn, query: dict) -> set[str] | None:
+    """The bookmarks that pass the shared filter, or None when nothing is filtered."""
+    chosen = _facets(query)
+    active = (
+        [t for t in chosen["tags"] if t.strip()]
+        or chosen["platform"]
+        or chosen["date_from"]
+        or chosen["date_to"]
+    )
+    return set(matching_ids(conn, "", None, chosen)) if active else None
+
+
 def _facets(query: dict) -> dict:
     """The shared filter, as it arrives in a query string."""
     first = lambda key: (query.get(key) or [""])[0]  # noqa: E731
@@ -735,7 +747,7 @@ def make_handler(app: App):
                 ("GET", "/api/tree"): lambda: app.tree_show(),
                 ("POST", "/api/tree"): lambda: app.tree_new(self._body()),
                 ("POST", "/api/tree/edit"): lambda: app.tree_edit(self._body()),
-                ("GET", "/api/links"): lambda: app.links_show(),
+                ("GET", "/api/links"): lambda: app.links_show(parse_qs(url.query)),
                 ("GET", "/api/links/related"): lambda: app.links_related(parse_qs(url.query)),
                 ("GET", "/api/links/threads"): lambda: app.links_threads(),
                 ("GET", "/api/trends"): lambda: app.trends_show(parse_qs(url.query)),

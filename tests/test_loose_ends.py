@@ -2,6 +2,8 @@ import json
 import urllib.error
 from socket import gaierror
 
+import pytest
+
 from atlas import db, groom, pagedates
 from atlas.groom.merge_tag_synonyms import initials, singular
 from atlas.importer import ImportReport, import_record
@@ -350,3 +352,119 @@ def test_a_hugging_face_date_is_proposed_with_its_source(path):  # noqa: F811
     run(conn, path, "published-from-page")
     assert conn.execute("SELECT published_source FROM bookmarks").fetchone()[0] == "huggingface"
     assert preview(conn, "clear-published-dates", {"source": "huggingface"})["groups_total"] == 1
+
+
+# ---- tree edits, filtered links, the date brush ----------------------------
+
+
+def test_topics_and_families_can_be_merged_split_and_set_apart(path):  # noqa: F811
+    from atlas.analysis import store, tree
+    from test_clusters import fill
+
+    conn = db.open_ready(path)
+    fill(conn, per_topic=30)
+    store.cluster_run(conn, k=3, algorithm="k-means")
+    built = store.tree_run(conn)["tree"]
+    topics = [t for family in built["children"] for t in family["children"]]
+    a, b, c = topics
+    parts = [part["id"] for part in a["children"]]
+    assert len(parts) >= 2
+
+    after = store.edit_tree(conn, "split", node=a["id"])["tree"]
+    assert tree.find(after, a["id"])[0] is None
+    assert all(tree.find(after, part)[0]["kind"] == "topic" for part in parts)
+    assert after["size"] == 90
+
+    after = store.edit_tree(conn, "merge", node=b["id"], other=c["id"])["tree"]
+    merged = tree.find(after, b["id"])[0]
+    assert (
+        merged["size"] == 60 and merged["children"] == [] and tree.find(after, c["id"])[0] is None
+    )
+    assert after["size"] == 90 and sum(f["size"] for f in after["children"]) == 90
+    assert all(f["children"] for f in after["children"])  # no empty family left behind
+
+    families = [f["id"] for f in after["children"]]
+    if len(families) > 1:
+        after = store.edit_tree(conn, "merge_families", node=families[0], other=families[1])["tree"]
+        assert len(after["children"]) == len(families) - 1 and after["size"] == 90
+    home = tree.find(after, b["id"])[1]
+    if len(home["children"]) > 1:
+        after = store.edit_tree(conn, "new_family", node=b["id"])["tree"]
+        own = tree.find(after, b["id"])[1]
+        assert own["kind"] == "family" and own["size"] == 60 and len(own["children"]) == 1
+        assert len({f["id"] for f in after["children"]}) == len(after["children"])
+        with pytest.raises(ValueError):
+            store.edit_tree(conn, "new_family", node=b["id"])  # already alone
+
+    for bad in (
+        {"action": "merge", "node": b["id"], "other": b["id"]},
+        {"action": "merge", "node": b["id"], "other": "nope"},
+        {"action": "split", "node": b["id"]},  # merged topics have no parts
+        {"action": "merge_families", "node": b["id"], "other": b["id"]},
+    ):
+        with pytest.raises(ValueError):
+            store.edit_tree(conn, bad.pop("action"), **bad)
+    # Every bookmark is still in the tree exactly once.
+    final = store.tree_data(conn)["tree"]
+    everything = [x for f in final["children"] for t in f["children"] for x in t["ids"]]
+    assert len(everything) == len(set(everything)) == 90
+    app = App(path)
+    assert (
+        app.tree_edit({"action": "rename", "node": b["id"], "name": "Big one"})["tree"]["size"]
+        == 90
+    )
+
+
+def test_links_between_topics_can_be_computed_for_part_of_the_collection(path):  # noqa: F811
+    from atlas.analysis import links, store
+    from test_clusters import fill
+
+    conn = db.open_ready(path)
+    fill(conn)
+    store.cluster_run(conn, 3)
+    whole = links.overview(conn)
+    audio = {r[0] for r in conn.execute("SELECT id FROM bookmarks WHERE url LIKE '%/audio/%'")}
+    part = links.overview(conn, only=audio)
+    assert sum(t["size"] for t in whole["topics"]) == 72
+    assert [t["size"] for t in part["topics"]] == [24] and part["links"] == []
+    assert links.overview(conn, only=set())["topics"] == []
+    assert links.resurface(conn, only=audio)["items"] == []
+    app = App(path)
+    assert app.links_show({})["filtered"] is False
+    shown = app.links_show({"tag": ["Audio"]})
+    assert shown["filtered"] is True and [t["size"] for t in shown["topics"]] == [24]
+
+
+def test_month_counts_for_the_date_brush(path):  # noqa: F811
+    from atlas.exporter import facet_options
+
+    conn = db.open_ready(path)
+    add(conn, "https://e.org/1", "1", "s", [], saved="2026-03-10T09:00:00Z", published="2026-01-01")
+    add(conn, "https://e.org/2", "2", "s", [], published="2026-01-15")
+    add(conn, "https://e.org/3", "3", "s", [])
+    months = facet_options(conn)["months"]
+    assert months["saved"] == [["2026-03", 1]]
+    assert months["published"] == [["2026-01", 2]]
+    assert months["when"] == [["2026-01", 1], ["2026-03", 1]]
+
+
+def test_a_view_remembers_the_thread_being_read(path):  # noqa: F811
+    from atlas import views
+
+    conn = db.open_ready(path)
+    state = views.save_view(
+        conn,
+        "t",
+        {
+            "tab": "links",
+            "threads": {"order": "topic", "show": "both", "pinned": "abc", "x": 1},
+            "map": {"layout": "links3d"},
+        },
+    )["state"]
+    assert (
+        state["threads"] == {"order": "topic", "show": "both", "pinned": "abc"}
+        and state["map"]["layout"] == "links3d"
+    )
+    assert views.save_view(conn, "u", {"threads": {"order": "sideways", "show": 3}})["state"][
+        "threads"
+    ] == {"order": "time", "show": "all", "pinned": None}

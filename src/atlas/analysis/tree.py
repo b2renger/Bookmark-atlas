@@ -170,3 +170,89 @@ def move_topic(tree: dict, topic_id: str, family_id: str) -> None:
     if not old["children"]:
         tree["children"].remove(old)
     tree["children"].sort(key=lambda child: -child["size"])
+
+
+def _resize(tree: dict) -> None:
+    """Recount every node from its leaves, drop what became empty, sort by size."""
+
+    def count(node: dict) -> int:
+        if node.get("children"):
+            node["children"] = [child for child in node["children"] if count(child) > 0]
+            node["children"].sort(key=lambda child: -child["size"])
+        if "ids" in node:
+            node["size"] = len(node["ids"])
+        else:
+            node["size"] = sum(child["size"] for child in node.get("children", []))
+        return node["size"]
+
+    count(tree)
+
+
+def merge_topics(tree: dict, keep_id: str, other_id: str) -> None:
+    """Fold one topic into another. The kept topic keeps its name and family;
+    its parts are dropped, since they no longer describe it."""
+    keep, _ = find(tree, keep_id)
+    other, other_parent = find(tree, other_id)
+    if keep is None or other is None or keep["kind"] != "topic" or other["kind"] != "topic":
+        raise ValueError("Only two topics can be merged.")
+    if keep is other:
+        raise ValueError("A topic cannot be merged with itself.")
+    keep["ids"] = keep["ids"] + [b for b in other["ids"] if b not in set(keep["ids"])]
+    keep["children"] = []
+    keep["edited"] = True
+    other_parent["children"].remove(other)
+    _resize(tree)
+
+
+def merge_families(tree: dict, keep_id: str, other_id: str) -> None:
+    """Move every topic of one family into another."""
+    keep, _ = find(tree, keep_id)
+    other, _ = find(tree, other_id)
+    if keep is None or other is None or keep["kind"] != "family" or other["kind"] != "family":
+        raise ValueError("Only two families can be merged.")
+    if keep is other:
+        raise ValueError("A family cannot be merged with itself.")
+    keep["children"].extend(other["children"])
+    keep["edited"] = True
+    tree["children"].remove(other)
+    _resize(tree)
+
+
+def split_topic(tree: dict, topic_id: str) -> None:
+    """Turn the parts of a topic into topics of their own, in the same family."""
+    topic, family = find(tree, topic_id)
+    if topic is None or topic["kind"] != "topic":
+        raise ValueError("Only a topic can be split.")
+    if len(topic.get("children") or []) < 2:
+        raise ValueError("This topic has no parts to split into.")
+    for part in topic["children"]:
+        part["kind"] = "topic"
+        part["children"] = []
+        part["edited"] = True
+    family["children"].remove(topic)
+    family["children"].extend(topic["children"])
+    _resize(tree)
+
+
+def new_family(tree: dict, topic_id: str) -> str:
+    """Give a topic a family of its own. Returns the new family's ID."""
+    topic, old = find(tree, topic_id)
+    if topic is None or topic["kind"] != "topic":
+        raise ValueError("Only a topic can start a family.")
+    if len(old["children"]) == 1:
+        raise ValueError("This topic is already alone in its family.")
+    taken = {child["id"] for child in tree["children"]}
+    number = next(n for n in range(len(taken) + 1) if f"g{n}" not in taken)
+    old["children"].remove(topic)
+    tree["children"].append(
+        {
+            "id": f"g{number}",
+            "kind": "family",
+            "name": topic["name"],
+            "size": 0,
+            "children": [topic],
+            "edited": True,
+        }
+    )
+    _resize(tree)
+    return f"g{number}"

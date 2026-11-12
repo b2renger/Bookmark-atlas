@@ -4,6 +4,28 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-12: v0.11.0 published; phase 12, visual loose ends
+
+**Works:** map arrangement `links3d` (force layout in the page, about 300
+steps, three per frame); `savePicture`; the date brush (`/api/facets` now
+returns month counts for each kind of date); `links.overview(only=...)`;
+tree actions `merge`, `merge_families`, `split`, `new_family`; `threads` in
+saved views.
+
+**Decisions:** the force layout runs in the browser so it can be watched, and
+pairs further apart than four link lengths do not push each other. The saved
+web page embeds the picture as data and contains no script. Tree merges ask
+for confirmation in the page (no browser dialog).
+
+**Found on the way:** the filter options were not loaded on the first screen
+(only after a tab change); quick successive filter changes could show the
+count of an earlier request. Both fixed.
+
+**Verified:** 4 new Python tests (265 in all); browser run on the real
+collection, light and dark, including two real downloads and a drag and drop.
+
+**Next:** snapshot comparison; macOS and Linux builds.
+
 ## 2026-11-12: v0.10.0 published; phase 11, grooming loose ends
 
 **Works:** scripts `review-source-edits`, `merge-similar`,

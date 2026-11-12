@@ -75,8 +75,12 @@ def related(conn: sqlite3.Connection, bookmark_id: str, limit: int = 8) -> dict:
     return {"bookmark": _brief(rows[bookmark_id]), "related": found}
 
 
-def overview(conn: sqlite3.Connection, run_id: str | None = None) -> dict:
-    """Topic links, bridges and outliers, for a clustering run (the latest by default)."""
+def overview(
+    conn: sqlite3.Connection, run_id: str | None = None, only: set[str] | None = None
+) -> dict:
+    """Topic links, bridges and outliers, for a clustering run (the latest by
+    default). ``only`` restricts everything to those bookmarks: neighbours are
+    then looked for among them alone."""
     np, ids, matrix, rows = _load(conn)
     run_id = run_id or store.latest_run_id(conn)
     if run_id is None:
@@ -86,7 +90,11 @@ def overview(conn: sqlite3.Connection, run_id: str | None = None) -> dict:
     membership = dict(
         conn.execute("SELECT bookmark_id, cluster FROM run_items WHERE run_id = ?", (run_id,))
     )
-    keep = [i for i, bookmark_id in enumerate(ids) if bookmark_id in membership]
+    keep = [
+        i
+        for i, bookmark_id in enumerate(ids)
+        if bookmark_id in membership and (only is None or bookmark_id in only)
+    ]
     ids = [ids[i] for i in keep]
     matrix = matrix[keep]
     empty = {"cluster_run": run_id, "topics": [], "links": [], "bridges": [], "outliers": []}
@@ -229,7 +237,11 @@ def day_of(row) -> date | None:
 
 
 def resurface(
-    conn: sqlite3.Connection, recent_days: int = 45, old_days: int = 180, limit: int = 15
+    conn: sqlite3.Connection,
+    recent_days: int = 45,
+    old_days: int = 180,
+    limit: int = 15,
+    only: set[str] | None = None,
 ) -> dict:
     """Old bookmarks that the recent ones resemble.
 
@@ -237,6 +249,9 @@ def resurface(
     not from today, so a collection left alone for a while still has an answer.
     """
     np, ids, matrix, rows = _load(conn)
+    if only is not None:
+        keep = [i for i, bookmark_id in enumerate(ids) if bookmark_id in only]
+        ids, matrix = [ids[i] for i in keep], matrix[keep]
     days = [day_of(rows[b]) for b in ids]
     dated = [d for d in days if d is not None]
     if not dated:

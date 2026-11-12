@@ -83,7 +83,22 @@ def facet_options(conn: sqlite3.Connection) -> dict:
         "MAX(substr(COALESCE(saved_at, published_at), 1, 10)) FROM bookmarks "
         "WHERE deleted_at IS NULL"
     ).fetchone()
-    return {"tags": tags, "platforms": platforms, "first_day": span[0], "last_day": span[1]}
+    months = {}
+    for kind, column in DATE_KINDS.items():
+        months[kind] = [
+            [row[0], row[1]]
+            for row in conn.execute(
+                f"SELECT substr({column}, 1, 7) AS month, COUNT(*) FROM bookmarks "
+                f"WHERE deleted_at IS NULL AND {column} IS NOT NULL GROUP BY month ORDER BY month"
+            )
+        ]
+    return {
+        "tags": tags,
+        "platforms": platforms,
+        "first_day": span[0],
+        "last_day": span[1],
+        "months": months,  # for the date brush: bookmarks per month, for each kind of date
+    }
 
 
 def search_clause(

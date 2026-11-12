@@ -611,6 +611,14 @@ def edit_tree(conn: sqlite3.Connection, action: str, **kwargs) -> dict:
         tree.rename(built, str(kwargs.get("node") or ""), kwargs.get("name"))
     elif action == "move":
         tree.move_topic(built, str(kwargs.get("node") or ""), str(kwargs.get("family") or ""))
+    elif action == "merge":
+        tree.merge_topics(built, str(kwargs.get("node") or ""), str(kwargs.get("other") or ""))
+    elif action == "merge_families":
+        tree.merge_families(built, str(kwargs.get("node") or ""), str(kwargs.get("other") or ""))
+    elif action == "split":
+        tree.split_topic(built, str(kwargs.get("node") or ""))
+    elif action == "new_family":
+        tree.new_family(built, str(kwargs.get("node") or ""))
     else:
         raise ValueError("Unknown tree edit.")
     conn.execute(

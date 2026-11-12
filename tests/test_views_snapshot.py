@@ -90,6 +90,7 @@ def test_a_view_keeps_only_what_a_view_may_hold(conn):
     }
     assert set(state) == {
         "facets",
+        "threads",
         "tab",
         "tree_path",
         "search",

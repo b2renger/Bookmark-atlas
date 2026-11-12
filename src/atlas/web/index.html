@@ -95,6 +95,9 @@
   #facetbar label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
   #facetbar input, #facetbar select { width: auto; }
   #facetbar input[type=text] { width: 150px; }
+  #facet-brush { display: block; width: 300px; height: 46px; cursor: ew-resize; touch-action: none; border-bottom: 1px solid var(--line); }
+  .pearl.over .orb i { border-color: var(--viz-selected); border-style: dashed; }
+  #tree-ask { margin: 10px 0; padding: 8px 12px; background: var(--chip); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   #facet-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   #facet-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
   #map-views { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-bottom: 12px; }
@@ -248,6 +251,8 @@
     <div><label for="facet-to">To</label><input type="date" id="facet-to"></div>
     <div><label for="facet-kind">Date used</label><select id="facet-kind">
       <option value="when">Saved, else published</option><option value="saved">Saved</option><option value="published">Published</option></select></div>
+    <div id="facet-brush-box"><label for="facet-brush">Drag across the months to pick dates</label>
+      <canvas id="facet-brush" width="300" height="46" role="img" aria-label="Bookmarks per month. Drag to choose a range of dates; the From and To boxes hold the same choice."></canvas></div>
     <button class="linkish" id="facet-clear" hidden>clear the filter</button>
     <span id="facet-count"></span>
     <span class="note bad" id="facet-note"></span>
@@ -302,7 +307,8 @@
       <div id="map-views" hidden>
         <div><label for="map-layout">Arrange by</label><select id="map-layout">
           <option value="similarity">Similarity</option><option value="timeline">Timeline</option>
-          <option value="grid">Grid</option><option value="spacetime">Space and time (3D)</option></select></div>
+          <option value="grid">Grid</option><option value="spacetime">Space and time (3D)</option>
+          <option value="links3d">Links (3D)</option></select></div>
         <button class="action" id="map-play">Play</button>
         <div class="grow"><label for="map-time">Time</label><input type="range" id="map-time" min="0" max="1000" value="1000"></div>
         <span id="map-when"></span>
@@ -312,6 +318,7 @@
         <div id="maptip" hidden></div>
       </div>
       <div class="legend" id="map-legend"></div>
+      <div id="map-keep"></div>
       <div class="note muted" id="map-note"></div>
     </section>
     <section class="card" id="mapdetail" hidden></section>
@@ -376,6 +383,7 @@
         <div id="bloomtip" hidden></div>
       </div>
       <div class="legend" id="bloom-legend"></div>
+      <div id="bloom-keep"></div>
       <div class="crumbs" id="tree-path"></div>
       <div id="tree-here"></div>
       <div class="pearls" id="tree-pearls"></div>
@@ -405,6 +413,7 @@
         <canvas id="threadcanvas" role="img" aria-label="Bookmarks on a line, joined by arcs where two resemble each other. The list under the picture gives the same links in words for the bookmark you pick."></canvas>
         <div id="threadtip" hidden></div>
       </div>
+      <div id="threads-keep"></div>
       <div id="threads-detail" hidden></div>
       <div class="note muted" id="threads-note"></div>
     </section>
@@ -907,18 +916,81 @@ function renderFacets() {
   $("facet-platform").value = facets.platform; $("facet-from").value = facets.from; $("facet-to").value = facets.to; $("facet-kind").value = facets.kind;
   $("facet-clear").hidden = !facetsActive();
   $("facet-count").textContent = facetIds ? facetIds.size + (facetIds.size === 1 ? " bookmark passes" : " bookmarks pass") : "";
+  drawBrush();
 }
 
+// The date brush: bookmarks per month for the date in use; drag to set From and To.
+const brush = { months: null, drag: null };
+function brushMonths() {
+  const counted = (brush.months && brush.months[facets.kind]) || [];
+  if (!counted.length) return [];
+  const have = new Map(counted);
+  const keys = [...have.keys()].sort();
+  // Start where the bulk starts, as on the timeline: a few very old months would flatten the rest.
+  let total = 0; for (const key of keys) total += have.get(key);
+  let seen = 0, first = keys[0];
+  for (const key of keys) { seen += have.get(key); if (seen >= total * 0.03) { first = key; break; } }
+  const out = [];
+  let [y, m] = first.split("-").map(Number);
+  const [ly, lm] = keys[keys.length - 1].split("-").map(Number);
+  while (y < ly || (y === ly && m <= lm)) { const key = y + "-" + String(m).padStart(2, "0"); out.push([key, have.get(key) || 0]); m += 1; if (m > 12) { m = 1; y += 1; } }
+  return out;
+}
+function drawBrush() {
+  const surface = $("facet-brush"), months = brushMonths();
+  $("facet-brush-box").hidden = months.length < 2;
+  if (months.length < 2) return;
+  const ratio = window.devicePixelRatio || 1, w = 300, h = 46;
+  if (surface.width !== w * ratio) { surface.width = w * ratio; surface.height = h * ratio; }
+  const g = surface.getContext("2d");
+  g.setTransform(ratio, 0, 0, ratio, 0, 0); g.clearRect(0, 0, w, h);
+  const most = Math.max(1, ...months.map((m) => m[1])), slot = w / months.length;
+  const from = (brush.drag ? brush.drag.from : facets.from).slice(0, 7), to = (brush.drag ? brush.drag.to : facets.to).slice(0, 7);
+  months.forEach(([key, count], i) => {
+    const inside = (!from || key >= from) && (!to || key <= to), picked = !!(from || to);
+    g.fillStyle = css(picked && inside ? "--viz-focus" : "--viz-neutral"); g.globalAlpha = picked && !inside ? 0.45 : 1;
+    const bar = Math.max(count ? 2 : 0, (h - 12) * count / most);
+    g.fillRect(i * slot + 0.5, h - 11 - bar, Math.max(1, slot - 1), bar);
+  });
+  g.globalAlpha = 1; g.fillStyle = css("--muted"); g.font = "10px system-ui, sans-serif"; g.textBaseline = "alphabetic";
+  g.textAlign = "left"; g.fillText(months[0][0], 0, h - 1); g.textAlign = "right"; g.fillText(months[months.length - 1][0], w, h - 1);
+}
+function brushMonthAt(event) {
+  const months = brushMonths(), r = $("facet-brush").getBoundingClientRect();
+  return months[Math.max(0, Math.min(months.length - 1, Math.floor((event.clientX - r.left) / r.width * months.length)))][0];
+}
+function lastDay(month) { const [y, m] = month.split("-").map(Number); return month + "-" + String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0"); }
+$("facet-brush").addEventListener("pointerdown", (event) => {
+  if (brushMonths().length < 2) return;
+  $("facet-brush").setPointerCapture(event.pointerId);
+  const month = brushMonthAt(event); brush.drag = { start: month, from: month + "-01", to: lastDay(month) }; drawBrush();
+});
+$("facet-brush").addEventListener("pointermove", (event) => {
+  if (!brush.drag) return;
+  const month = brushMonthAt(event), a = month < brush.drag.start ? month : brush.drag.start, b = month < brush.drag.start ? brush.drag.start : month;
+  brush.drag.from = a + "-01"; brush.drag.to = lastDay(b); drawBrush();
+});
+$("facet-brush").addEventListener("pointerup", () => {
+  if (!brush.drag) return;
+  facets.from = brush.drag.from; facets.to = brush.drag.to; brush.drag = null; applyFacets();
+});
+$("facet-brush").addEventListener("dblclick", () => { facets.from = ""; facets.to = ""; applyFacets(); });
+
 async function applyFacets(relayout) {
-  try { facetIds = facetsActive() ? new Set((await api("GET", "/api/bookmarks/ids?q=" + facetQuery())).ids) : null; note("facet-note", "", "muted"); }
-  catch (error) { facetIds = null; note("facet-note", error.message, "bad"); }
+  // Answers can come back out of order: only the latest request counts.
+  const turn = (applyFacets.turn = (applyFacets.turn || 0) + 1);
+  let passing = null, problem = "";
+  try { passing = facetsActive() ? new Set((await api("GET", "/api/bookmarks/ids?q=" + facetQuery())).ids) : null; }
+  catch (error) { problem = error.message; }
+  if (turn !== applyFacets.turn) return;
+  facetIds = passing; note("facet-note", problem, problem ? "bad" : "muted");
   renderFacets();
   if (relayout && map.data) mapRelayout(true);
   if (currentView === "bookmarks") loadBookmarks(true).catch(() => {});
   if (currentView === "map") { mapLegend(); drawMap(); }
   if (currentView === "grid" && grid.data) drawGrid();
   if (currentView === "tree" && tree.data) drawTree();
-  if (currentView === "links" && links.data) { drawLinks(); if (threads.data) { drawThreads(); threadPanel(); } }
+  if (currentView === "links") { loadLinks(true).catch(() => {}); if (threads.data) { drawThreads(); threadPanel(); } }
   if (currentView === "trends") loadTrends().catch(() => {});
 }
 
@@ -931,6 +1003,7 @@ async function loadFacetOptions() {
     $("facet-platform").replaceChildren(el("option", { value: "", textContent: "Any site" }),
       ...options.platforms.map((p) => el("option", { value: p.name, textContent: p.name + " (" + p.count + ")" })));
     $("facet-platform").value = facets.platform;
+    brush.months = options.months; drawBrush();
   } catch (error) { facetOptionsAt = 0; }
 }
 
@@ -964,7 +1037,9 @@ const LAYOUTS = {
   timeline: { name: "Timeline", cam: { yaw: 0, pitch: 0, persp: 0 } },
   grid: { name: "Grid", cam: { yaw: 0, pitch: 0, persp: 0 } },
   spacetime: { name: "Space and time (3D)", cam: { yaw: -0.55, pitch: 1.08, persp: 1 } },
+  links3d: { name: "Links (3D)", cam: { yaw: -0.5, pitch: 1.0, persp: 1 } },
 };
+const TURNING = new Set(["spacetime", "links3d"]);
 const map = { data: null, scale: 1, tx: 0, ty: 0, focus: null, matches: null, hover: null, box: null, drag: null, labels: [],
   layout: "similarity", cam: { yaw: 0, pitch: 0, persp: 0 }, anim: null, guides: { labels: [], ticks: [] }, time: null, cut: null, playing: null, cells: null };
 const canvas = $("mapcanvas");
@@ -1001,7 +1076,10 @@ function computeLayout(name) {
   const data = map.data, targets = new Map(), guides = { labels: [], ticks: [] };
   map.time = timeSpan(data.points);
   const topicLabels = () => data.clusters.map((c) => ({ text: c.label, x: c.x, y: c.y, z: 0, cluster: c, size: c.size }));
-  if (name === "similarity" || !map.time && name !== "grid") {
+  if (name === "links3d") {
+    // Start from the flat map, a little thickened; the links then pull it into shape.
+    for (const p of data.points) targets.set(p.id, p.web ? [p.cx, p.cy, p.cz] : [p.x, p.y, 0.45 + (hashUnit(p.id) - 0.5) * 0.15]);
+  } else if (name === "similarity" || !map.time && name !== "grid") {
     for (const p of data.points) targets.set(p.id, [p.x, p.y, 0]);
     guides.labels = topicLabels();
   } else if (name === "spacetime") {
@@ -1073,6 +1151,70 @@ function mapRelayout(snap) {
   map.anim = { start: performance.now(), duration: 900, moves, from: { ...map.cam }, to: { ...cam } };
   requestAnimationFrame(stepMap);
 }
+
+// The 3D link graph: bookmarks push each other apart, links pull their two
+// ends together, and the whole settles into a shape while you watch.
+function startWeb() {
+  if (!map.web || map.layout !== "links3d") return;
+  const points = map.data.points, n = points.length;
+  const index = new Map(points.map((p, i) => [p.id, i]));
+  const edges = map.web.links.map((l) => [index.get(l.a), index.get(l.b)]).filter(([a, b]) => a !== undefined && b !== undefined);
+  const pos = new Float64Array(n * 3), move = new Float64Array(n * 3);
+  const begin = () => points.forEach((p, i) => { pos[3 * i] = p.cx - 0.5; pos[3 * i + 1] = p.cy - 0.5; pos[3 * i + 2] = p.cz - 0.45; p.web = true; });
+  const k = 0.42 / Math.cbrt(Math.max(n, 1)), total = 300;
+  const run = { tick: 0, frame: 0 };
+  map.webRun = run;
+  const tick = () => {
+    move.fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = pos[3 * i] - pos[3 * j], dy = pos[3 * i + 1] - pos[3 * j + 1], dz = pos[3 * i + 2] - pos[3 * j + 2];
+        const d2 = dx * dx + dy * dy + dz * dz + 1e-6;
+        if (d2 > 16 * k * k) continue;                   // far pairs do not push
+        const f = k * k / d2;
+        move[3 * i] += dx * f; move[3 * i + 1] += dy * f; move[3 * i + 2] += dz * f;
+        move[3 * j] -= dx * f; move[3 * j + 1] -= dy * f; move[3 * j + 2] -= dz * f;
+      }
+    }
+    for (const [a, b] of edges) {
+      const dx = pos[3 * a] - pos[3 * b], dy = pos[3 * a + 1] - pos[3 * b + 1], dz = pos[3 * a + 2] - pos[3 * b + 2];
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) + 1e-6, f = d / k;
+      move[3 * a] -= dx * f; move[3 * a + 1] -= dy * f; move[3 * a + 2] -= dz * f;
+      move[3 * b] += dx * f; move[3 * b + 1] += dy * f; move[3 * b + 2] += dz * f;
+    }
+    const heat = 0.03 * (1 - run.tick / total) + 0.0015;
+    for (let i = 0; i < n; i++) {
+      const mx = move[3 * i] - pos[3 * i] * 0.04, my = move[3 * i + 1] - pos[3 * i + 1] * 0.04, mz = move[3 * i + 2] - pos[3 * i + 2] * 0.04;
+      const m = Math.sqrt(mx * mx + my * my + mz * mz) + 1e-9, step = Math.min(m, heat) / m;
+      pos[3 * i] += mx * step; pos[3 * i + 1] += my * step; pos[3 * i + 2] += mz * step;
+    }
+    run.tick += 1;
+  };
+  const place = () => {
+    // Fit nearly everything in the cube; a few strays may stick out.
+    const far = Array.from(pos, Math.abs).sort((a, b) => a - b);
+    const scale = 0.66 / Math.max(far[Math.floor(far.length * 0.985)], 1e-6);
+    points.forEach((p, i) => { p.cx = 0.5 + pos[3 * i] * scale; p.cy = 0.5 + pos[3 * i + 1] * scale; p.cz = 0.45 + pos[3 * i + 2] * scale; });
+  };
+  const frame = () => {
+    if (map.webRun !== run || map.layout !== "links3d" || !map.data || map.data.points !== points) return;
+    if (map.anim) { run.frame = requestAnimationFrame(frame); return; }   // wait for the glide to end
+    if (!run.begun) { begin(); run.begun = true; }
+    const budget = reducedMotion ? total : 3;
+    for (let i = 0; i < budget && run.tick < total; i++) tick();
+    place();
+    if (run.tick >= total) {
+      // Topic names go where each topic ended up.
+      const sums = new Map();
+      for (const p of points) { const c = sums.get(p.cluster) || [0, 0, 0, 0]; c[0] += p.cx; c[1] += p.cy; c[2] += p.cz; c[3] += 1; sums.set(p.cluster, c); }
+      map.guides = { ticks: [], labels: map.data.clusters.filter((c) => sums.has(c.cluster)).map((c) => { const s = sums.get(c.cluster);
+        return { text: c.label.split(" · ").slice(0, 2).join(" · "), x: s[0] / s[3], y: s[1] / s[3], z: s[2] / s[3], cluster: c, size: c.size }; }) };
+      map.webRun = null; drawMap(); return;
+    }
+    drawMap(); run.frame = requestAnimationFrame(frame);
+  };
+  run.frame = requestAnimationFrame(frame);
+}
 function stepMap(now) {
   const a = map.anim;
   if (!a) return;
@@ -1133,7 +1275,7 @@ function drawMap() {
   g.font = "12px system-ui, -apple-system, 'Segoe UI', sans-serif";
 
   // Guides under the dots: the time axis, and in 3D the floor the map lies on.
-  if (tilted) {
+  if (tilted && map.layout === "spacetime") {
     g.strokeStyle = line; g.lineWidth = 1; g.globalAlpha = Math.min(1, map.cam.persp * 1.5);
     g.beginPath();
     [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]].forEach(([x, y], i) => { const [px, py] = project(x, y, 0, frame); if (i) g.lineTo(px, py); else g.moveTo(px, py); });
@@ -1169,6 +1311,24 @@ function drawMap() {
     }
   }
 
+  // The link graph: a faint line per link, and the hovered bookmark's links in colour.
+  if (map.layout === "links3d" && map.web && !map.anim) {
+    const at = new Map();
+    for (const point of map.data.points) if (!hiddenByTime(point) && passes(point.id)) at.set(point.id, toScreen(point, frame));
+    const mine = [];
+    g.lineWidth = 1; g.strokeStyle = ink; g.globalAlpha = map.hover ? 0.1 : 0.22;
+    g.beginPath();
+    for (const link of map.web.links) {
+      const a = at.get(link.a), b = at.get(link.b);
+      if (!a || !b) continue;
+      if (map.hover && (link.a === map.hover.id || link.b === map.hover.id)) { mine.push([a, b]); continue; }
+      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+    }
+    g.stroke();
+    g.globalAlpha = 1; g.lineWidth = 2; g.strokeStyle = colours.focus;
+    g.beginPath(); for (const [a, b] of mine) { g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); } g.stroke();
+  }
+
   // Dots: those the filter leaves out first and faint, then neutral ones, then
   // the states on top. In 3D the far ones are drawn before the near ones.
   const drawn = [];
@@ -1180,7 +1340,7 @@ function drawMap() {
   }
   drawn.sort((a, b) => LAYER[a.layer] - LAYER[b.layer] || a.depth - b.depth);
   for (const d of drawn) {
-    const base = d.layer === "out" ? 2.5 : d.layer === "neutral" ? 4 : 5;
+    const base = (d.layer === "out" ? 2.5 : d.layer === "neutral" ? 4 : 5) * (map.layout === "links3d" ? 0.75 : 1);
     g.beginPath(); g.arc(d.x, d.y, base * (tilted ? Math.max(0.6, Math.min(1.5, d.s)) : 1), 0, Math.PI * 2);
     g.globalAlpha = d.layer === "out" ? 0.22 : d.layer === "neutral" && anyState ? 0.7 : 1;
     g.fillStyle = colours[d.layer]; g.fill();
@@ -1189,7 +1349,7 @@ function drawMap() {
   }
   if (map.hover && !hiddenByTime(map.hover)) {
     const [x, y] = toScreen(map.hover, frame);
-    if (tilted) { const [fx, fy] = project(map.hover.cx, map.hover.cy, 0, frame); g.strokeStyle = muted; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(fx, fy); g.stroke(); }
+    if (tilted && map.layout === "spacetime") { const [fx, fy] = project(map.hover.cx, map.hover.cy, 0, frame); g.strokeStyle = muted; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); g.lineTo(fx, fy); g.stroke(); }
     g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.lineWidth = 2; g.strokeStyle = ink; g.stroke();
   }
 
@@ -1239,7 +1399,8 @@ function mapLegend() {
   if (map.matches) rows.push(["--viz-match", "Matches “" + $("map-search").value.trim() + "” (" + map.data.points.filter((p) => map.matches.has(p.id)).length + ")"]);
   if (selection.size) rows.push(["--viz-selected", "Selected (" + map.data.points.filter((p) => selection.has(p.id)).length + ")"]);
   const what = { similarity: "similar bookmarks sit close together", timeline: "left to right is time, one row per topic",
-    grid: "one group per cell of the grid", spacetime: "the map lies flat and time rises from it: the higher, the more recent" }[map.layout];
+    grid: "one group per cell of the grid", spacetime: "the map lies flat and time rises from it: the higher, the more recent",
+    links3d: "a line joins each bookmark to its three closest; linked bookmarks pull together" }[map.layout];
   rows.push(["--viz-neutral", rows.length ? "Other bookmarks" : "One dot per bookmark; " + what]);
   if (facetIds) rows.push(["--viz-neutral", "Small faint dots: left out by the filter (" + map.data.points.filter((p) => !facetIds.has(p.id)).length + ")", true]);
   for (const [colour, text, faint] of rows) {
@@ -1307,7 +1468,7 @@ canvas.addEventListener("pointerdown", (event) => {
   const [x, y] = mousePos(event);
   canvas.setPointerCapture(event.pointerId);
   // In 3D a plain drag turns the view; Alt+drag moves it.
-  const turning = map.layout === "spacetime" && !map.anim && !event.shiftKey && !event.altKey;
+  const turning = TURNING.has(map.layout) && !map.anim && !event.shiftKey && !event.altKey;
   map.drag = { x, y, tx: map.tx, ty: map.ty, yaw: map.cam.yaw, pitch: map.cam.pitch, moved: false, selecting: event.shiftKey, turning };
   if (event.shiftKey) { map.box = { x0: x, y0: y, x1: x, y1: y }; canvas.classList.add("selecting"); }
 });
@@ -1375,12 +1536,21 @@ async function setMapLayout(name, snap) {
       $("map-layout").value = map.layout; return;
     }
   }
+  if (name === "links3d" && map.data && map.data.layout) {
+    try {
+      const web = await api("GET", "/api/links/threads");
+      map.web = { links: web.links.map((l) => ({ a: web.nodes[l.a].id, b: web.nodes[l.b].id })) };
+    } catch (error) { note("map-note", error.message, "bad"); $("map-layout").value = map.layout; return; }
+    for (const p of map.data.points) p.web = false;
+  }
+  map.webRun = null;
   map.layout = LAYOUTS[name] ? name : "similarity";
   $("map-layout").value = map.layout;
   map.scale = 1; map.tx = 0; map.ty = 0;
   canvas.setAttribute("aria-label", "Bookmarks as dots. " + { similarity: "Similar bookmarks are drawn close together.", timeline: "Left to right is time, with one row per topic.",
-    grid: "Bookmarks are gathered in the cells of the grid.", spacetime: "The map lies flat and time rises from it." }[map.layout]);
-  if (map.data && map.data.layout) { mapNote(); mapLegend(); mapRelayout(snap); }
+    grid: "Bookmarks are gathered in the cells of the grid.", spacetime: "The map lies flat and time rises from it.",
+    links3d: "Bookmarks float in space, joined by lines to the three they resemble most." }[map.layout]);
+  if (map.data && map.data.layout) { mapNote(); mapLegend(); mapRelayout(snap); if (map.layout === "links3d") startWeb(); }
 }
 $("map-layout").onchange = () => setMapLayout($("map-layout").value);
 
@@ -1432,7 +1602,7 @@ $("map-search").oninput = () => {
 
 function mapNote() {
   const data = map.data;
-  const how = map.layout === "spacetime"
+  const how = TURNING.has(map.layout)
     ? "Drag to turn, Alt+drag to move, scroll to zoom, Shift+drag to select an area, click a dot for details."
     : "Drag to move, scroll to zoom, Shift+drag to select an area, click a dot for details, click a topic name to focus it.";
   let text = data.points.length + " bookmarks. " + how;
@@ -1459,6 +1629,8 @@ function applyMapData(data) {
   $("map-views").hidden = !data.layout;
   if (!data.layout) { note("map-note", "No map yet. Drawing it takes a few seconds: similar bookmarks are placed close together.", "muted"); mapLegend(); drawMap(); return; }
   if (map.layout === "grid" && !(map.cells && map.cells.grid)) map.layout = "similarity";
+  if (map.layout === "links3d" && !map.web) map.layout = "similarity";
+  for (const p of data.points) p.web = false;
   $("map-layout").value = map.layout;
   mapNote(); mapLegend(); mapRelayout(true);
 }
@@ -1474,7 +1646,12 @@ async function loadMap(clusterRun) {
   }
   select.disabled = runs.length === 0;
   if (map.layout === "grid") { try { map.cells = await api("GET", "/api/grid"); } catch (error) { map.cells = null; } }
+  if (map.layout === "links3d") {
+    try { const web = await api("GET", "/api/links/threads"); map.web = { links: web.links.map((l) => ({ a: web.nodes[l.a].id, b: web.nodes[l.b].id })) }; }
+    catch (error) { map.web = null; }
+  }
   applyMapData(data);
+  if (map.layout === "links3d") startWeb();
 }
 $("map-clusters").onchange = () => { map.focus = null; loadMap($("map-clusters").value).catch((e) => note("map-note", e.message, "bad")); };
 $("map-run").onclick = async () => {
@@ -1727,7 +1904,24 @@ async function drawTree() {
       line.append(select);
     }
   }
+  if (node.kind === "topic") {
+    if (node.children.length > 1) { const split = el("button", { className: "linkish", textContent: "split into its " + node.children.length + " parts" });
+      split.onclick = () => { tree.path = [trail[1].id]; edit({ action: "split", node: node.id }); }; line.append(split); }
+    if (trail[1].children.length > 1) { const own = el("button", { className: "linkish", textContent: "give it its own family" });
+      own.onclick = () => { tree.path = []; edit({ action: "new_family", node: node.id }); }; line.append(own); }
+  }
   $("tree-here").append(line);
+  const mergeable = node.kind === "root" || node.kind === "family";
+  if (mergeable && node.children.length > 1) $("tree-here").append(el("div", { className: "tagline",
+    textContent: "Drag one " + (node.kind === "root" ? "family" : "topic") + " onto another to merge them." }));
+  const ask = (kept, other) => {
+    const yes = el("button", { className: "action primary", textContent: "Merge" }), no = el("button", { className: "action", textContent: "Cancel" });
+    const bar = el("div", { id: "tree-ask" }, [el("span", { textContent: "Merge “" + other.name + "” into “" + kept.name + "”? " + plural(other.size) + " will move. Building the tree again undoes it." }), yes, no]);
+    yes.onclick = () => edit({ action: node.kind === "root" ? "merge_families" : "merge", node: kept.id, other: other.id });
+    no.onclick = () => bar.remove();
+    const old = $("tree-ask"); if (old) old.remove();
+    $("tree-pearls").before(bar); yes.focus();
+  };
   const largest = Math.max(1, ...node.children.map((child) => child.size));
   for (const child of node.children) {
     const passing = facetIds ? nodeIds(child).filter(passes).length : child.size;
@@ -1740,6 +1934,15 @@ async function drawTree() {
       el("span", { className: "kind", textContent: ({ family: "family", topic: "topic", subtopic: "part" })[child.kind]
         + (child.children.length ? " · " + child.children.length + " inside" : "") })]);
     pearl.onclick = () => { tree.path.push(child.id); note("tree-note", "", "muted"); drawTree(); };
+    if (mergeable && node.children.length > 1) {
+      pearl.draggable = true;
+      pearl.ondragstart = (event) => { event.dataTransfer.setData("text/plain", child.id); event.dataTransfer.effectAllowed = "move"; tree.dragging = child.id; };
+      pearl.ondragend = () => { tree.dragging = null; };
+      pearl.ondragover = (event) => { if (tree.dragging && tree.dragging !== child.id) { event.preventDefault(); pearl.classList.add("over"); } };
+      pearl.ondragleave = () => pearl.classList.remove("over");
+      pearl.ondrop = (event) => { event.preventDefault(); pearl.classList.remove("over");
+        const other = node.children.find((c) => c.id === tree.dragging); tree.dragging = null; if (other && other.id !== child.id) ask(child, other); };
+    }
     $("tree-pearls").append(pearl);
   }
   if (!node.children.length && ids.length) {
@@ -1810,7 +2013,7 @@ function drawLinks() {
   $("links-wrap").hidden = !has;
   for (const id of ["links-bridges-card", "links-outliers-card", "links-old-card"]) $(id).hidden = true;
   if (!has) { note("links-note", "Links are drawn between topics. Open Clusters and press Cluster first.", "muted"); return; }
-  note("links-note", facetIds ? "The filter applies to the threads and to the lists below. This picture of the topics always shows the whole collection." : "", "muted");
+  note("links-note", links.data.filtered ? "With the filter on: links are looked for among the " + (facetIds ? facetIds.size : "") + " bookmarks that pass." : "", "muted");
   const name = Object.fromEntries(data.topics.map((t) => [t.cluster, t.label]));
   const short = (label) => { const parts = label.split(" · "); const two = parts.slice(0, 2).join(" · "); return two.length > 30 ? two.slice(0, 29) + "…" : two; };
   // Keep each topic's two strongest links: enough to read, not a tangle.
@@ -1867,19 +2070,19 @@ function drawLinks() {
   $("links-picked").append(legendBox);
 
   const filed = (item, text) => el("div", { className: "tagline" }, [text, " · ", similarButton(item)]);
-  $("links-bridges").replaceChildren(...data.bridges.filter((item) => passes(item.id)).map((item) => el("li", {}, [bookmarkLink(item),
+  $("links-bridges").replaceChildren(...data.bridges.map((item) => el("li", {}, [bookmarkLink(item),
     filed(item, "filed in “" + short(name[item.topic]) + "”, " + Math.round(item.share * 10) + " of its 10 closest are elsewhere, mostly in “" + short(name[item.towards]) + "”")])));
   $("links-bridges-card").hidden = !$("links-bridges").children.length;
-  $("links-outliers").replaceChildren(...data.outliers.filter((item) => passes(item.id)).map((item) => el("li", {}, [bookmarkLink(item), filed(item, "filed in “" + short(name[item.topic]) + "”")])));
+  $("links-outliers").replaceChildren(...data.outliers.map((item) => el("li", {}, [bookmarkLink(item), filed(item, "filed in “" + short(name[item.topic]) + "”")])));
   $("links-outliers-card").hidden = !$("links-outliers").children.length;
   const old = data.resurface;
   $("links-old-help").textContent = "Bookmarks older than " + Math.round(old.old_days / 30) + " months that resemble what you gathered in the last "
     + old.recent_days + " days (counted back from " + old.latest + ", the latest date in the collection).";
-  $("links-old").replaceChildren(...old.items.filter((item) => passes(item.id)).map((item) => el("li", {}, [bookmarkLink(item),
+  $("links-old").replaceChildren(...old.items.map((item) => el("li", {}, [bookmarkLink(item),
     filed(item, item.day + " · close to " + item.echoes + " recent " + (item.echoes === 1 ? "bookmark" : "bookmarks") + ", such as “" + item.because[0].title.slice(0, 70) + "”")])));
   $("links-old-card").hidden = !$("links-old").children.length;
 }
-async function loadLinks() { loadThreads(); links.data = await api("GET", "/api/links"); if (links.data.topics.every((t) => t.cluster !== links.picked)) links.picked = null; drawLinks(); }
+async function loadLinks(keepThreads) { if (!keepThreads) loadThreads(); links.data = await api("GET", "/api/links?" + facetQuery().slice(1)); if (links.data.topics.every((t) => t.cluster !== links.picked)) links.picked = null; drawLinks(); }
 
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function monthName(key) { return MONTH[Number(key.slice(5)) - 1] + " " + key.slice(0, 4); }
@@ -1973,6 +2176,33 @@ async function loadTrends() {
     moveRows($("trends-tags-down"), data.tags.fading.slice(0, 8), "None.", find);
     $("trends-moves-card").hidden = false;
   }
+}
+
+/* ---- pictures to keep ---- */
+// Save what a canvas shows, as an image or as a small web page that carries
+// the image with its title and the words that explain it.
+function download(name, blob) {
+  const link = el("a", { href: URL.createObjectURL(blob), download: name });
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+}
+function savePicture(source, name, title, words, asPage) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (!asPage) { source.toBlob((blob) => { if (blob) download("bookmark-atlas-" + name + "-" + stamp + ".png", blob); }, "image/png"); return; }
+  const escape = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const page = "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>" + escape(title) + "</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:1100px;margin:32px auto;padding:0 16px;color:#222;background:#faf9f6}"
+    + "img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:10px}p{max-width:70ch}small{color:#666}</style>"
+    + "<h1>" + escape(title) + "</h1><img alt=\"" + escape(title) + "\" src=\"" + source.toDataURL("image/png") + "\">"
+    + words.filter(Boolean).map((text) => "<p>" + escape(text) + "</p>").join("") + "<p><small>Made with Bookmark Atlas on " + stamp + ".</small></p></html>";
+  download("bookmark-atlas-" + name + "-" + stamp + ".html", new Blob([page], { type: "text/html" }));
+}
+function pictureButtons(holder, source, name, title, words) {
+  const image = el("button", { className: "linkish", textContent: "save as image" });
+  image.onclick = () => savePicture(source(), name, title(), words(), false);
+  const page = el("button", { className: "linkish", textContent: "save as web page" });
+  page.onclick = () => savePicture(source(), name, title(), words(), true);
+  holder.replaceChildren(el("span", { className: "tagline" }, ["Keep this picture: ", image, " · ", page]));
 }
 
 /* ---- threads: the links between single bookmarks ---- */
@@ -2357,6 +2587,14 @@ bloomCanvas.addEventListener("click", (event) => {
   else if (hit.region) { tree.path = hit.region.path.slice(); drawTree(); }
 });
 
+loadFacetOptions();
+pictureButtons($("map-keep"), () => canvas, "map", () => "Bookmarks: " + LAYOUTS[map.layout].name.toLowerCase(),
+  () => [$("map-legend").innerText.replace(/\n+/g, " · "), $("map-note").textContent, facetIds ? "Filter on: " + facetIds.size + " bookmarks pass." : ""]);
+pictureButtons($("threads-keep"), () => threadCanvas, "threads", () => "Threads between bookmarks",
+  () => [$("threads-count").textContent + ". Arcs above the line cross from one topic to another; arcs below stay inside a topic.", $("threads-note").textContent,
+    threads.pinned !== null && threads.data ? "Highlighted: " + threads.data.nodes[threads.pinned].title : ""]);
+pictureButtons($("bloom-keep"), () => bloomCanvas, "tree", () => "The topic tree", () => [$("bloom-legend").textContent]);
+
 /* ---- saved views and snapshots ---- */
 
 function captureView() {
@@ -2369,6 +2607,7 @@ function captureView() {
     tree_path: tree.path.slice(),
     clusters_run: $("cl-runs").value || null,
     facets: facetBody(),
+    threads: { order: threads.order, show: threads.show, pinned: threads.pinned !== null && threads.data ? threads.data.nodes[threads.pinned].id : null },
     map: { focus: map.focus, scale: map.scale, tx: map.tx, ty: map.ty, search: $("map-search").value.trim(), clusters_run: $("map-clusters").value || null, layout: map.layout },
   };
 }
@@ -2395,7 +2634,13 @@ async function restoreView(state) {
   if (state.tab === "map") { await loadMap(state.map.clusters_run || undefined); map.scale = state.map.scale; map.tx = state.map.tx; map.ty = state.map.ty; drawMap(); }
   else if (state.tab === "clusters") await loadClusters(state.clusters_run || undefined);
   else if (state.tab === "grid") await loadGrid();
-  else if (state.tab === "links") await loadLinks();
+  else if (state.tab === "links") {
+    const kept = state.threads || {};
+    threads.order = kept.order || "time"; threads.show = kept.show || "all";
+    $("threads-order").value = threads.order; $("threads-show").value = threads.show;
+    await loadLinks(true); await loadThreads();
+    if (kept.pinned && threads.data) { const at = threads.data.nodes.findIndex((n) => n.id === kept.pinned); threads.pinned = at < 0 ? null : at; drawThreads(); threadPanel(); }
+  }
   else if (state.tab === "trends") await loadTrends();
   else if (state.tab === "tree") { tree.path = state.tree_path || []; await loadTree(); }
   await loadBookmarks(true);

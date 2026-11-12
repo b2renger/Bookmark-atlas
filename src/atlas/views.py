@@ -39,6 +39,7 @@ def _clean_state(state) -> dict:
     chosen = state.get("facets") if isinstance(state.get("facets"), dict) else {}
     tags = chosen.get("tags") if isinstance(chosen.get("tags"), list) else []
     kind = chosen.get("date_kind")
+    thread = state.get("threads") if isinstance(state.get("threads"), dict) else {}
     cluster = state.get("cluster") if isinstance(state.get("cluster"), dict) else None
     map_state = state.get("map") if isinstance(state.get("map"), dict) else {}
     focus = map_state.get("focus")
@@ -46,6 +47,13 @@ def _clean_state(state) -> dict:
         "tab": tab,
         "tree_path": [item for item in ids(state.get("tree_path")) if len(item) <= 20][:4],
         "search": text(state.get("search")),
+        "threads": {
+            "order": thread.get("order") if thread.get("order") in ("time", "topic") else "time",
+            "show": thread.get("show")
+            if thread.get("show") in ("all", "across", "far", "both")
+            else "all",
+            "pinned": text(thread.get("pinned"), 64) or None,
+        },
         "facets": {
             "tags": [text(tag, 200) for tag in tags if isinstance(tag, str) and tag.strip()][:10],
             "platform": text(chosen.get("platform"), 100),
@@ -67,7 +75,7 @@ def _clean_state(state) -> dict:
             "search": text(map_state.get("search")),
             "clusters_run": text(map_state.get("clusters_run"), 64) or None,
             "layout": map_state.get("layout")
-            if map_state.get("layout") in ("similarity", "timeline", "grid", "spacetime")
+            if map_state.get("layout") in ("similarity", "timeline", "grid", "spacetime", "links3d")
             else "similarity",
         },
     }

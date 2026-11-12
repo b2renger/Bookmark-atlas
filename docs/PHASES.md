@@ -18,6 +18,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 9 | Publication dates read from the pages | v0.9.0 | done; not yet run against real sites |
 | 10 | Filter everywhere; Threads and the whole-tree drawing | v0.10.0 | done |
 | 11 | Grooming loose ends | v0.11.0 | done; online parts not run against real sites |
+| 12 | Visual loose ends, 3D link graph, pictures to keep | v0.12.0 | done |
 
 ## Phase 0: scaffolding
 
@@ -266,3 +267,23 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Scripts are listed in the order worth running them** (eleven now).
 - **Not verified:** the Hugging Face API field (`createdAt`) and the YouTube
   page format, which could not be reached from the development session.
+
+## Phase 12: visual loose ends, the 3D link graph, pictures to keep
+
+- **Links (3D) on the Map.** A fifth arrangement: every bookmark tied to its
+  three closest, floating in space. The shape forms while you watch (bookmarks
+  push apart, links pull together), then topic names settle where each topic
+  ended up. Drag to turn; point at a bookmark to light its links.
+- **Save any picture** (map, threads, tree) as an image, or as a small web
+  page that carries the image with its title and the words that explain it.
+  The page has no script and needs nothing else to open.
+- **Date brush.** A small histogram of bookmarks per month sits in the filter
+  bar; drag across it to set From and To, double-click to clear.
+- **Links follow the filter fully.** The topic picture and the lists are now
+  recomputed among the bookmarks that pass.
+- **Tree editing.** Drag a topic onto another to merge them (families too, at
+  the top level), split a topic into its parts, or give a topic its own
+  family. Each asks first; building the tree again starts over.
+- **Saved views remember the thread you were reading** and the 3D arrangement.
+- **A filter answer that arrives late is ignored,** so quick changes cannot
+  leave a stale count.
