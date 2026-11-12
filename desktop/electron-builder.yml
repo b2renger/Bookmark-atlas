@@ -62,4 +62,5 @@ mac:
   category: public.app-category.productivity
   icon: assets/icon.png
   identity: "-"
+  hardenedRuntime: false
   artifactName: Bookmark-Atlas-${version}-mac-${arch}.${ext}

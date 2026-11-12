@@ -24,22 +24,28 @@ These pictures were taken from an invented collection (`tools/demo_collection.py
 
 ## Status
 
-All seven planned phases are published. Import (Notion or CSV), browse, groom
-the collection with scripts, group it into topic clusters, explore it on a
-map, on a grid and as a tree of topics, see how topics connect and what is
-rising, save views and share snapshots. The e-means test is done: see
-[docs/reports/e-means-test.md](docs/reports/e-means-test.md).
+Everything planned is published. Import (Notion or CSV), browse, groom the
+collection with scripts, group it into topic clusters, explore it on a map, on
+a grid and as a tree of topics, follow the links between bookmarks, see what
+is rising, save views, and share or compare snapshots. The e-means test is
+done: see [docs/reports/e-means-test.md](docs/reports/e-means-test.md).
 
-**The Notion import has not been run against the real Notion API with a real
-token yet.** It is tested against a stand-in built from Notion's documentation.
-Use Preview before the first import and report what it shows. The CSV import
-has been checked on a real 962-row export.
+What has been used for real, and what has not:
+
+- **Used for real:** the Windows app and its self-update, the Notion sync with
+  a real token, the CSV import (a 962-row export).
+- **Started by the build, not yet used by a person:** the Linux and macOS
+  builds.
+- **Tested with stand-in pages only:** the two features that read the web
+  (publication dates, link check).
 
 - Summary of each phase: [docs/PHASES.md](docs/PHASES.md)
 - Where development stands: [docs/DEVLOG.md](docs/DEVLOG.md)
 - Where it is going: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
-## Install (Windows)
+## Install
+
+### Windows
 
 1. Open the [latest release](https://github.com/b2renger/Bookmark-atlas/releases/latest)
    and download `Bookmark-Atlas-Setup-<version>-windows-x64.exe`.
@@ -50,6 +56,23 @@ has been checked on a real 962-row export.
 The app updates itself. It checks GitHub Releases at start, downloads a new
 version in the background and offers to restart. **Atlas > Check for updates…**
 checks on demand.
+
+### Linux
+
+Download `Bookmark-Atlas-<version>-linux-x64.AppImage` from the
+[latest release](https://github.com/b2renger/Bookmark-atlas/releases/latest),
+make it executable (`chmod +x`) and run it. It updates itself like the Windows
+build.
+
+### macOS (Apple silicon)
+
+Download the `.dmg` from the
+[latest release](https://github.com/b2renger/Bookmark-atlas/releases/latest)
+and drag the app to Applications. The app is not signed by Apple (that needs a
+paid developer account), so the first time macOS refuses to open it:
+right-click the app and choose **Open**, or allow it in **System Settings >
+Privacy & Security**. This build does not update itself: **Check for
+updates…** opens the download page. There is no build for Intel Macs.
 
 ### Your data folder
 

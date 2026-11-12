@@ -2732,6 +2732,8 @@ function showComparison(data) {
     add.onclick = () => runComparison(true);
     parts.push(el("h3", { textContent: "In the snapshot, not in yours (" + data.only_theirs.count + ")" }), el("div", { className: "row" }, [add]), list(data.only_theirs.items, data.only_theirs.count));
   }
+  if (data.deleted_here) parts.push(el("p", { className: "tagline", textContent: plural(data.deleted_here) + " of the snapshot "
+    + (data.deleted_here === 1 ? "was" : "were") + " deleted from your collection earlier and " + (data.deleted_here === 1 ? "stays" : "stay") + " deleted." }));
   if (data.only_yours.count) {
     const show = el("button", { className: "linkish", textContent: "show them in the list" });
     show.onclick = () => showIds(data.only_yours.ids, "Not in the snapshot");
@@ -2743,7 +2745,7 @@ function showComparison(data) {
         item.only_theirs.length ? el("div", { className: "chips" }, [el("span", { className: "tagline", textContent: "only in the snapshot " }), ...item.only_theirs.map((t) => el("span", { className: "chip", textContent: t }))]) : "",
         item.only_yours.length ? el("div", { className: "chips" }, [el("span", { className: "tagline", textContent: "only in yours " }), ...item.only_yours.map((t) => el("span", { className: "chip", textContent: t }))]) : ""]))));
   }
-  if (!data.only_theirs.count && !data.only_yours.count && !data.tag_differences.count) parts.push(el("p", { textContent: "Same bookmarks and same tags on both sides." }));
+  if (!data.only_theirs.count && !data.only_yours.count && !data.tag_differences.count && !data.deleted_here) parts.push(el("p", { textContent: "Same bookmarks and same tags on both sides." }));
   holder.replaceChildren(...parts);
 }
 async function runComparison(adopt) {

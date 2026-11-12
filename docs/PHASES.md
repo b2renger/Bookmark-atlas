@@ -7,7 +7,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | Phase | Subject | Release | State |
 | --- | --- | --- | --- |
 | 0 | Scaffolding | v0.2.0 | done |
-| 1 | Local store and import | v0.2.0 | done, Notion token import untried with a real token |
+| 1 | Local store and import | v0.2.0 | done; the Notion sync was confirmed with a real token on 2026-11-12 |
 | 2 | Grooming, batch edits, sharing | v0.2.0, v0.2.1 | done, four planned scripts still to write |
 | 3 | Vectors, clusters and the e-means test | v0.3.0 | done |
 | 4 | Map view | v0.4.0 | done |
@@ -19,6 +19,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 10 | Filter everywhere; Threads and the whole-tree drawing | v0.10.0 | done |
 | 11 | Grooming loose ends | v0.11.0 | done; online parts not run against real sites |
 | 12 | Visual loose ends, 3D link graph, pictures to keep | v0.12.0 | done |
+| 13 | Snapshot comparison, Linux and macOS builds, screenshots | v0.13.0 | done; Linux and macOS not yet used by a person |
 
 ## Phase 0: scaffolding
 
@@ -287,3 +288,22 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Saved views remember the thread you were reading** and the 3D arrangement.
 - **A filter answer that arrives late is ignored,** so quick changes cannot
   leave a stale count.
+
+## Phase 13: snapshot comparison, Linux and macOS builds, screenshots
+
+- **Compare with a snapshot (Views tab).** Choose a snapshot file: see what it
+  has that you lack, what you have that it lacks, and where the same bookmark
+  carries different tags. One button adds the missing bookmarks. What you
+  deleted earlier is counted apart and stays deleted.
+- **Linux build:** one AppImage, self-updating.
+- **macOS build (Apple silicon):** a disk image, signed ad hoc only. macOS asks
+  for confirmation on first open and the app cannot update itself; its
+  "Check for updates" opens the download page.
+- **Both are started for real by the build** (backend up, page loaded, API
+  reached) before being uploaded, and are built after Windows so a problem
+  there cannot hold the Windows release back.
+- **README screenshots** come from an invented collection
+  (`tools/demo_collection.py`), so the public repository shows no real
+  bookmark.
+- **Not verified:** a person opening the macOS download (Gatekeeper's
+  behaviour with a downloaded, unsigned app) and the AppImage's self-update.

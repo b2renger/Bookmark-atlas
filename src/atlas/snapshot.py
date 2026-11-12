@@ -215,7 +215,13 @@ def compare(conn: sqlite3.Connection, other_path: Path | str, *, limit: int = 20
         info = snapshot_info(other) if _has_meta(other) else None
     finally:
         other.close()
-    only_there = [theirs[link] for link in theirs if link not in mine]
+    # A bookmark deleted here stays deleted: it is not offered again.
+    deleted = {
+        r[0]
+        for r in conn.execute("SELECT url_normalized FROM bookmarks WHERE deleted_at IS NOT NULL")
+    }
+    only_there = [theirs[link] for link in theirs if link not in mine and link not in deleted]
+    deleted_here = sum(1 for link in theirs if link not in mine and link in deleted)
     only_here = [mine[link] for link in mine if link not in theirs]
     differences = []
     for link in mine:
@@ -246,6 +252,7 @@ def compare(conn: sqlite3.Connection, other_path: Path | str, *, limit: int = 20
         "theirs": len(theirs),
         "in_both": len(mine) - len(only_here),
         "only_theirs": {"count": len(only_there), "items": brief(only_there)},
+        "deleted_here": deleted_here,
         "only_yours": {
             "count": len(only_here),
             "items": brief(only_here),

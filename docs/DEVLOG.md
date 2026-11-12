@@ -4,6 +4,30 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-12: v0.12.0 published; phase 13, snapshot comparison and more platforms
+
+**Confirmed by the user:** the Notion sync works with a real token. The README
+and the phase table no longer call it untested.
+
+**Works:** `snapshot.compare` and `snapshot.adopt`, route
+`/api/snapshot/compare` (the file is sent by the page, written to a temporary
+folder, opened read-only); the Views card; `tools/demo_collection.py`; eight
+README screenshots; job `others` in the release workflow (ubuntu-latest and
+macos-latest, each with a smoke test); the updater steps aside on macOS and on
+Linux outside an AppImage.
+
+**Decisions:** screenshots never show real bookmarks. macOS: ad hoc signature
+(`identity: "-"`), hardened runtime off since ad hoc signing with it can stop
+the bundled Python from loading its libraries. No Intel Mac build.
+
+**Verified:** a trial run of the workflow built and started the app on
+Windows, Linux and macOS (macos-26-arm64 runner) on the first attempt. 266
+Python tests. Browser run of the comparison, including the "add" button and a
+wrong file.
+
+**Next:** nothing planned is left. Open ideas: neural text vectors, density
+contours on the map, an Intel Mac build, a smaller installer.
+
 ## 2026-11-12: v0.11.0 published; phase 12, visual loose ends
 
 **Works:** map arrangement `links3d` (force layout in the page, about 300

@@ -309,6 +309,12 @@ def test_compare_with_a_snapshot_and_bring_in_what_is_missing(tmp_path):
     after = snapshot.compare(mine, file)
     assert after["only_theirs"]["count"] == 0 and after["in_both"] == 2
     assert snapshot.adopt(mine, file).created == 0  # nothing twice
+    # What was deleted here is not offered again.
+    mine.execute("UPDATE bookmarks SET deleted_at = 'x' WHERE title = 'only theirs'")
+    mine.commit()
+    later = snapshot.compare(mine, file)
+    assert later["only_theirs"]["count"] == 0 and later["deleted_here"] == 1
+    assert snapshot.adopt(mine, file).created == 0
 
     for bad in (b"not a database at all", b"SQLite format 3\x00" + b"\x00" * 200):
         wrong = tmp_path / "wrong.sqlite"
@@ -327,7 +333,7 @@ def test_compare_with_a_snapshot_and_bring_in_what_is_missing(tmp_path):
 
     app = App(mine_path)
     sent = base64.b64encode(file.read_bytes()).decode()
-    assert app.snapshot_compare({"content_b64": sent})["in_both"] == 2
+    assert app.snapshot_compare({"content_b64": sent})["in_both"] == 1
     for bad in ({}, {"content_b64": "###"}, {"content_b64": base64.b64encode(b"hello").decode()}):
         with pytest.raises(ValueError):
             app.snapshot_compare(bad)
