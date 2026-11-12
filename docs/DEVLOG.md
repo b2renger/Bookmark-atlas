@@ -4,6 +4,45 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-12: v0.8.0 published; phase 9, publication dates read from the pages
+
+**Asked:** a way, in Grooming, to get the publication date of a source.
+Read as "retrieve"; the literal reading (take dates back) is covered too.
+
+**Works**
+
+- Migration 0004, table `page_facts`.
+- `atlas.pagedates`: `extract_published` (pure), `read_one`, `lookup` in
+  batches with four requests at a time, `status`.
+- Routes `GET` and `POST /api/dates/lookup`; a card in the Grooming tab.
+- Scripts `published-from-page` and `clear-published-dates`.
+
+**Decisions**
+
+- Fetching is not done inside a grooming script: `plan` must be repeatable
+  and may not write. The lookup stores facts; the script reads them.
+- A fact is used only while the bookmark still has the link that was fetched.
+- Sources recorded: `page`, `github`. A repository's creation day is not a
+  publication day in the strict sense; the preview says which one it is.
+- At most 600 kB of a page is read, with a 12 s limit.
+- The number of GitHub lookups allowed per hour without a token was not
+  checked at the source (the documentation page could not be opened), so the
+  code does not rely on a number: it stops asking GitHub on a 403 or 429.
+
+**Verified how**
+
+- 12 new Python tests (246 in all), one against a real local HTTP server.
+- Browser run on the real collection with a stand-in for the web: lookup with
+  progress, GitHub slowing down, preview, apply, undo in the history, the
+  Trends coverage line following.
+
+**Not done**
+
+- A real run against the web. Hugging Face (its API has a creation date) and
+  YouTube deserve their own readers if the generic one finds nothing.
+
+**Next:** publish 0.9.0; the shared filter on Tree, Links and Trends.
+
 ## 2026-11-12: phase 8, shared filter and an animated map with four arrangements
 
 **Asked:** better dataviz, animated, 3D, timelines with filters and different

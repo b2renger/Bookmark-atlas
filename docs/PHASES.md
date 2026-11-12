@@ -15,6 +15,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 6 | Self-organising map and pearl tree | v0.6.0 | done, drag and drop, merge and split left out |
 | 7 | Links and tendencies | v0.7.1 | done (v0.7.0 was built from the wrong commit) |
 | 8 | Shared filter, animated layouts, timeline, 3D | v0.8.0 | done for list, map and grid |
+| 9 | Publication dates read from the pages | v0.9.0 | done; not yet run against real sites |
 
 ## Phase 0: scaffolding
 
@@ -192,3 +193,26 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Saved views remember the filter and the arrangement.**
 - **Left out:** the filter does not yet apply to Tree, Links and Trends; no
   brush on a histogram to pick dates; no 3D link graph.
+
+## Phase 9: publication dates read from the pages
+
+- **Grooming, "Look up publication dates":** goes online, page by page, for
+  bookmarks without a publication date, and reads the date the page declares
+  (structured data, then meta tags, then a marked `<time>` element). For a
+  GitHub repository: the day it was created, from GitHub's public API.
+- **The lookup changes no bookmark.** It fills a table (`page_facts`). The
+  script "Publication date read from the page" then proposes the dates, with
+  the usual preview, apply and undo.
+- **Why two steps:** a script is run twice (preview, then apply) and must
+  propose the same thing both times; the web does not promise that.
+- **Nothing is guessed.** A date written only in the text of a page is not
+  used. A page that declares none is recorded as such and not asked again.
+- **Progress, Stop, and "try again the pages that could not be reached".**
+  When GitHub asks to slow down, its repositories are left for a later run.
+- **Not fetched:** X posts (their date comes from the post ID), addresses on
+  a private network, anything that is not http or https.
+- **New script "Remove publication dates from one source"**, to take back the
+  dates of a source that proves unreliable, such as the unverified Date column.
+- **Not verified:** the lookup against real sites. The development session
+  cannot reach the web from code, so it was tested with a local server and
+  stand-in pages. YouTube and Hugging Face pages may declare nothing usable.

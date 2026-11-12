@@ -436,6 +436,30 @@ class App:
         finally:
             conn.close()
 
+    def dates_status(self) -> dict:
+        from atlas import pagedates
+
+        conn = self._conn()
+        try:
+            return pagedates.status(conn)
+        finally:
+            conn.close()
+
+    def dates_lookup(self, body: dict) -> dict:
+        """Look one batch of pages up. The page calls this again until none is left."""
+        from atlas import pagedates
+
+        conn = self._conn()
+        try:
+            return pagedates.lookup(
+                conn,
+                limit=int(body.get("limit") or 12),
+                retry_failed=bool(body.get("retry_failed")),
+                skip_github=bool(body.get("skip_github")),
+            )
+        finally:
+            conn.close()
+
     def groom_apply(self, body: dict) -> dict:
         script, params = self._script(body)
         mark = body.get("fingerprint")
@@ -658,6 +682,8 @@ def make_handler(app: App):
                 ("POST", "/api/import-csv"): lambda: app.import_csv(self._body()),
                 ("GET", "/api/bookmarks/ids"): lambda: app.bookmark_ids(parse_qs(url.query)),
                 ("GET", "/api/facets"): lambda: app.facets(),
+                ("GET", "/api/dates/lookup"): lambda: app.dates_status(),
+                ("POST", "/api/dates/lookup"): lambda: app.dates_lookup(self._body()),
                 ("POST", "/api/bookmarks/tags"): lambda: app.selection_tags(self._body()),
                 ("POST", "/api/bookmarks/batch"): lambda: app.batch_edit(self._body()),
                 ("POST", "/api/bookmarks/export"): lambda: app.export_selection(self._body()),

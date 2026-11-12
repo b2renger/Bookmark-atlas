@@ -77,6 +77,8 @@ def test_builtin_scripts_are_listed():
         "derive-platform",
         "published-from-x-id",
         "split-dates",
+        "published-from-page",
+        "clear-published-dates",
     ]
     assert all(script.title and script.description for script in scripts.values())
 
@@ -249,7 +251,7 @@ def test_a_broken_user_script_is_reported_and_does_not_hide_the_others(conn, pat
 
     scripts, problems = groom.load_scripts(path)
 
-    assert len(scripts) == 5
+    assert len(scripts) == 7
     assert sorted(problem["file"] for problem in problems) == ["broken.py", "clash.py", "noname.py"]
 
 

@@ -37,6 +37,8 @@ BUILTIN = [
     "derive_platform",
     "published_from_x_id",
     "split_dates",
+    "published_from_page",
+    "clear_published_dates",
 ]
 
 # Bookmark columns a script may change. Anything else is refused.

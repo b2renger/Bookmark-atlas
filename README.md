@@ -95,6 +95,12 @@ The **Tree** gathers close topics into families and splits large topics into
 parts. Open a pearl to go inside; rename anything; move a topic to another
 family.
 
+In **Grooming**, "Look up publication dates" opens the pages of bookmarks that
+have no publication date and reads the date each page declares. It changes
+nothing by itself: the script "Publication date read from the page" then
+proposes the dates for review. This is the only part of the app, with the
+Notion sync and the update check, that goes online.
+
 **Links** shows which topics share the most similar bookmarks, the bookmarks
 that sit between two topics, those that resemble nothing else, and old
 bookmarks close to what you gathered lately. In the list, "similar bookmarks"

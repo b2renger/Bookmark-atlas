@@ -466,6 +466,20 @@
       <div class="note muted" id="scripts-note"></div>
     </section>
     <section class="card">
+      <h2>Look up publication dates</h2>
+      <p class="help">Goes online and reads, on each bookmarked page that has no publication date,
+        the date the page declares for itself. For a GitHub repository it takes the day the
+        repository was created. Nothing is changed by the lookup: what it finds is then proposed
+        by the script “Publication date read from the page” above, where you review and apply it.
+        X posts are left out, since their date comes from the post ID.</p>
+      <div class="row">
+        <button class="action primary" id="dates-go">Look up dates</button>
+        <button class="action" id="dates-stop" hidden>Stop</button>
+        <label class="check"><input type="checkbox" id="dates-retry"> try again the pages that could not be reached</label>
+      </div>
+      <div class="note muted" id="dates-note"></div>
+    </section>
+    <section class="card">
       <h2>History</h2>
       <div id="history"></div>
     </section>
@@ -2078,7 +2092,43 @@ function renderPreview(script, holder) {
   refresh();
 }
 
+const dates = { running: false, stop: false };
+function describeDates(s) {
+  return s.without_date + " bookmarks have no publication date; " + s.to_look_up + " of them not looked up yet. Found so far: " + s.found
+    + (s.ready ? " (" + s.ready + " ready to apply with the script above)" : "") + ". No date declared: " + s.none + ". Could not be reached: " + s.error
+    + (s.skipped ? ". Left out (X posts, private addresses): " + s.skipped : "") + ".";
+}
+async function loadDates() {
+  if (dates.running) return;
+  try { note("dates-note", describeDates(await api("GET", "/api/dates/lookup")), "muted"); }
+  catch (error) { note("dates-note", error.message, "bad"); }
+}
+$("dates-stop").onclick = () => { dates.stop = true; $("dates-stop").disabled = true; };
+$("dates-go").onclick = async () => {
+  if (dates.running) return;
+  dates.running = true; dates.stop = false;
+  $("dates-go").disabled = true; $("dates-stop").hidden = false; $("dates-stop").disabled = false;
+  let found = 0, looked = 0, skipGithub = false, retry = $("dates-retry").checked, last = null, problem = "";
+  try {
+    for (;;) {
+      const result = await api("POST", "/api/dates/lookup", { limit: 12, skip_github: skipGithub, retry_failed: retry });
+      retry = false; last = result; found += result.found; looked += result.looked_up;
+      if (result.github_limited) skipGithub = true;
+      note("dates-note", "Looking up… " + looked + " pages read, " + found + " dates found, " + result.remaining + " to go."
+        + (skipGithub ? " GitHub asked to slow down: its repositories are left for later." : ""), "muted");
+      if (dates.stop || result.remaining === 0 || result.looked_up === 0) break;
+    }
+  } catch (error) { problem = error.message; }
+  dates.running = false; $("dates-go").disabled = false; $("dates-stop").hidden = true; $("dates-retry").checked = false;
+  if (problem) { note("dates-note", problem, "bad"); return; }
+  note("dates-note", (dates.stop ? "Stopped. " : "Done. ") + looked + " pages read, " + found + " dates found. "
+    + (skipGithub ? "GitHub limits how many repositories can be looked up in an hour: press Look up dates again later for the rest. " : "")
+    + (last && last.status.ready ? "Now preview “Publication date read from the page” above to review and apply them. " : "")
+    + (last ? describeDates(last.status) : ""), found ? "good" : "muted");
+};
+
 async function loadGrooming() {
+  loadDates();
   const data = await api("GET", "/api/groom/scripts");
   const holder = $("scripts");
   holder.replaceChildren();
