@@ -29,9 +29,13 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from atlas import __version__, batch, bundle, db, groom, settings, snapshot, views
+from atlas import __version__, batch, bundle, db, groom, settings, snapshot, views, workspaces
 from atlas.exporter import facet_options, matching_ids, search_clause, status
-from atlas.importer import import_csv_stream
+from atlas.importer import (
+    import_browser_bookmarks,
+    import_csv_stream,
+    looks_like_browser_export,
+)
 from atlas.notion import NotionClient, NotionError
 from atlas.notion_sync import guess_property_map, select_data_source, selected, sync
 
@@ -63,6 +67,7 @@ class App:
         token_checker: Callable[[str], dict] | None = None,
     ):
         self.db_path = Path(db_path)
+        self.home_path = Path(db_path)  # the main collection; db_path moves to a workspace
         self.session_token = secrets.token_urlsafe(24)
         self.client_factory = client_factory or _default_client
         self.token_checker = token_checker or (lambda token: NotionClient(token).me())
@@ -78,6 +83,7 @@ class App:
                 "database": str(self.db_path),
                 "data_folder": str(self.db_path.resolve().parent),
                 "snapshot": snapshot.snapshot_info(conn),
+                "workspace": workspaces.info(conn) if self.db_path != self.home_path else None,
                 "version": app_version(),
                 "status": status(conn),
                 "notion": {
@@ -89,6 +95,72 @@ class App:
             }
         finally:
             conn.close()
+
+    # ---- workspaces ----
+
+    def workspaces_list(self) -> dict:
+        home = db.open_ready(self.home_path)
+        try:
+            count = home.execute(
+                "SELECT COUNT(*) FROM bookmarks WHERE deleted_at IS NULL"
+            ).fetchone()[0]
+        finally:
+            home.close()
+        active = None if self.db_path == self.home_path else self.db_path.parent.name
+        return {
+            "home": {"bookmarks": count},
+            "active": active,
+            "workspaces": workspaces.list_all(self.home_path),
+            "folder": str(workspaces.root(self.home_path)),
+        }
+
+    def workspace_create(self, body: dict) -> dict:
+        start = str(body.get("start") or "empty")
+        ids = body.get("ids")
+        if start == "ids" and (not isinstance(ids, list) or not ids):
+            raise ValueError("There is no bookmark to start the workspace from.")
+        conn = self._conn()
+        try:
+            made = workspaces.create(
+                conn,
+                self.home_path,
+                str(body.get("name") or ""),
+                ids=[str(i) for i in ids] if start == "ids" else None,
+                empty=start == "empty",
+                started_from=str(body.get("started_from") or ""),
+            )
+        finally:
+            conn.close()
+        self.db_path = workspaces.path_of(self.home_path, made["id"])
+        return {"created": made, **self.workspaces_list()}
+
+    def workspace_open(self, body: dict) -> dict:
+        wanted = str(body.get("id") or "")
+        self.db_path = (
+            self.home_path if wanted in ("", "home") else workspaces.path_of(self.home_path, wanted)
+        )
+        return self.workspaces_list()
+
+    def workspace_delete(self, body: dict) -> dict:
+        wanted = str(body.get("id") or "")
+        target = workspaces.path_of(self.home_path, wanted)
+        if target == self.db_path:
+            self.db_path = self.home_path
+        workspaces.delete(self.home_path, wanted)
+        return self.workspaces_list()
+
+    def workspace_merge(self, body: dict) -> dict:
+        home = db.open_ready(self.home_path)
+        try:
+            result = workspaces.merge(
+                home,
+                self.home_path,
+                str(body.get("id") or ""),
+                add_tags=body.get("add_tags") is not False,
+            )
+        finally:
+            home.close()
+        return {"merged": result, **self.workspaces_list()}
 
     def set_token(self, body: dict) -> dict:
         token = str(body.get("token") or "").strip()
@@ -142,7 +214,9 @@ class App:
         dry_run = bool(body.get("dry_run"))
         conn = self._conn()
         try:
-            if content.lstrip().startswith("{"):
+            if looks_like_browser_export(content):
+                report = import_browser_bookmarks(conn, content, dry_run=dry_run)
+            elif content.lstrip().startswith("{"):
                 # A bundle shared from another Atlas, not a CSV export.
                 try:
                     data = json.loads(content)
@@ -782,6 +856,11 @@ def make_handler(app: App):
                 ("GET", "/api/links/related"): lambda: app.links_related(parse_qs(url.query)),
                 ("GET", "/api/links/threads"): lambda: app.links_threads(),
                 ("GET", "/api/trends"): lambda: app.trends_show(parse_qs(url.query)),
+                ("GET", "/api/workspaces"): lambda: app.workspaces_list(),
+                ("POST", "/api/workspaces"): lambda: app.workspace_create(self._body()),
+                ("POST", "/api/workspaces/open"): lambda: app.workspace_open(self._body()),
+                ("POST", "/api/workspaces/delete"): lambda: app.workspace_delete(self._body()),
+                ("POST", "/api/workspaces/merge"): lambda: app.workspace_merge(self._body()),
                 ("GET", "/api/views"): lambda: app.views_list(),
                 ("GET", "/api/views/item"): lambda: app.view_get(parse_qs(url.query)),
                 ("POST", "/api/views"): lambda: app.view_save(self._body()),

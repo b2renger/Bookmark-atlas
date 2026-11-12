@@ -4,6 +4,30 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-12: v0.13.0 published on three platforms; phase 14, workspaces
+
+**Asked:** a workspace feature, to import specific data from other sources and
+export subsets. Answers to the two design questions: a workspace is a copy;
+all sources matter.
+
+**Works:** `atlas.workspaces` (create, list, delete, merge, info);
+`importer.import_browser_bookmarks`; the server keeps `home_path` and moves
+`db_path` to the open workspace; routes under `/api/workspaces`; the
+Workspaces tab and banner; `Workspaces` added to what a data folder move
+copies.
+
+**Decisions:** a workspace reuses the snapshot writer, so it carries the
+clusters and views of the bookmarks copied. The page forgets all its state
+when the open collection changes. Merge goes through `snapshot.adopt` for new
+bookmarks and the grooming engine for tags, so the tags can be undone.
+Workspace names become folder names made of lowercase letters, digits and
+dashes only, and every route checks that shape.
+
+**Verified:** 5 new Python tests (271 in all), 15 Node tests. Browser run on
+the real collection: create from a filter, import a browser file inside,
+search and map inside, come back, merge, delete, an empty workspace with every
+tab opened.
+
 ## 2026-11-12: v0.12.0 published; phase 13, snapshot comparison and more platforms
 
 **Confirmed by the user:** the Notion sync works with a real token. The README

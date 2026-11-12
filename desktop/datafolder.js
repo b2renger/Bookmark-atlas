@@ -13,7 +13,7 @@ const path = require('node:path');
 
 const DATABASE = 'atlas.sqlite';
 // What makes up the user's data. Anything else in the folder is left alone.
-const ITEMS = [DATABASE, 'secrets.json', 'scripts', 'backups'];
+const ITEMS = [DATABASE, 'secrets.json', 'scripts', 'backups', 'Workspaces'];
 const POINTER = 'location.json';
 
 /** The folder chosen on this machine, or null if none was chosen. */

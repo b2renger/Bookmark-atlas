@@ -122,6 +122,11 @@
   input[type=date] { color-scheme: light dark; }
   #mapdetail h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
   #mapdetail a { color: var(--ink); }
+  #workbanner { background: var(--chip); border: 1px solid var(--line); border-left: 4px solid var(--viz-selected);
+    border-radius: 8px; padding: 10px 14px; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .wsrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  .wsrow:first-child { border-top: 0; }
+  .wsrow .acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
   #snapbanner { background: var(--chip); border: 1px solid var(--line); border-left: 4px solid var(--accent);
     border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; overflow-wrap: anywhere; }
   .viewrow { display: flex; gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -234,6 +239,7 @@
     <button id="tab-links">Links</button>
     <button id="tab-trends">Trends</button>
     <button id="tab-views">Views</button>
+    <button id="tab-workspaces">Workspaces</button>
     <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
   </nav>
@@ -258,6 +264,7 @@
     <span class="note bad" id="facet-note"></span>
   </div>
   <div id="snapbanner" hidden></div>
+  <div id="workbanner" hidden></div>
   <div id="view-bookmarks">
     <section class="card">
       <div class="toolbar">
@@ -473,6 +480,43 @@
     </section>
   </div>
 
+  <div id="view-workspaces" hidden>
+    <section class="card">
+      <h2>Workspaces</h2>
+      <p class="help">A workspace is a copy of part of your collection that lives apart: its own
+        tags, topics, map, views and grooming history, and its own Notion table if you connect
+        one. Use it to study a subject, to try something risky, or to gather data from elsewhere
+        before deciding what to keep. Nothing done in a workspace touches your collection until
+        you merge it back, and merging only adds.</p>
+      <div id="ws-list"></div>
+      <div class="note" id="ws-note"></div>
+    </section>
+    <section class="card">
+      <h2>New workspace</h2>
+      <div class="row">
+        <div class="grow"><label for="ws-name">Name</label><input type="text" id="ws-name" maxlength="120"></div>
+        <div><label for="ws-start">Start from</label><select id="ws-start" style="width:auto"></select></div>
+        <button class="action primary" id="ws-create">Create and open</button>
+      </div>
+      <div class="note" id="ws-create-note"></div>
+    </section>
+    <section class="card">
+      <h2>Bring data in, take data out</h2>
+      <p class="help">These work on whatever is open, your collection or a workspace.</p>
+      <ul class="sum">
+        <li><strong>A file:</strong> a CSV export, a bundle shared from another Atlas, or the
+          bookmarks file exported by a browser (Chrome, Firefox, Safari, Edge: folders become
+          tags). <button class="linkish" id="ws-go-import">Open the import in Settings</button></li>
+        <li><strong>Another Notion table:</strong> each workspace remembers its own table.
+          Open the workspace, then choose the table in Settings.</li>
+        <li><strong>A snapshot from someone:</strong> <button class="linkish" id="ws-go-compare">Compare with a snapshot</button>
+          shows what it has that you lack and adds it.</li>
+        <li><strong>Out:</strong> select bookmarks in the list and export them, or
+          <button class="linkish" id="ws-go-snapshot">export a snapshot</button> of what is open.</li>
+      </ul>
+    </section>
+  </div>
+
   <div id="view-views" hidden>
     <section class="card">
       <h2>Save what you are looking at</h2>
@@ -629,13 +673,15 @@
 
     <section class="card">
       <h2>Import a file</h2>
-      <p class="help">Two kinds of file: a CSV export of your table from Notion (••• menu, Export,
-        CSV), or a bundle exported from another Atlas (“Export selection” in Bookmarks). No token
-        needed. Links already in the collection are not duplicated.</p>
+      <p class="help">Three kinds of file: a CSV export of your table from Notion (••• menu, Export,
+        CSV), a bundle exported from another Atlas (“Export selection” in Bookmarks), or the
+        bookmarks file exported by a browser (an .html file; its folders become tags). No token
+        needed. Links already in the collection are not duplicated. The file goes into whatever
+        is open: your collection, or a workspace.</p>
       <div class="row">
         <div class="grow">
           <label for="csv-file">File</label>
-          <input type="file" id="csv-file" accept=".csv,.json,text/csv,application/json">
+          <input type="file" id="csv-file" accept=".csv,.json,.html,.htm,text/csv,application/json,text/html">
         </div>
         <button class="action" id="preview-csv" disabled>Preview</button>
         <button class="action primary" id="run-csv" disabled>Import file</button>
@@ -689,7 +735,7 @@ let lastWorkView = "bookmarks";   // what "Save view" captures
 function showView(name) {
   currentView = name;
   if (["bookmarks", "map", "clusters", "grid", "tree", "links", "trends"].includes(name)) lastWorkView = name;
-  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "views", "grooming", "settings"]) {
+  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "views", "workspaces", "grooming", "settings"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -717,6 +763,14 @@ async function refreshState() {
       + (snap.created_at ? ", made " + new Date(snap.created_at).toLocaleDateString() : "")
       + ". What you change here stays in this copy. Menu Atlas > Return to my collection to leave it."
       + (snap.note ? " Message: " + snap.note : ""));
+  }
+  const work = state.workspace;
+  $("workbanner").hidden = !work;
+  if (work) {
+    const back = el("button", { className: "action", textContent: "Back to my collection" });
+    back.onclick = () => openWorkspace("home");
+    $("workbanner").replaceChildren(el("strong", { textContent: "Workspace: " + work.name }),
+      el("span", { textContent: "A copy that lives apart" + (work.started_from ? ", started from " + work.started_from : "") + ". Your collection is untouched until you merge." }), back);
   }
   const n = state.notion;
   $("forget-token").hidden = !n.token_set || n.token_source === "environment";
@@ -2713,6 +2767,90 @@ $("view-save").onclick = () => busy($("view-save"), async () => {
   } catch (error) { note("view-note-msg", error.message, "bad"); }
 });
 
+/* ---- workspaces ---- */
+
+// Everything on screen belongs to the collection that was open: start afresh.
+async function afterSwitch(message) {
+  selection.clear(); keepNote = false;
+  setClusterFilter(null);
+  facets.tags = []; facets.platform = ""; facets.from = ""; facets.to = ""; facetIds = null; facetOptionsAt = 0;
+  map.data = null; map.web = null; map.cells = null; map.focus = null; map.matches = null; map.layout = "similarity";
+  grid.data = null; tree.data = null; tree.path = []; links.data = null; threads.data = null; threads.pinned = null;
+  $("search").value = ""; $("map-search").value = "";
+  renderFacets(); refreshSelection();
+  await refreshState();
+  loadFacetOptions();
+  await loadBookmarks(true);
+  await loadWorkspaces();
+  note("ws-note", message || "", "good");
+}
+async function openWorkspace(id) {
+  try { await api("POST", "/api/workspaces/open", { id }); await afterSwitch(id === "home" ? "You are back in your collection." : "The workspace is open."); }
+  catch (error) { note("ws-note", error.message, "bad"); }
+}
+async function loadWorkspaces() {
+  const data = await api("GET", "/api/workspaces");
+  const holder = $("ws-list");
+  const row = (title, detail, buttons) => el("div", { className: "wsrow" }, [el("div", {}, [el("strong", { textContent: title }), el("div", { className: "tagline", textContent: detail })]), el("div", { className: "acts" }, buttons)]);
+  const rows = [];
+  const home = el("button", { className: "action", textContent: data.active === null ? "Open now" : "Open", disabled: data.active === null });
+  home.onclick = () => openWorkspace("home");
+  rows.push(row("My collection", plural(data.home.bookmarks) + (data.active === null ? " · open now" : ""), [home]));
+  for (const space of data.workspaces) {
+    const current = data.active === space.id;
+    const open = el("button", { className: "action", textContent: current ? "Open now" : "Open", disabled: current });
+    open.onclick = () => openWorkspace(space.id);
+    const merge = el("button", { className: "action", textContent: "Merge into my collection" });
+    const remove = el("button", { className: "action", textContent: "Delete" });
+    const line = row(space.name, plural(space.bookmarks) + " · made " + new Date(space.created_at).toLocaleDateString()
+      + (space.started_from ? " from " + space.started_from : "") + (current ? " · open now" : ""), [open, merge, remove]);
+    const confirm = (text, label, action) => {
+      const yes = el("button", { className: "action primary", textContent: label }), no = el("button", { className: "action", textContent: "Cancel" });
+      const bar = el("div", { id: "tree-ask", style: "grid-column: 1 / -1" }, [el("span", { textContent: text }), yes, no]);
+      no.onclick = () => bar.remove();
+      yes.onclick = () => busy(yes, action);
+      for (const old of holder.querySelectorAll("#tree-ask")) old.remove();
+      line.append(bar); yes.focus();
+    };
+    merge.onclick = () => confirm("Add to your collection the bookmarks of “" + space.name + "” that it does not have, and the tags this workspace gave to those it has? Nothing is removed or replaced.", "Merge", async () => {
+      try {
+        const result = (await api("POST", "/api/workspaces/merge", { id: space.id })).merged;
+        if (data.active === null) await afterSwitch(); else { await refreshState(); await loadWorkspaces(); }
+        note("ws-note", plural(result.added) + " added to your collection, " + result.tagged + " received new tags, " + result.already_there + " were already there."
+          + (result.kept_deleted ? " " + result.kept_deleted + " deleted earlier in your collection stayed deleted." : "") + " The tags can be undone from the history in Grooming.", "good");
+      } catch (error) { note("ws-note", error.message, "bad"); }
+    });
+    remove.onclick = () => confirm("Delete the workspace “" + space.name + "” and everything in it? Your collection is not affected. This cannot be undone.", "Delete", async () => {
+      try { await api("POST", "/api/workspaces/delete", { id: space.id }); if (current) await afterSwitch("The workspace is deleted. You are back in your collection."); else { await loadWorkspaces(); note("ws-note", "The workspace is deleted.", "good"); } }
+      catch (error) { note("ws-note", error.message, "bad"); }
+    });
+    rows.push(line);
+  }
+  holder.replaceChildren(...rows);
+  const start = $("ws-start"), kept = start.value;
+  const options = [["empty", "Nothing (an empty workspace)"], ["all", "Everything that is open (" + state.status.bookmarks + ")"]];
+  if (selection.size) options.push(["selection", "The " + selection.size + " selected bookmarks"]);
+  if (facetIds) options.push(["filter", "What passes the filter (" + facetIds.size + ")"]);
+  if (clusterFilter) options.push(["topic", "The topic “" + clusterFilter.label.slice(0, 40) + "”"]);
+  start.replaceChildren(...options.map(([value, text]) => el("option", { value, textContent: text })));
+  if (options.some(([value]) => value === kept)) start.value = kept; else start.value = selection.size ? "selection" : facetIds ? "filter" : "empty";
+}
+$("ws-create").onclick = () => busy($("ws-create"), async () => {
+  try {
+    const choice = $("ws-start").value, body = { name: $("ws-name").value, start: choice === "empty" ? "empty" : choice === "all" ? "all" : "ids" };
+    if (choice === "selection") { body.ids = [...selection]; body.started_from = "a selection of " + selection.size; }
+    if (choice === "filter") { body.ids = [...facetIds]; body.started_from = "the filter (" + [...facets.tags, facets.platform, facets.from && "from " + facets.from, facets.to && "to " + facets.to].filter(Boolean).join(", ") + ")"; }
+    if (choice === "topic") { body.ids = (await api("GET", "/api/bookmarks/ids?cluster=" + encodeURIComponent(clusterFilter.key))).ids; body.started_from = "the topic “" + clusterFilter.label + "”"; }
+    if (choice === "all") body.started_from = state.workspace ? "the workspace “" + state.workspace.name + "”" : "the whole collection";
+    const made = await api("POST", "/api/workspaces", body);
+    $("ws-name").value = ""; note("ws-create-note", "", "muted");
+    await afterSwitch("The workspace “" + made.created.name + "” is open with " + plural(made.created.bookmarks) + ".");
+  } catch (error) { note("ws-create-note", error.message, "bad"); }
+});
+$("ws-go-import").onclick = () => $("tab-settings").click();
+$("ws-go-compare").onclick = () => { $("tab-views").click(); $("cmp-file").scrollIntoView({ block: "center" }); };
+$("ws-go-snapshot").onclick = () => { $("tab-views").click(); $("snap-name").scrollIntoView({ block: "center" }); };
+
 async function fileAsBase64(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let text = "";
@@ -3138,6 +3276,7 @@ $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeou
 $("more").onclick = () => loadBookmarks(false);
 $("tab-bookmarks").onclick = () => { showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
 $("tab-settings").onclick = () => showView("settings");
+$("tab-workspaces").onclick = () => { showView("workspaces"); loadWorkspaces().catch((e) => note("ws-note", e.message, "bad")); };
 $("tab-views").onclick = () => { showView("views"); loadViews().catch((e) => note("view-note-msg", e.message, "bad")); };
 $("tab-map").onclick = () => { showView("map"); loadMap($("map-clusters").value || undefined).catch((e) => note("map-note", e.message, "bad")); };
 $("tab-clusters").onclick = () => { showView("clusters"); loadClusters().catch((e) => note("cl-note", e.message, "bad")); };

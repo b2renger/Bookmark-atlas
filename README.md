@@ -150,6 +150,13 @@ under any bookmark shows its nearest neighbours.
 publication you save things, and which topics and tags take more or less room
 in the last 90 days.
 
+**Workspaces** are copies of part of your collection that live apart: their
+own tags, topics, map, views, grooming history and Notion table. Start one
+from a filter, a selection, a topic, everything, or nothing; bring data in
+from a CSV, a bundle, a snapshot, another Notion table or a browser's
+bookmarks file; then merge it back (merging only adds) or delete it. They are
+kept in `Workspaces/` inside your data folder.
+
 In **Views**, save where you are under a name and come back to it later, or
 export a **snapshot**: one file with bookmarks, clusters, map and views that
 someone else opens with **Atlas > Open snapshot…**, without touching their own

@@ -213,6 +213,10 @@ def compare(conn: sqlite3.Connection, other_path: Path | str, *, limit: int = 20
     try:
         mine, theirs = _by_link(conn), _by_link(other)
         info = snapshot_info(other) if _has_meta(other) else None
+        if info is None and _has_meta(other):
+            from atlas import workspaces
+
+            info = workspaces.info(other)
     finally:
         other.close()
     # A bookmark deleted here stays deleted: it is not offered again.

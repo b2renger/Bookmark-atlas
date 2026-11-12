@@ -20,6 +20,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 11 | Grooming loose ends | v0.11.0 | done; online parts not run against real sites |
 | 12 | Visual loose ends, 3D link graph, pictures to keep | v0.12.0 | done |
 | 13 | Snapshot comparison, Linux and macOS builds, screenshots | v0.13.0 | done; Linux and macOS not yet used by a person |
+| 14 | Workspaces and browser bookmarks | v0.14.0 | done |
 
 ## Phase 0: scaffolding
 
@@ -307,3 +308,28 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   bookmark.
 - **Not verified:** a person opening the macOS download (Gatekeeper's
   behaviour with a downloaded, unsigned app) and the AppImage's self-update.
+
+## Phase 14: workspaces and browser bookmarks
+
+- **A workspace is an independent copy** of part of the collection: an
+  ordinary Atlas database in `Workspaces/<name>/` inside the data folder, with
+  its own tags, topics, map, views, grooming history and Notion table.
+- **Start from** nothing, everything that is open, the selection, what passes
+  the filter, or a topic. The app switches to the new workspace; a banner says
+  where you are and takes you back.
+- **Bring data in** from any source the app reads, into whatever is open: a
+  CSV, a bundle, a snapshot (Compare), another Notion table (each workspace
+  remembers its own), and now **a browser's bookmarks file** (Chrome, Firefox,
+  Safari, Edge), whose folders become tags and whose "added" dates become
+  save dates.
+- **Merging back only adds:** bookmarks the collection lacks, and the tags the
+  workspace gave to bookmarks both have (one undoable run). What was deleted
+  in the collection stays deleted; deleting in a workspace deletes nothing in
+  the collection.
+- **Take data out** as before: export a selection, or a snapshot of what is
+  open.
+- **Workspaces travel with the data folder** (the folder move in the app now
+  copies them too).
+- **Left out:** renaming a workspace; remembering which one was open when the
+  app restarts (it always starts in the main collection); comparing two
+  workspaces directly (use Compare with a snapshot of one).

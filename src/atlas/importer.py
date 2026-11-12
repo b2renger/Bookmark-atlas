@@ -368,3 +368,108 @@ def import_csv_stream(
     else:
         conn.commit()
     return report
+
+
+# ---- bookmarks exported by a browser ---------------------------------------
+
+# Top-level folders every browser creates; they say nothing about the content.
+BROWSER_ROOTS = {
+    "bookmarks bar", "bookmarks toolbar", "bookmarks menu", "other bookmarks", "mobile bookmarks",
+    "favorites", "favourites", "favorites bar", "favourites bar", "imported", "unsorted bookmarks",
+    "barre de favoris", "barre personnelle", "menu des marque-pages", "autres favoris",
+    "autres marque-pages", "favoris", "marque-pages", "barre d'outils de marque-pages",
+}  # fmt: skip
+
+
+def looks_like_browser_export(text: str) -> bool:
+    head = text[:3000].lower()
+    return "netscape-bookmark-file" in head or ("<dl>" in head and "<dt>" in head and "<a " in head)
+
+
+def read_browser_bookmarks(text: str) -> list[dict]:
+    """The links of a bookmarks file exported by Chrome, Firefox, Safari or
+    Edge (they all write the same old "Netscape" format). Each link comes with
+    the names of the folders it sits in and the date it was added."""
+    from html.parser import HTMLParser
+
+    class Reader(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.folders: list[str | None] = []
+            self.pending = None  # a folder name read, waiting for its list to open
+            self.capture = None  # "folder" or "link" while reading their text
+            self.text = ""
+            self.link = None
+            self.items: list[dict] = []
+
+        def handle_starttag(self, tag, attrs):
+            values = {name.lower(): value or "" for name, value in attrs}
+            if tag == "h3":
+                self.capture, self.text = "folder", ""
+            elif tag == "dl":
+                self.folders.append(self.pending)
+                self.pending = None
+            elif tag == "a" and values.get("href"):
+                self.capture, self.text = "link", ""
+                self.link = {"url": values["href"].strip(), "added": values.get("add_date", "")}
+
+        def handle_endtag(self, tag):
+            if tag == "h3" and self.capture == "folder":
+                self.pending, self.capture = " ".join(self.text.split()), None
+            elif tag == "dl" and self.folders:
+                self.folders.pop()
+            elif tag == "a" and self.capture == "link":
+                self.capture = None
+                folders = [f for f in self.folders if f and f.lower() not in BROWSER_ROOTS]
+                self.items.append(
+                    {**self.link, "title": " ".join(self.text.split()), "folders": folders}
+                )
+
+        def handle_data(self, data):
+            if self.capture:
+                self.text += data
+
+    reader = Reader()
+    reader.feed(text)
+    return reader.items
+
+
+def import_browser_bookmarks(
+    conn: sqlite3.Connection, text: str, *, dry_run: bool = False
+) -> ImportReport:
+    """Import a browser's bookmarks file. Folder names become tags, and the day
+    a bookmark was added in the browser becomes its save date."""
+    from datetime import UTC, datetime
+
+    report = ImportReport(dry_run=dry_run)
+    try:
+        for number, item in enumerate(read_browser_bookmarks(text), start=1):
+            report.rows += 1
+            saved_at = None
+            if item["added"].isdigit() and 0 < int(item["added"]) < 4_102_444_800:  # before 2100
+                moment = datetime.fromtimestamp(int(item["added"]), tz=UTC)
+                saved_at = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+            try:
+                import_record(
+                    conn,
+                    report,
+                    source="browser",
+                    raw=item,
+                    url=item["url"],
+                    title=item["title"] or None,
+                    summary=None,
+                    tags=item["folders"],
+                    date_text=None,
+                    saved_at=saved_at,
+                    saved_source="browser" if saved_at else None,
+                )
+            except ValueError as error:
+                report.skipped.append((number, str(error)))
+    except BaseException:
+        conn.rollback()
+        raise
+    if dry_run:
+        conn.rollback()
+    else:
+        conn.commit()
+    return report
