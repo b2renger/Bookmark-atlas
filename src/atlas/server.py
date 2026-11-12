@@ -497,6 +497,37 @@ class App:
         finally:
             conn.close()
 
+    def snapshot_compare(self, body: dict) -> dict:
+        """Compare this collection with a snapshot file sent by the page, and
+        on request bring in the bookmarks it has that this collection lacks."""
+        import base64
+        import binascii
+        import tempfile
+
+        from atlas import snapshot
+
+        try:
+            content = base64.b64decode(str(body.get("content_b64") or ""), validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("The file could not be read.") from None
+        if not content:
+            raise ValueError("Choose a snapshot file first.")
+        with tempfile.TemporaryDirectory(prefix="atlas-compare-") as folder:
+            target = Path(folder) / "other.sqlite"
+            target.write_bytes(content)
+            conn = self._conn()
+            try:
+                result = {}
+                if body.get("adopt"):
+                    report = snapshot.adopt(conn, target)
+                    conn.commit()
+                    result["adopted"] = report.created
+                result.update(snapshot.compare(conn, target))
+                result["status"] = status(conn)
+                return result
+            finally:
+                conn.close()
+
     def groom_apply(self, body: dict) -> dict:
         script, params = self._script(body)
         mark = body.get("fingerprint")
@@ -756,6 +787,7 @@ def make_handler(app: App):
                 ("POST", "/api/views"): lambda: app.view_save(self._body()),
                 ("POST", "/api/views/delete"): lambda: app.view_delete(self._body()),
                 ("POST", "/api/snapshot"): lambda: app.snapshot_export(self._body()),
+                ("POST", "/api/snapshot/compare"): lambda: app.snapshot_compare(self._body()),
                 ("GET", "/api/clusters/runs"): lambda: app.cluster_runs(),
                 ("GET", "/api/clusters/run"): lambda: app.cluster_show(parse_qs(url.query)),
                 ("POST", "/api/clusters/run"): lambda: app.cluster_new(self._body()),

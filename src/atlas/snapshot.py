@@ -157,3 +157,131 @@ def snapshot_info(conn: sqlite3.Connection) -> dict | None:
         "bookmarks": info.get("bookmarks") if isinstance(info.get("bookmarks"), int) else None,
         "partial": bool(info.get("partial")),
     }
+
+
+# ---- comparing with a snapshot ---------------------------------------------
+
+
+def _open_other(path: Path | str) -> sqlite3.Connection:
+    """Open someone else's file to read it, and nothing more."""
+    path = Path(path)
+    try:
+        with open(path, "rb") as handle:
+            if handle.read(16) != b"SQLite format 3\x00":
+                raise ValueError("This file is not a snapshot.")
+        other = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        other.row_factory = sqlite3.Row
+        tables = {
+            r[0] for r in other.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+    except sqlite3.Error:
+        raise ValueError("This file is not a snapshot.") from None
+    if not {"bookmarks", "tags", "bookmark_tags"} <= tables:
+        other.close()
+        raise ValueError("This file is not a Bookmark Atlas snapshot.")
+    return other
+
+
+def _by_link(conn: sqlite3.Connection) -> dict[str, dict]:
+    tags: dict[str, set[str]] = {}
+    for bookmark_id, name in conn.execute(
+        "SELECT bookmark_id, name FROM bookmark_tags JOIN tags ON tags.id = tag_id"
+    ):
+        tags.setdefault(bookmark_id, set()).add(name)
+    return {
+        row["url_normalized"]: {
+            "id": row["id"],
+            "title": row["title"] or row["url"],
+            "url": row["url"],
+            "tags": tags.get(row["id"], set()),
+        }
+        for row in conn.execute(
+            "SELECT id, url, url_normalized, title FROM bookmarks WHERE deleted_at IS NULL "
+            "ORDER BY created_at, id"
+        )
+    }
+
+
+def compare(conn: sqlite3.Connection, other_path: Path | str, *, limit: int = 200) -> dict:
+    """What a snapshot has that this collection has not, and the reverse.
+
+    Bookmarks are matched by their link. For those in both, the tags that only
+    one side has are listed: that is where two people filed the same thing
+    differently.
+    """
+    other = _open_other(other_path)
+    try:
+        mine, theirs = _by_link(conn), _by_link(other)
+        info = snapshot_info(other) if _has_meta(other) else None
+    finally:
+        other.close()
+    only_there = [theirs[link] for link in theirs if link not in mine]
+    only_here = [mine[link] for link in mine if link not in theirs]
+    differences = []
+    for link in mine:
+        if link not in theirs:
+            continue
+        they_add = sorted(theirs[link]["tags"] - mine[link]["tags"])
+        you_add = sorted(mine[link]["tags"] - theirs[link]["tags"])
+        if they_add or you_add:
+            differences.append(
+                {
+                    "id": mine[link]["id"],
+                    "title": mine[link]["title"],
+                    "url": mine[link]["url"],
+                    "only_theirs": they_add,
+                    "only_yours": you_add,
+                }
+            )
+
+    def brief(items):
+        return [
+            {"title": item["title"], "url": item["url"], "tags": sorted(item["tags"])[:8]}
+            for item in items[:limit]
+        ]
+
+    return {
+        "snapshot": info,
+        "yours": len(mine),
+        "theirs": len(theirs),
+        "in_both": len(mine) - len(only_here),
+        "only_theirs": {"count": len(only_there), "items": brief(only_there)},
+        "only_yours": {
+            "count": len(only_here),
+            "items": brief(only_here),
+            "ids": [item["id"] for item in only_here],
+        },
+        "tag_differences": {"count": len(differences), "items": differences[:limit]},
+    }
+
+
+def _has_meta(conn: sqlite3.Connection) -> bool:
+    return bool(
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'"
+        ).fetchone()
+    )
+
+
+def adopt(conn: sqlite3.Connection, other_path: Path | str, *, dry_run: bool = False):
+    """Bring in the bookmarks of a snapshot that this collection does not have.
+    They arrive like a shared bundle: new bookmarks, nothing existing touched."""
+    from atlas import bundle
+
+    other = _open_other(other_path)
+    try:
+        mine = {
+            r[0]
+            for r in conn.execute("SELECT url_normalized FROM bookmarks WHERE deleted_at IS NULL")
+        }
+        wanted = [
+            row["id"]
+            for row in other.execute(
+                "SELECT id, url_normalized FROM bookmarks WHERE deleted_at IS NULL"
+            )
+            if row["url_normalized"] not in mine
+        ]
+        data = bundle.export_bundle(other, wanted)
+    finally:
+        other.close()
+    return bundle.import_bundle(conn, data, dry_run=dry_run)

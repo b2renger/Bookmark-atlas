@@ -11,6 +11,17 @@ interface.
 It is also a test bed for **e-means**, a clustering algorithm published in
 November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
+## What it looks like
+
+These pictures were taken from an invented collection (`tools/demo_collection.py`), not from anyone's bookmarks.
+
+| | |
+|---|---|
+| ![The map, with one topic in focus](docs/screenshots/map.png) **Map.** Similar bookmarks sit close together. | ![The same dots along a timeline](docs/screenshots/timeline.png) **Timeline.** One row per topic. |
+| ![The map lying flat with time rising from it](docs/screenshots/space-time.png) **Space and time.** The map lies flat, time is the height. | ![Bookmarks joined by lines in space](docs/screenshots/links-3d.png) **Links (3D).** Each bookmark tied to its three closest. |
+| ![Bookmarks on a line joined by arcs](docs/screenshots/threads.png) **Threads.** An arc between two bookmarks that resemble each other. | ![The topic tree drawn from its centre](docs/screenshots/tree.png) **Tree.** Families, topics, and one stroke per bookmark. |
+| ![The grid of cells](docs/screenshots/grid.png) **Grid.** Where the collection is dense. | ![Bars per month](docs/screenshots/trends.png) **Trends.** Saved and published per month. |
+
 ## Status
 
 All seven planned phases are published. Import (Notion or CSV), browse, groom

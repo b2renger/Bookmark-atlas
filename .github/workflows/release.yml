@@ -231,9 +231,137 @@ jobs:
               echo "The installer is not signed, so Windows shows \"Windows protected your PC\" the first time: choose **More info**, then **Run anyway**."
               echo ""
               echo "Once installed, the app updates itself from these releases. Your bookmarks stay in your user data folder and are kept across updates and uninstalls."
+              echo ""
+              echo "**Linux:** download \`Bookmark-Atlas-${TAG#v}-linux-x64.AppImage\`, make it executable (\`chmod +x\`) and run it. It updates itself too."
+              echo ""
+              echo "**macOS (Apple silicon):** download the \`.dmg\`, drag the app to Applications. It is not signed by Apple: the first time, right-click the app and choose **Open**, or allow it in System Settings > Privacy & Security. It does not update itself: download the new version here."
+              echo ""
+              echo "The Linux and macOS files are added a few minutes after the Windows one. They have been started by the build but not used by a person yet."
             } > "$RUNNER_TEMP/notes.md"
             # Creates the tag on the commit that was built, if it does not exist yet.
             gh release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA"
           fi
+          echo "Uploading ${#files[@]} file(s): ${files[*]}"
+          gh release upload "$TAG" "${files[@]}" --clobber
+
+  # Linux and macOS, after Windows so that a problem here can never hold the
+  # Windows release back. Each starts the packaged app for real before
+  # anything is uploaded.
+  others:
+    needs: windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            flag: --linux
+            label: linux-x64
+          - os: macos-latest
+            flag: --mac
+            label: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Decide the version
+        id: version
+        shell: bash
+        run: |
+          asked="${{ github.event.inputs.version }}"
+          asked="${asked#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$asked"
+          fi
+          if [[ -n "$version" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          else
+            version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install shell dependencies
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Prepare the backend
+        working-directory: desktop
+        run: node scripts/prepare-backend.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check the bundled backend
+        working-directory: desktop
+        run: |
+          backend/python/bin/python3 -I -u backend/run_atlas.py --db "$RUNNER_TEMP/doctor.sqlite" doctor
+          backend/python/bin/python3 -I -c "import sys; sys.path.insert(0, 'backend/app'); import numpy as np; from atlas.analysis import cluster; x = np.random.default_rng(0).normal(size=(400, 8)).astype('float32'); print({a: round(cluster.fit(x, 5, algorithm=a)[2]['mse'], 3) for a in cluster.ALGORITHMS})"
+
+      - name: Build
+        working-directory: desktop
+        run: npx --no-install electron-builder ${{ matrix.flag }} --publish never "-c.extraMetadata.version=${{ steps.version.outputs.version }}"
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: List what was built
+        run: ls -la desktop/dist | cat
+
+      - name: Smoke-test the packaged app
+        shell: bash
+        run: |
+          export ATLAS_SMOKE_OUT="$RUNNER_TEMP/smoke.json"
+          export ATLAS_USER_DATA="$RUNNER_TEMP/atlas-data"
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq xvfb > /dev/null
+            xvfb-run -a desktop/dist/linux-unpacked/bookmark-atlas --no-sandbox --smoke-test &
+          else
+            app="$(ls -d desktop/dist/mac*/"Bookmark Atlas.app" | head -1)"
+            codesign --verify --deep --verbose=2 "$app" || echo "codesign reports a problem (see above)"
+            "$app/Contents/MacOS/Bookmark Atlas" --smoke-test &
+          fi
+          pid=$!
+          for i in $(seq 1 150); do
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if kill -0 "$pid" 2>/dev/null; then echo "Timed out."; kill "$pid" || true; fi
+          if [[ -f "$ATLAS_USER_DATA/backend.log" ]]; then echo "--- backend.log"; cat "$ATLAS_USER_DATA/backend.log"; fi
+          if [[ ! -f "$ATLAS_SMOKE_OUT" ]]; then echo "The smoke test wrote no result." >&2; exit 1; fi
+          echo "--- result"; cat "$ATLAS_SMOKE_OUT"
+          node -e "
+            const r = JSON.parse(require('fs').readFileSync(process.env.ATLAS_SMOKE_OUT, 'utf8'));
+            if (!r.ok) throw new Error('Smoke test failed: ' + r.error);
+            if (r.version !== '${{ steps.version.outputs.version }}') throw new Error('Version mismatch: app reports ' + r.version);
+            if (!r.packaged) throw new Error('The smoke test did not run the packaged app.');
+            console.log('The packaged app started, loaded its page and reached its backend.');
+          "
+
+      - name: Attach to this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bookmark-Atlas-${{ steps.version.outputs.version }}-${{ matrix.label }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.dmg
+            desktop/dist/latest-*.yml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Add to the release
+        if: steps.version.outputs.publish == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          shopt -s nullglob
+          files=(desktop/dist/*.AppImage desktop/dist/*.dmg desktop/dist/latest-*.yml)
           echo "Uploading ${#files[@]} file(s): ${files[*]}"
           gh release upload "$TAG" "${files[@]}" --clobber

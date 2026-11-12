@@ -261,3 +261,73 @@ def test_views_and_snapshot_through_the_api(conn, path, tmp_path, monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_compare_with_a_snapshot_and_bring_in_what_is_missing(tmp_path):
+    import base64
+
+    from atlas.cli import main
+    from atlas.server import App
+    from test_links_trends import add
+
+    mine_path, theirs_path = (
+        tmp_path / "mine" / "atlas.sqlite",
+        tmp_path / "theirs" / "atlas.sqlite",
+    )
+    for target in (mine_path, theirs_path):
+        target.parent.mkdir()
+        main(["--db", str(target), "init"])
+    mine, theirs = db.open_ready(mine_path), db.open_ready(theirs_path)
+    add(mine, "https://e.org/shared", "shared", "s", ["A", "Mine"])
+    add(mine, "https://e.org/only-mine", "only mine", "s", [])
+    add(theirs, "https://e.org/shared/", "shared", "s", ["A", "Theirs"])
+    add(theirs, "https://e.org/only-theirs", "only theirs", "s", ["New"])
+    add(theirs, "https://e.org/gone", "deleted there", "s", [])
+    theirs.execute("UPDATE bookmarks SET deleted_at = 'x' WHERE title = 'deleted there'")
+    theirs.commit()
+    file = tmp_path / ("theirs" + snapshot.SUFFIX)
+    snapshot.export_snapshot(theirs, file, name="From a friend", note="have a look")
+
+    result = snapshot.compare(mine, file)
+    assert (
+        result["snapshot"]["name"] == "From a friend"
+        and result["snapshot"]["note"] == "have a look"
+    )
+    assert (result["yours"], result["theirs"], result["in_both"]) == (2, 2, 1)
+    assert [i["title"] for i in result["only_theirs"]["items"]] == ["only theirs"]
+    assert result["only_theirs"]["items"][0]["tags"] == ["New"]
+    assert result["only_yours"]["count"] == 1 and len(result["only_yours"]["ids"]) == 1
+    difference = result["tag_differences"]["items"][0]
+    assert (difference["only_theirs"], difference["only_yours"]) == (["Theirs"], ["Mine"])
+    # Comparing changes nothing, on either side.
+    assert mine.execute("SELECT COUNT(*) FROM bookmarks").fetchone()[0] == 2
+
+    assert snapshot.adopt(mine, file, dry_run=True).created == 1
+    assert mine.execute("SELECT COUNT(*) FROM bookmarks").fetchone()[0] == 2
+    assert snapshot.adopt(mine, file).created == 1
+    mine.commit()
+    after = snapshot.compare(mine, file)
+    assert after["only_theirs"]["count"] == 0 and after["in_both"] == 2
+    assert snapshot.adopt(mine, file).created == 0  # nothing twice
+
+    for bad in (b"not a database at all", b"SQLite format 3\x00" + b"\x00" * 200):
+        wrong = tmp_path / "wrong.sqlite"
+        wrong.write_bytes(bad)
+        with pytest.raises(ValueError):
+            snapshot.compare(mine, wrong)
+    plain = tmp_path / "plain.sqlite"
+    import sqlite3
+
+    other = sqlite3.connect(plain)
+    other.execute("CREATE TABLE t (x)")
+    other.commit()
+    other.close()
+    with pytest.raises(ValueError):
+        snapshot.compare(mine, plain)
+
+    app = App(mine_path)
+    sent = base64.b64encode(file.read_bytes()).decode()
+    assert app.snapshot_compare({"content_b64": sent})["in_both"] == 2
+    for bad in ({}, {"content_b64": "###"}, {"content_b64": base64.b64encode(b"hello").decode()}):
+        with pytest.raises(ValueError):
+            app.snapshot_compare(bad)

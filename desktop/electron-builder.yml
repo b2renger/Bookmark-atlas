@@ -45,3 +45,21 @@ nsis:
   perMachine: false
   deleteAppDataOnUninstall: false
   artifactName: Bookmark-Atlas-Setup-${version}-windows-x64.${ext}
+
+# Linux: one AppImage file, which can update itself like the Windows build.
+linux:
+  target: AppImage
+  category: Utility
+  icon: assets/icon.png
+  executableName: bookmark-atlas
+  artifactName: Bookmark-Atlas-${version}-linux-x64.${ext}
+
+# macOS: a disk image. Without a paid Apple developer certificate the app is
+# only signed "ad hoc" (identity "-"), which Apple silicon requires to run at
+# all. It cannot update itself and macOS asks for confirmation on first open.
+mac:
+  target: dmg
+  category: public.app-category.productivity
+  icon: assets/icon.png
+  identity: "-"
+  artifactName: Bookmark-Atlas-${version}-mac-${arch}.${ext}

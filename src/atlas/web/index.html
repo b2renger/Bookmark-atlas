@@ -504,6 +504,19 @@
       <div style="margin-top:10px"><label for="snap-note">Message to the receiver (optional)</label><textarea id="snap-note" maxlength="5000"></textarea></div>
       <div class="note" id="snap-msg"></div>
     </section>
+    <section class="card">
+      <h2>Compare with a snapshot</h2>
+      <p class="help">Choose a snapshot file someone sent you, or one of your own from earlier. You
+        see which bookmarks it has that you do not, which you have that it does not, and where the
+        same bookmark carries different tags. Nothing changes unless you ask to add the missing
+        bookmarks.</p>
+      <div class="row">
+        <div class="grow"><label for="cmp-file">Snapshot file</label><input type="file" id="cmp-file" accept=".sqlite"></div>
+        <button class="action primary" id="cmp-go">Compare</button>
+      </div>
+      <div class="note" id="cmp-msg"></div>
+      <div id="cmp-result"></div>
+    </section>
   </div>
 
   <div id="view-grooming" hidden>
@@ -2699,6 +2712,52 @@ $("view-save").onclick = () => busy($("view-save"), async () => {
     renderViews(answer.views);
   } catch (error) { note("view-note-msg", error.message, "bad"); }
 });
+
+async function fileAsBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let text = "";
+  for (let i = 0; i < bytes.length; i += 32768) text += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
+  return btoa(text);
+}
+function showComparison(data) {
+  const holder = $("cmp-result");
+  const list = (items, more) => el("ol", { className: "plain" }, [...items.slice(0, 40).map((item) => el("li", {}, [bookmarkLink(item),
+    item.tags && item.tags.length ? el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))) : ""])),
+    ...(more > 40 ? [el("li", { className: "tagline", textContent: "and " + (more - 40) + " more" })] : [])]);
+  const parts = [el("p", { style: "margin:14px 0 6px" }, [el("strong", { textContent: (data.snapshot && data.snapshot.name) || "The snapshot" }),
+    " has " + plural(data.theirs) + "; you have " + data.yours + ". " + data.in_both + " are in both."])];
+  if (data.snapshot && data.snapshot.note) parts.push(el("p", { className: "tagline", textContent: "Message: " + data.snapshot.note }));
+  if (data.only_theirs.count) {
+    const add = el("button", { className: "action primary", textContent: "Add these " + data.only_theirs.count + " to my collection" });
+    add.onclick = () => runComparison(true);
+    parts.push(el("h3", { textContent: "In the snapshot, not in yours (" + data.only_theirs.count + ")" }), el("div", { className: "row" }, [add]), list(data.only_theirs.items, data.only_theirs.count));
+  }
+  if (data.only_yours.count) {
+    const show = el("button", { className: "linkish", textContent: "show them in the list" });
+    show.onclick = () => showIds(data.only_yours.ids, "Not in the snapshot");
+    parts.push(el("h3", { textContent: "In yours, not in the snapshot (" + data.only_yours.count + ")" }), el("div", { className: "tagline" }, [show]));
+  }
+  if (data.tag_differences.count) {
+    parts.push(el("h3", { textContent: "Same bookmark, different tags (" + data.tag_differences.count + ")" }),
+      el("ol", { className: "plain" }, data.tag_differences.items.slice(0, 40).map((item) => el("li", {}, [bookmarkLink(item),
+        item.only_theirs.length ? el("div", { className: "chips" }, [el("span", { className: "tagline", textContent: "only in the snapshot " }), ...item.only_theirs.map((t) => el("span", { className: "chip", textContent: t }))]) : "",
+        item.only_yours.length ? el("div", { className: "chips" }, [el("span", { className: "tagline", textContent: "only in yours " }), ...item.only_yours.map((t) => el("span", { className: "chip", textContent: t }))]) : ""]))));
+  }
+  if (!data.only_theirs.count && !data.only_yours.count && !data.tag_differences.count) parts.push(el("p", { textContent: "Same bookmarks and same tags on both sides." }));
+  holder.replaceChildren(...parts);
+}
+async function runComparison(adopt) {
+  const file = $("cmp-file").files[0];
+  if (!file) { note("cmp-msg", "Choose a snapshot file first.", "bad"); return; }
+  try {
+    note("cmp-msg", adopt ? "Adding…" : "Comparing…", "muted");
+    const data = await api("POST", "/api/snapshot/compare", { content_b64: await fileAsBase64(file), adopt: !!adopt });
+    note("cmp-msg", adopt ? plural(data.adopted) + " added. Run “Merge near-duplicates” in Grooming if some look familiar." : "", adopt ? "good" : "muted");
+    showComparison(data);
+    if (adopt) refreshState().catch(() => {});
+  } catch (error) { note("cmp-msg", error.message, "bad"); }
+}
+$("cmp-go").onclick = () => busy($("cmp-go"), () => runComparison(false));
 
 $("snap-go").onclick = () => busy($("snap-go"), async () => {
   try {

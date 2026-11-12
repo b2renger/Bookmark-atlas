@@ -464,6 +464,22 @@ function checkForUpdates(manual) {
         if (manual) dialog.showMessageBox(win, { type: 'info', message: 'Updates only apply to an installed build.' });
         return;
     }
+    // macOS only installs updates into an app signed by a paid developer
+    // certificate, which this project does not have: point to the download.
+    // On Linux only the AppImage can replace itself.
+    if (process.platform === 'darwin' || (process.platform === 'linux' && !process.env.APPIMAGE)) {
+        if (manual) {
+            dialog.showMessageBox(win, {
+                type: 'info',
+                buttons: ['Open the download page', 'Close'],
+                defaultId: 0,
+                cancelId: 1,
+                message: `You have Bookmark Atlas ${app.getVersion()}`,
+                detail: 'This build cannot update itself. The latest version is on the download page; install it over this one, your bookmarks are kept.',
+            }).then(({ response }) => { if (response === 0) shell.openExternal(RELEASES_URL); });
+        }
+        return;
+    }
     const updater = getUpdater();
     if (!updater) return;
     wireUpdater(updater);
