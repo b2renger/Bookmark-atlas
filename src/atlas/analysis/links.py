@@ -161,6 +161,62 @@ def overview(conn: sqlite3.Connection, run_id: str | None = None) -> dict:
     }
 
 
+def threads(conn: sqlite3.Connection, run_id: str | None = None, neighbours: int = 3) -> dict:
+    """Every bookmark with its few closest neighbours, for drawing the links
+    one by one. A link is kept once, whichever side it was found from.
+
+    Each link says how alike the two are, which tags they share (the reason a
+    reader can check), and whether it crosses from one topic to another.
+    """
+    np, ids, matrix, rows = _load(conn)
+    run_id = run_id or store.latest_run_id(conn)
+    membership, names = {}, {}
+    if run_id is not None:
+        membership = dict(
+            conn.execute("SELECT bookmark_id, cluster FROM run_items WHERE run_id = ?", (run_id,))
+        )
+        described = store.describe_run(conn, run_id, samples=0)
+        names = {item["cluster"]: item["label"] for item in described["clusters"]}
+    nodes = []
+    for bookmark_id in ids:
+        row = rows[bookmark_id]
+        day = day_of(row)
+        nodes.append(
+            {
+                **_brief(row),
+                "day": day.isoformat() if day else None,
+                "cluster": membership.get(bookmark_id),
+            }
+        )
+    result = {
+        "cluster_run": run_id,
+        "nodes": nodes,
+        "links": [],
+        "topics": [{"cluster": n, "label": label} for n, label in sorted(names.items())],
+    }
+    if len(ids) < 2:
+        return result
+    index, similarity = _nearest(np, matrix, neighbours)
+    _, _, _, tags = store._documents(conn)
+    best: dict[tuple[int, int], float] = {}
+    for i in range(len(ids)):
+        for j, score in zip(index[i], similarity[i], strict=True):
+            pair = (min(i, int(j)), max(i, int(j)))
+            best[pair] = max(best.get(pair, -1.0), float(score))
+    for (a, b), score in sorted(best.items()):
+        ca, cb = nodes[a]["cluster"], nodes[b]["cluster"]
+        result["links"].append(
+            {
+                "a": a,
+                "b": b,
+                "similarity": round(score, 3),
+                "shared_tags": sorted(set(tags.get(ids[a], [])) & set(tags.get(ids[b], [])))[:5],
+                "across": ca is not None and cb is not None and ca != cb,
+            }
+        )
+    return result
+
+
 def day_of(row) -> date | None:
     """The day a bookmark entered the picture: saved, or else published."""
     for value in (row["saved_at"], row["published_at"]):

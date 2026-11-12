@@ -213,3 +213,63 @@ def test_links_and_trends_through_the_api(path):  # noqa: F811
     assert len(topics["moves"]) == 3 and all(
         " · " in m["name"] or m["name"] for m in topics["moves"]
     )
+
+
+def test_threads_tie_each_bookmark_to_its_neighbours_once(path):  # noqa: F811
+    conn = db.open_ready(path)
+    fill(conn)
+    plain = links.threads(conn)
+    assert plain["cluster_run"] is None and len(plain["nodes"]) == 72
+    assert plain["links"] and not any(link["across"] for link in plain["links"])
+    store.cluster_run(conn, 3)
+    data = links.threads(conn)
+    pairs = [(link["a"], link["b"]) for link in data["links"]]
+    assert len(pairs) == len(set(pairs)) and all(a < b for a, b in pairs)
+    # Three neighbours each: between 1.5 and 3 links per bookmark once pairs are merged.
+    assert 72 * 1.5 <= len(pairs) <= 72 * 3
+    assert len(data["topics"]) == 3
+    # Three separate topics: nearly every link stays inside one, and shares its tag.
+    inside = [link for link in data["links"] if not link["across"]]
+    assert len(inside) >= 0.9 * len(pairs)
+    assert all(link["shared_tags"] for link in inside) and all(
+        0 < link["similarity"] <= 1 for link in inside
+    )
+    node = data["nodes"][0]
+    assert set(node) == {"id", "title", "url", "day", "cluster"} and node["day"] is None
+    conn.execute(
+        "UPDATE bookmarks SET saved_at = '2026-02-03T10:00:00Z' WHERE id = ?", (node["id"],)
+    )
+    conn.commit()
+    assert (
+        next(n for n in links.threads(conn)["nodes"] if n["id"] == node["id"])["day"]
+        == "2026-02-03"
+    )
+
+
+def test_trends_can_be_restricted_to_some_bookmarks(path):  # noqa: F811
+    conn = db.open_ready(path)
+    a = add(conn, "https://e.org/a", "a", "x", ["Splats"], saved="2026-01-10T00:00:00Z")
+    add(conn, "https://e.org/b", "b", "x", ["Audio"], saved="2026-02-10T00:00:00Z")
+    everything = trends.overview(conn)
+    assert everything["coverage"]["bookmarks"] == 2 and everything["latest"] == "2026-02-10"
+    some = trends.overview(conn, only={a})
+    assert some["coverage"]["bookmarks"] == 1 and some["latest"] == "2026-01-10"
+    assert trends.overview(conn, only=set())["latest"] is None
+    app = App(path)
+    assert app.trends_show({})["filtered"] is False
+    shown = app.trends_show({"tag": ["Audio"]})
+    assert shown["filtered"] is True and shown["coverage"]["bookmarks"] == 1
+    assert app.trends_show({"tag": ["Nothing"]})["coverage"]["bookmarks"] == 0
+    assert len(app.links_threads()["nodes"]) == 2
+
+
+def test_the_tree_carries_a_title_and_a_day_for_each_leaf(path):  # noqa: F811
+    conn = db.open_ready(path)
+    fill(conn)
+    conn.execute("UPDATE bookmarks SET published_at = '2025-05-05' WHERE url LIKE '%/audio/1'")
+    conn.commit()
+    data = store.tree_run(conn)
+    assert len(data["items"]) == 72
+    one = conn.execute("SELECT id, title FROM bookmarks WHERE url LIKE '%/audio/1'").fetchone()
+    assert data["items"][one["id"]] == [one["title"], "2025-05-05"]
+    assert sum(1 for title, day in data["items"].values() if day is None) == 71

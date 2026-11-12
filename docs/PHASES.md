@@ -16,6 +16,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 7 | Links and tendencies | v0.7.1 | done (v0.7.0 was built from the wrong commit) |
 | 8 | Shared filter, animated layouts, timeline, 3D | v0.8.0 | done for list, map and grid |
 | 9 | Publication dates read from the pages | v0.9.0 | done; not yet run against real sites |
+| 10 | Filter everywhere; Threads and the whole-tree drawing | v0.10.0 | done |
 
 ## Phase 0: scaffolding
 
@@ -216,3 +217,32 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Not verified:** the lookup against real sites. The development session
   cannot reach the web from code, so it was tested with a local server and
   stand-in pages. YouTube and Hugging Face pages may declare nothing usable.
+
+## Phase 10: the filter everywhere, Threads, and the whole tree
+
+- **The filter bar now also applies to Tree, Links and Trends.** Trends are
+  recomputed for the bookmarks that pass. In Links, the threads and the lists
+  follow the filter; the picture of topics keeps showing the whole collection
+  and says so.
+- **Threads (Links tab).** All bookmarks on one line, by time or by topic.
+  An arc joins a bookmark to each of its three closest neighbours: above the
+  line when the two are in different topics, below otherwise. By time, a tall
+  arc is an idea you came back to after a long while.
+- **Reading a thread:** point at a bookmark, click to keep it, read why each
+  link exists (shared tags, how far apart in time, how alike), follow one to
+  the next bookmark. "Surprise me" picks a link across topics, far apart in
+  time when there is one.
+- **The whole tree (Tree tab).** Families, topics and parts from the centre
+  outwards, one stroke per bookmark on the rim, longer when more recent. Click
+  a branch to open it in the pearls, a stroke to select the bookmark.
+- **What was taken from the data artists read for this** (Stefanie Posavec,
+  Giorgia Lupi, Jer Thorp): an entry point with layers behind it, room to get
+  lost, the context kept in view (why two bookmarks are linked; which have no
+  date), and no pretence that a resemblance is a fact. The forms themselves
+  are standard ones (arc diagram, radial tree), drawn for this data.
+- **Colour still means state only.** The pictures get their character from
+  line, density and transparency.
+- **On the real collection:** 2,100 links, 329 across topics, 123 across
+  topics and more than six months apart.
+- **Left out:** saved views do not remember a pinned thread; the filter does
+  not rebuild the topic picture or the tree.

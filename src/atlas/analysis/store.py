@@ -582,8 +582,16 @@ def tree_data(conn: sqlite3.Connection) -> dict:
         return node["size"]
 
     prune(built)
+    # What the drawing of the whole tree needs for each leaf: a title and a day.
+    items = {
+        r["id"]: [r["title"] or r["url"], (r["saved_at"] or r["published_at"] or "")[:10] or None]
+        for r in conn.execute(
+            "SELECT id, title, url, saved_at, published_at FROM bookmarks WHERE deleted_at IS NULL"
+        )
+    }
     return {
         "tree": built,
+        "items": items,
         "run_id": row["id"],
         "created_at": row["created_at"],
         "cluster_run": json.loads(row["params"]).get("cluster_run"),

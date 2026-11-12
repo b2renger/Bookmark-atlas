@@ -284,11 +284,28 @@ class App:
         finally:
             conn.close()
 
-    def trends_show(self) -> dict:
+    def links_threads(self) -> dict:
+        from atlas.analysis import links
+
+        conn = self._conn()
+        try:
+            return links.threads(conn)
+        finally:
+            conn.close()
+
+    def trends_show(self, query: dict | None = None) -> dict:
         from atlas import trends
 
         conn = self._conn()
         try:
+            chosen = _facets(query or {})
+            filtered = bool(
+                [t for t in chosen["tags"] if t.strip()]
+                or chosen["platform"]
+                or chosen["date_from"]
+                or chosen["date_to"]
+            )
+            only = set(matching_ids(conn, "", None, chosen)) if filtered else None
             run_id, names = None, None
             try:
                 from atlas.analysis import store
@@ -299,7 +316,7 @@ class App:
                     names = {item["cluster"]: item["label"] for item in described["clusters"]}
             except RuntimeError:
                 pass  # no NumPy: dates and tags still work, topics are left out
-            return trends.overview(conn, run_id, names)
+            return {**trends.overview(conn, run_id, names, only), "filtered": filtered}
         finally:
             conn.close()
 
@@ -698,7 +715,8 @@ def make_handler(app: App):
                 ("POST", "/api/tree/edit"): lambda: app.tree_edit(self._body()),
                 ("GET", "/api/links"): lambda: app.links_show(),
                 ("GET", "/api/links/related"): lambda: app.links_related(parse_qs(url.query)),
-                ("GET", "/api/trends"): lambda: app.trends_show(),
+                ("GET", "/api/links/threads"): lambda: app.links_threads(),
+                ("GET", "/api/trends"): lambda: app.trends_show(parse_qs(url.query)),
                 ("GET", "/api/views"): lambda: app.views_list(),
                 ("GET", "/api/views/item"): lambda: app.view_get(parse_qs(url.query)),
                 ("POST", "/api/views"): lambda: app.view_save(self._body()),

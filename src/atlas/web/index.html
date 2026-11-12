@@ -101,6 +101,19 @@
   #map-views select { width: auto; }
   #map-time { width: 100%; min-width: 180px; padding: 0; }
   #map-when { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 190px; }
+  #threads-wrap, #bloom-wrap { position: relative; background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  #threadcanvas { display: block; width: 100%; height: 520px; }
+  #bloomcanvas { display: block; width: 100%; height: 760px; }
+  #threadtip, #bloomtip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 9px; font-size: 13px; max-width: 340px; box-shadow: 0 2px 10px rgba(0,0,0,.15); z-index: 2; }
+  #threadtip small, #bloomtip small { display: block; color: var(--muted); }
+  #threads-tools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-bottom: 12px; }
+  #threads-tools select { width: auto; }
+  #threads-detail { margin-top: 14px; }
+  #threads-detail h3 { font-size: 16px; }
+  #threads-detail h3 a { color: var(--ink); text-decoration: none; }
+  #threads-detail h3 a:hover { text-decoration: underline; }
+  #threads-detail li { padding-left: 8px; padding-right: 8px; border-radius: 6px; }
   .maptools { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 12px; }
   .maptools select, .maptools input[type=search] { width: auto; min-width: 180px; max-width: 300px; }
   input[type=date] { color-scheme: light dark; }
@@ -358,6 +371,11 @@
         <button class="action primary" id="tree-run">Build the tree</button>
         <span class="tagline" id="tree-from"></span>
       </div>
+      <div id="bloom-wrap" hidden>
+        <canvas id="bloomcanvas" role="img" aria-label="The whole topic tree drawn from the centre outwards, with one stroke per bookmark on the rim. The pearls under the picture give the same tree step by step."></canvas>
+        <div id="bloomtip" hidden></div>
+      </div>
+      <div class="legend" id="bloom-legend"></div>
       <div class="crumbs" id="tree-path"></div>
       <div id="tree-here"></div>
       <div class="pearls" id="tree-pearls"></div>
@@ -367,6 +385,29 @@
   </div>
 
   <div id="view-links" hidden>
+    <section class="card">
+      <h2>Threads</h2>
+      <p class="help">Every bookmark on one line, and an arc between two that resemble each other.
+        Arcs above the line cross from one topic to another; arcs below stay inside a topic. In
+        order of time, a tall arc ties two bookmarks far apart in time: an idea you came back to.
+        Point at a bookmark to see its threads, click to keep them, then follow one.</p>
+      <div id="threads-tools" hidden>
+        <div><label for="threads-order">Line up by</label><select id="threads-order">
+          <option value="time">Time</option><option value="topic">Topic</option></select></div>
+        <div><label for="threads-show">Show</label><select id="threads-show">
+          <option value="all">All links</option><option value="across">Links across topics</option>
+          <option value="far">Links more than 6 months apart</option>
+          <option value="both">Across topics and more than 6 months apart</option></select></div>
+        <button class="action primary" id="threads-surprise">Surprise me</button>
+        <span class="tagline" id="threads-count"></span>
+      </div>
+      <div id="threads-wrap" hidden>
+        <canvas id="threadcanvas" role="img" aria-label="Bookmarks on a line, joined by arcs where two resemble each other. The list under the picture gives the same links in words for the bookmark you pick."></canvas>
+        <div id="threadtip" hidden></div>
+      </div>
+      <div id="threads-detail" hidden></div>
+      <div class="note muted" id="threads-note"></div>
+    </section>
     <section class="card">
       <h2>How topics connect</h2>
       <p class="help">Two bookmarks are linked when one is among the ten most similar to the other.
@@ -617,7 +658,7 @@ function showView(name) {
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
   }
-  $("facetbar").hidden = !["bookmarks", "map", "grid"].includes(name);
+  $("facetbar").hidden = !["bookmarks", "map", "grid", "tree", "links", "trends"].includes(name);
   if (!$("facetbar").hidden && typeof loadFacetOptions === "function") loadFacetOptions();
   if (name !== "map" && typeof stopPlaying === "function") stopPlaying();
   if (typeof refreshSelection === "function") refreshSelection();
@@ -862,6 +903,9 @@ async function applyFacets(relayout) {
   if (currentView === "bookmarks") loadBookmarks(true).catch(() => {});
   if (currentView === "map") { mapLegend(); drawMap(); }
   if (currentView === "grid" && grid.data) drawGrid();
+  if (currentView === "tree" && tree.data) drawTree();
+  if (currentView === "links" && links.data) { drawLinks(); if (threads.data) { drawThreads(); threadPanel(); } }
+  if (currentView === "trends") loadTrends().catch(() => {});
 }
 
 async function loadFacetOptions() {
@@ -1621,7 +1665,11 @@ async function drawTree() {
   const data = tree.data;
   for (const id of ["tree-path", "tree-here", "tree-pearls", "tree-items"]) $(id).replaceChildren();
   $("tree-from").textContent = "";
+  $("bloom-wrap").hidden = !(data && data.tree); $("bloom-legend").replaceChildren();
   if (!data || !data.tree) { note("tree-note", "No tree yet. Press Build the tree to make one from the latest clustering.", "muted"); return; }
+  bloomLayout(); drawBloom();
+  $("bloom-legend").append(el("span", { textContent: "From the centre: families, topics, parts. On the rim, one stroke per bookmark: the longer, the more recent; a dot has no date."
+    + (facetIds ? " Faint strokes are left out by the filter." : "") + " Click a branch to open it, a stroke to select the bookmark." }));
   $("tree-from").textContent = "Built " + new Date(data.created_at).toLocaleString() + ". Building again starts from the latest clustering and forgets your changes.";
   const trail = treeNode();
   const node = trail[trail.length - 1];
@@ -1654,7 +1702,7 @@ async function drawTree() {
     };
     acts.push(rename);
   }
-  const line = el("div", { className: "selrow" }, [el("span", { className: "tagline", textContent: plural(node.size) }), ...acts]);
+  const line = el("div", { className: "selrow" }, [el("span", { className: "tagline", textContent: plural(node.size) + (facetIds ? " · " + ids.filter(passes).length + " pass the filter" : "") }), ...acts]);
   if (node.kind === "topic") {
     const families = data.tree.children.filter((family) => family.id !== trail[1].id);
     if (families.length) {
@@ -1668,7 +1716,9 @@ async function drawTree() {
   $("tree-here").append(line);
   const largest = Math.max(1, ...node.children.map((child) => child.size));
   for (const child of node.children) {
-    const orb = el("i", { textContent: String(child.size) });
+    const passing = facetIds ? nodeIds(child).filter(passes).length : child.size;
+    const orb = el("i", { textContent: String(passing) });
+    if (facetIds) orb.title = passing + " of " + child.size + " pass the filter";
     const d = Math.round(44 + 76 * Math.sqrt(child.size / largest));
     orb.style.width = orb.style.height = d + "px";
     const pearl = el("button", { className: "pearl", type: "button" }, [el("div", { className: "orb" }, [orb]),
@@ -1746,7 +1796,7 @@ function drawLinks() {
   $("links-wrap").hidden = !has;
   for (const id of ["links-bridges-card", "links-outliers-card", "links-old-card"]) $(id).hidden = true;
   if (!has) { note("links-note", "Links are drawn between topics. Open Clusters and press Cluster first.", "muted"); return; }
-  note("links-note", "", "muted");
+  note("links-note", facetIds ? "The filter applies to the threads and to the lists below. This picture of the topics always shows the whole collection." : "", "muted");
   const name = Object.fromEntries(data.topics.map((t) => [t.cluster, t.label]));
   const short = (label) => { const parts = label.split(" · "); const two = parts.slice(0, 2).join(" · "); return two.length > 30 ? two.slice(0, 29) + "…" : two; };
   // Keep each topic's two strongest links: enough to read, not a tangle.
@@ -1803,19 +1853,19 @@ function drawLinks() {
   $("links-picked").append(legendBox);
 
   const filed = (item, text) => el("div", { className: "tagline" }, [text, " · ", similarButton(item)]);
-  $("links-bridges").replaceChildren(...data.bridges.map((item) => el("li", {}, [bookmarkLink(item),
+  $("links-bridges").replaceChildren(...data.bridges.filter((item) => passes(item.id)).map((item) => el("li", {}, [bookmarkLink(item),
     filed(item, "filed in “" + short(name[item.topic]) + "”, " + Math.round(item.share * 10) + " of its 10 closest are elsewhere, mostly in “" + short(name[item.towards]) + "”")])));
-  $("links-bridges-card").hidden = !data.bridges.length;
-  $("links-outliers").replaceChildren(...data.outliers.map((item) => el("li", {}, [bookmarkLink(item), filed(item, "filed in “" + short(name[item.topic]) + "”")])));
-  $("links-outliers-card").hidden = !data.outliers.length;
+  $("links-bridges-card").hidden = !$("links-bridges").children.length;
+  $("links-outliers").replaceChildren(...data.outliers.filter((item) => passes(item.id)).map((item) => el("li", {}, [bookmarkLink(item), filed(item, "filed in “" + short(name[item.topic]) + "”")])));
+  $("links-outliers-card").hidden = !$("links-outliers").children.length;
   const old = data.resurface;
   $("links-old-help").textContent = "Bookmarks older than " + Math.round(old.old_days / 30) + " months that resemble what you gathered in the last "
     + old.recent_days + " days (counted back from " + old.latest + ", the latest date in the collection).";
-  $("links-old").replaceChildren(...old.items.map((item) => el("li", {}, [bookmarkLink(item),
+  $("links-old").replaceChildren(...old.items.filter((item) => passes(item.id)).map((item) => el("li", {}, [bookmarkLink(item),
     filed(item, item.day + " · close to " + item.echoes + " recent " + (item.echoes === 1 ? "bookmark" : "bookmarks") + ", such as “" + item.because[0].title.slice(0, 70) + "”")])));
-  $("links-old-card").hidden = !old.items.length;
+  $("links-old-card").hidden = !$("links-old").children.length;
 }
-async function loadLinks() { links.data = await api("GET", "/api/links"); if (links.data.topics.every((t) => t.cluster !== links.picked)) links.picked = null; drawLinks(); }
+async function loadLinks() { loadThreads(); links.data = await api("GET", "/api/links"); if (links.data.topics.every((t) => t.cluster !== links.picked)) links.picked = null; drawLinks(); }
 
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function monthName(key) { return MONTH[Number(key.slice(5)) - 1] + " " + key.slice(0, 4); }
@@ -1869,9 +1919,9 @@ function moveRows(holder, moves, emptyText, action) {
 }
 
 async function loadTrends() {
-  const data = await api("GET", "/api/trends");
+  const data = await api("GET", "/api/trends?" + facetQuery().slice(1));
   const c = data.coverage;
-  $("trends-coverage").textContent = "Of " + plural(c.bookmarks) + ", " + c.saved + " have the date you saved them and " + c.published
+  $("trends-coverage").textContent = (data.filtered ? "With the filter on: of " : "Of ") + plural(c.bookmarks) + ", " + c.saved + " have the date you saved them and " + c.published
     + " a publication date (" + c.both + " have both, " + c.neither + " have neither). Run the date scripts in Grooming, or sync from Notion, to fill more.";
   for (const id of ["trends-saved", "trends-published", "trends-table"]) $(id).replaceChildren();
   $("trends-reaction-card").hidden = true; $("trends-moves-card").hidden = true;
@@ -1910,6 +1960,388 @@ async function loadTrends() {
     $("trends-moves-card").hidden = false;
   }
 }
+
+/* ---- threads: the links between single bookmarks ---- */
+// Bookmarks sit on one line, in order of time or of topic. An arc joins two
+// that resemble each other. Arcs above the line cross from one topic to
+// another, arcs below stay inside a topic. On the time line a tall arc joins
+// two bookmarks far apart in time: an idea you came back to.
+
+const threads = { data: null, order: "time", show: "all", pinned: null, hover: null, pair: null, xs: [], span: null };
+const threadCanvas = $("threadcanvas");
+
+function threadDay(node) { return dayNumber(node.day); }
+function threadGap(link) {
+  const a = threadDay(threads.data.nodes[link.a]), b = threadDay(threads.data.nodes[link.b]);
+  return a === null || b === null ? null : Math.abs(a - b);
+}
+function threadVisible(link) {
+  const n = threads.data.nodes;
+  if (!passes(n[link.a].id) || !passes(n[link.b].id)) return false;
+  if (threads.show === "across") return link.across;
+  if (threads.show === "far") { const gap = threadGap(link); return gap !== null && gap >= 180; }
+  if (threads.show === "both") { const gap = threadGap(link); return link.across && gap !== null && gap >= 180; }
+  return true;
+}
+
+// Where each bookmark sits along the line, from 0 to 1.
+function threadLayout() {
+  const nodes = threads.data.nodes;
+  threads.ticks = [];
+  if (threads.order === "topic") {
+    const sizes = new Map();
+    for (const node of nodes) sizes.set(node.cluster, (sizes.get(node.cluster) || 0) + 1);
+    const rank = [...sizes.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]);
+    const order = nodes.map((node, i) => i).sort((i, j) => rank.indexOf(nodes[i].cluster) - rank.indexOf(nodes[j].cluster)
+      || (threadDay(nodes[i]) ?? -1) - (threadDay(nodes[j]) ?? -1));
+    threads.xs = new Array(nodes.length);
+    order.forEach((index, position) => { threads.xs[index] = (position + 0.5) / nodes.length; });
+    const label = new Map(threads.data.topics.map((t) => [t.cluster, t.label]));
+    let start = 0;
+    for (const cluster of rank) {
+      const size = sizes.get(cluster);
+      threads.ticks.push({ at: start / nodes.length, text: (label.get(cluster) || "No topic").split(" · ")[0], edge: true, mid: (start + size / 2) / nodes.length });
+      start += size;
+    }
+    return;
+  }
+  const days = nodes.map(threadDay).filter((d) => d !== null).sort((a, b) => a - b);
+  if (!days.length) { threads.xs = nodes.map((node, i) => (i + 0.5) / nodes.length); return; }
+  const lo = days[Math.floor(days.length * 0.03)], hi = Math.max(days[days.length - 1], lo + 1);
+  // Undated at the far left, then "earlier", then the time line itself.
+  threads.xs = nodes.map((node) => {
+    const day = threadDay(node);
+    if (day === null) return 0.01 + 0.02 * hashUnit(node.id);
+    if (day < lo) return 0.05 + 0.03 * hashUnit(node.id);
+    return 0.1 + 0.9 * (day - lo) / (hi - lo);
+  });
+  threads.ticks.push({ at: 0.02, text: "no date", mid: 0.02 }, { at: 0.065, text: "earlier", mid: 0.065 });
+  const first = new Date(lo * 864e5), last = new Date(hi * 864e5);
+  for (let y = first.getUTCFullYear(), m = first.getUTCMonth(); ; ) {
+    m += 3; if (m > 11) { m -= 12; y += 1; }
+    const day = Date.UTC(y, m - (m % 3), 1) / 864e5;
+    if (day > hi) break;
+    const at = 0.1 + 0.9 * (day - lo) / (hi - lo);
+    const month = m - (m % 3);
+    threads.ticks.push({ at, mid: at, text: month === 0 ? String(y) : MONTH[month], edge: true, strong: month === 0 });
+  }
+}
+
+function threadFrame() {
+  const rect = threadCanvas.getBoundingClientRect();
+  return { w: rect.width, h: rect.height, left: 18, right: 18, base: rect.height * 0.56 };
+}
+function threadX(index, frame) { return frame.left + threads.xs[index] * (frame.w - frame.left - frame.right); }
+
+function drawThreads() {
+  const data = threads.data;
+  if (!data || currentView !== "links") return;
+  const frame = threadFrame(), ratio = window.devicePixelRatio || 1;
+  if (threadCanvas.width !== Math.round(frame.w * ratio) || threadCanvas.height !== Math.round(frame.h * ratio)) {
+    threadCanvas.width = Math.round(frame.w * ratio); threadCanvas.height = Math.round(frame.h * ratio);
+  }
+  const g = threadCanvas.getContext("2d");
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const surface = css("--viz-surface"), ink = css("--ink"), muted = css("--muted"), line = css("--line");
+  g.fillStyle = surface; g.fillRect(0, 0, frame.w, frame.h);
+  const width = frame.w - frame.left - frame.right, up = frame.base - 16, down = frame.h - frame.base - 34;
+  const active = threads.pinned ?? threads.hover;
+
+  // Ticks first, quiet.
+  g.font = "12px system-ui, -apple-system, 'Segoe UI', sans-serif"; g.textBaseline = "alphabetic";
+  let lastX = -Infinity;
+  for (const tick of threads.ticks) {
+    const x = frame.left + tick.at * width;
+    if (tick.edge) { g.strokeStyle = line; g.globalAlpha = tick.strong || threads.order === "topic" ? 1 : 0.5; g.beginPath(); g.moveTo(x, frame.base - 7); g.lineTo(x, frame.base + 7); g.stroke(); g.globalAlpha = 1; }
+    const tx = frame.left + tick.mid * width, w = g.measureText(tick.text).width;
+    if (tx - w / 2 < lastX + 8) continue;
+    lastX = tx + w / 2; g.fillStyle = muted; g.textAlign = "center"; g.fillText(tick.text, Math.max(w / 2 + 2, Math.min(frame.w - w / 2 - 2, tx)), frame.h - 8);
+  }
+  g.textAlign = "left"; g.fillStyle = muted;
+  g.fillText("links across topics", 10, 18); g.fillText("links inside a topic", 10, frame.h - 30);
+
+  // Arcs. Many faint lines add up to a texture; where it darkens, links are dense.
+  const arc = (link, strong) => {
+    const x1 = threadX(link.a, frame), x2 = threadX(link.b, frame), rx = Math.abs(x2 - x1) / 2;
+    if (rx < 0.5) return;
+    const reach = Math.pow(Math.min(1, (2 * rx) / width), 0.55);
+    g.beginPath();
+    if (link.across) g.ellipse((x1 + x2) / 2, frame.base, rx, Math.max(6, up * reach), 0, Math.PI, 2 * Math.PI);
+    else g.ellipse((x1 + x2) / 2, frame.base, rx, Math.max(5, down * reach), 0, 0, Math.PI);
+    g.stroke();
+  };
+  let shown = 0;
+  g.lineWidth = 1; g.strokeStyle = ink;
+  const mine = [];
+  // The more links are drawn, the fainter each one, so the texture keeps its detail.
+  const crowd = Math.min(1, 700 / Math.max(1, data.links.filter(threadVisible).length)) ** 0.5;
+  for (const link of data.links) {
+    if (!threadVisible(link)) continue;
+    shown += 1;
+    if (active !== null && (link.a === active || link.b === active)) { mine.push(link); continue; }
+    g.globalAlpha = ((active !== null ? 0.05 : 0.1) + 0.22 * Math.max(0, (link.similarity - 0.85) / 0.15) * (active !== null ? 0.3 : 1)) * (link.across ? Math.max(crowd, 0.8) : crowd);
+    arc(link, false);
+  }
+  g.globalAlpha = 1; g.lineWidth = 2; g.strokeStyle = css("--viz-focus");
+  for (const link of mine) {
+    if (threads.pair && !(link.a === threads.pair.a && link.b === threads.pair.b)) g.globalAlpha = 0.55;
+    arc(link, true); g.globalAlpha = 1;
+  }
+  threads.shown = shown;
+
+  // The line of bookmarks.
+  const near = new Set(mine.flatMap((link) => [link.a, link.b]));
+  const colours = { neutral: css("--viz-neutral"), near: css("--viz-match"), active: css("--viz-focus"), selected: css("--viz-selected") };
+  data.nodes.forEach((node, index) => {
+    const x = threadX(index, frame), ok = passes(node.id);
+    const state = index === active ? "active" : selection.has(node.id) ? "selected" : near.has(index) ? "near" : "neutral";
+    if (state !== "neutral") return;
+    g.globalAlpha = ok ? 0.75 : 0.18; g.fillStyle = colours.neutral;
+    g.beginPath(); g.arc(x, frame.base, ok ? 2.2 : 1.5, 0, Math.PI * 2); g.fill();
+  });
+  g.globalAlpha = 1;
+  data.nodes.forEach((node, index) => {
+    const state = index === active ? "active" : selection.has(node.id) ? "selected" : near.has(index) ? "near" : "neutral";
+    if (state === "neutral") return;
+    const x = threadX(index, frame);
+    g.beginPath(); g.arc(x, frame.base, state === "active" ? 6 : 4.5, 0, Math.PI * 2);
+    g.fillStyle = colours[state]; g.fill(); g.lineWidth = 2; g.strokeStyle = surface; g.stroke();
+  });
+  $("threads-count").textContent = shown + (shown === 1 ? " link shown" : " links shown") + " between " + data.nodes.filter((n) => passes(n.id)).length + " bookmarks";
+}
+
+function threadAt(mx, my) {
+  const frame = threadFrame();
+  if (Math.abs(my - frame.base) > 26) return null;
+  let best = null, distance = 7;
+  threads.data.nodes.forEach((node, index) => {
+    if (!passes(node.id)) return;
+    const d = Math.abs(threadX(index, frame) - mx);
+    if (d < distance) { best = index; distance = d; }
+  });
+  return best;
+}
+
+function threadPanel() {
+  const holder = $("threads-detail");
+  holder.replaceChildren();
+  if (threads.pinned === null) { holder.hidden = true; return; }
+  const data = threads.data, node = data.nodes[threads.pinned];
+  const label = new Map(data.topics.map((t) => [t.cluster, t.label.split(" · ").slice(0, 2).join(" · ")]));
+  const mine = data.links.filter((link) => (link.a === threads.pinned || link.b === threads.pinned) && threadVisible(link))
+    .map((link) => ({ link, gap: threadGap(link) }))
+    .sort((p, q) => (q.link.across - p.link.across) || ((q.gap ?? -1) - (p.gap ?? -1)));
+  const apart = (gap) => gap === null ? "" : gap < 45 ? gap + " days apart" : gap < 720 ? Math.round(gap / 30.4) + " months apart" : (gap / 365.25).toFixed(1) + " years apart";
+  const pick = el("button", { className: "linkish", textContent: selection.has(node.id) ? "remove from selection" : "add to selection" });
+  pick.onclick = () => { if (selection.has(node.id)) selection.delete(node.id); else selection.add(node.id); refreshSelection(); drawThreads(); threadPanel(); };
+  holder.append(el("h3", { style: "margin:0 0 2px" }, [bookmarkLink(node)]),
+    el("div", { className: "tagline" }, [[node.day || "no date", label.get(node.cluster) || ""].filter(Boolean).join(" · "), " · ", pick, " · ", similarButton(node)]));
+  if (!mine.length) holder.append(el("p", { className: "tagline", textContent: "None of its links is shown with the current choices." }));
+  holder.append(el("ol", { className: "plain" }, mine.map(({ link, gap }) => {
+    const other = data.nodes[link.a === threads.pinned ? link.b : link.a], index = link.a === threads.pinned ? link.b : link.a;
+    const go = el("button", { className: "linkish", textContent: "follow this thread" });
+    go.onclick = () => { threads.pinned = index; threads.pair = null; drawThreads(); threadPanel(); };
+    const why = [link.across ? "in another topic: " + (label.get(other.cluster) || "") : "same topic", apart(gap), Math.round(link.similarity * 100) + "% alike"].filter(Boolean).join(" · ");
+    const row = el("li", {}, [bookmarkLink(other), el("div", { className: "tagline" }, [why, " · ", go])]);
+    if (link.shared_tags.length) row.append(el("div", { className: "chips" }, [el("span", { className: "tagline", textContent: "both tagged " }), ...link.shared_tags.map((t) => el("span", { className: "chip", textContent: t }))]));
+    else row.append(el("div", { className: "tagline", textContent: "no tag in common: alike by their words only" }));
+    if (threads.pair && link.a === threads.pair.a && link.b === threads.pair.b) row.style.background = "var(--chip)";
+    return row;
+  })));
+  holder.hidden = false;
+}
+
+threadCanvas.addEventListener("pointermove", (event) => {
+  if (!threads.data) return;
+  const r = threadCanvas.getBoundingClientRect(), x = event.clientX - r.left, y = event.clientY - r.top;
+  const index = threadAt(x, y);
+  if (index !== threads.hover) { threads.hover = index; drawThreads(); }
+  const tipBox = $("threadtip");
+  if (index === null) { tipBox.hidden = true; threadCanvas.style.cursor = "default"; return; }
+  threadCanvas.style.cursor = "pointer";
+  const node = threads.data.nodes[index];
+  const count = threads.data.links.filter((link) => (link.a === index || link.b === index) && threadVisible(link)).length;
+  tipBox.replaceChildren(el("strong", { textContent: node.title.length > 90 ? node.title.slice(0, 89) + "…" : node.title }),
+    el("small", { textContent: (node.day || "no date") + " · " + count + (count === 1 ? " link" : " links") + " shown · click to keep" }));
+  tipBox.hidden = false;
+  tipBox.style.left = Math.max(4, Math.min(x + 14, r.width - tipBox.offsetWidth - 6)) + "px";
+  tipBox.style.top = (y - tipBox.offsetHeight - 12) + "px";
+});
+threadCanvas.addEventListener("pointerleave", () => { $("threadtip").hidden = true; if (threads.hover !== null) { threads.hover = null; drawThreads(); } });
+threadCanvas.addEventListener("click", (event) => {
+  if (!threads.data) return;
+  const r = threadCanvas.getBoundingClientRect();
+  const index = threadAt(event.clientX - r.left, event.clientY - r.top);
+  threads.pinned = index === threads.pinned ? null : index; threads.pair = null;
+  drawThreads(); threadPanel();
+});
+$("threads-order").onchange = () => { threads.order = $("threads-order").value; threadLayout(); drawThreads(); };
+$("threads-show").onchange = () => { threads.show = $("threads-show").value; drawThreads(); threadPanel(); };
+// Serendipity: jump to a link you would not have looked for, across topics
+// and, when there is one, far apart in time.
+$("threads-surprise").onclick = () => {
+  if (!threads.data) return;
+  const visible = threads.data.links.filter(threadVisible);
+  const pools = [visible.filter((l) => l.across && (threadGap(l) ?? 0) >= 180), visible.filter((l) => l.across), visible];
+  const pool = pools.find((p) => p.length);
+  if (!pool) { note("threads-note", "No link to show with the current choices.", "muted"); return; }
+  const link = pool[Math.floor(Math.random() * pool.length)];
+  threads.pinned = link.a; threads.pair = { a: link.a, b: link.b };
+  drawThreads(); threadPanel();
+};
+window.addEventListener("resize", () => { drawThreads(); if (typeof drawBloom === "function") drawBloom(); });
+
+async function loadThreads() {
+  try {
+    threads.data = await api("GET", "/api/links/threads");
+    threads.pinned = null; threads.pair = null; threads.hover = null;
+    const has = threads.data.nodes.length > 1;
+    $("threads-wrap").hidden = !has; $("threads-tools").hidden = !has;
+    if (!has) { note("threads-note", "Threads appear once there are bookmarks to compare.", "muted"); return; }
+    note("threads-note", "Each bookmark is tied to its three closest neighbours. A link is a resemblance between words and tags, not a fact: the tags two bookmarks share are shown so you can judge."
+      + (threads.data.cluster_run ? "" : " Without a clustering, every link is drawn below the line: open Clusters and press Cluster to tell apart the links that cross topics."), "muted");
+    threadLayout(); drawThreads(); threadPanel();
+  } catch (error) { $("threads-wrap").hidden = true; $("threads-tools").hidden = true; note("threads-note", error.message, "muted"); }
+}
+
+/* ---- bloom: the whole tree at once ---- */
+// The topic tree drawn from the centre outwards: families, topics, parts, and
+// one short stroke per bookmark on the rim. The longer the stroke, the more
+// recent the bookmark.
+
+const bloom = { leaves: [], regions: [], hover: null, geometry: null };
+const bloomCanvas = $("bloomcanvas");
+
+function bloomLayout() {
+  const data = tree.data, root = data.tree;
+  const days = Object.values(data.items).map((v) => dayNumber(v[1])).filter((d) => d !== null).sort((a, b) => a - b);
+  const lo = days.length ? days[Math.floor(days.length * 0.03)] : 0, hi = days.length ? Math.max(days[days.length - 1], lo + 1) : 1;
+  const recency = (id) => { const item = data.items[id]; const day = item ? dayNumber(item[1]) : null; return day === null ? null : Math.max(0, Math.min(1, (day - lo) / (hi - lo))); };
+  const total = Math.max(1, root.size), gap = root.children.length > 1 ? 0.035 : 0;
+  const usable = 2 * Math.PI - gap * root.children.length;
+  const leaves = [], branches = [], regions = [];
+  let angle = -Math.PI / 2;
+  for (const family of root.children) {
+    const familyStart = angle;
+    const familyNode = { node: family, level: 1, path: [family.id] };
+    for (const topic of family.children) {
+      const topicStart = angle;
+      const parts = topic.children.length ? topic.children : [null];
+      for (const part of parts) {
+        const ids = part ? part.ids : topic.ids, partStart = angle;
+        const ordered = [...ids].sort((a, b) => (recency(a) ?? -1) - (recency(b) ?? -1));
+        for (const id of ordered) { const a = angle + (usable / total) / 2; leaves.push({ id, angle: a, recency: recency(id), path: part ? [family.id, topic.id, part.id] : [family.id, topic.id] }); angle += usable / total; }
+        if (part) branches.push({ level: 3, from: (topicStart + topicStart) / 2, node: part, start: partStart, end: angle, parent: topic });
+      }
+      branches.push({ level: 2, node: topic, start: topicStart, end: angle, parent: family });
+      regions.push({ start: topicStart, end: angle, path: [family.id, topic.id], node: topic });
+    }
+    branches.push({ level: 1, node: family, start: familyStart, end: angle, parent: root });
+    familyNode.start = familyStart; familyNode.end = angle;
+    angle += gap;
+  }
+  bloom.leaves = leaves; bloom.branches = branches; bloom.regions = regions;
+}
+
+function drawBloom() {
+  if (!tree.data || !tree.data.tree || currentView !== "tree") return;
+  const rect = bloomCanvas.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
+  if (bloomCanvas.width !== Math.round(rect.width * ratio) || bloomCanvas.height !== Math.round(rect.height * ratio)) {
+    bloomCanvas.width = Math.round(rect.width * ratio); bloomCanvas.height = Math.round(rect.height * ratio);
+  }
+  const g = bloomCanvas.getContext("2d");
+  g.setTransform(ratio, 0, 0, ratio, 0, 0);
+  const surface = css("--viz-surface"), ink = css("--ink"), muted = css("--muted");
+  g.fillStyle = surface; g.fillRect(0, 0, rect.width, rect.height);
+  const cx = rect.width / 2, cy = rect.height / 2, half = Math.min(rect.width, rect.height) / 2, R = Math.max(30, half - Math.min(150, half * 0.4));
+  const radius = [0, R * 0.2, R * 0.46, R * 0.7], rim = R * 0.74, reach = R * 0.3;
+  bloom.geometry = { cx, cy, rim, R, reach, inner: radius[1] };
+  const at = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  const middle = (b) => (b.start + b.end) / 2;
+  const here = new Set(tree.path);
+
+  // Branches: a curve from each node to its parent, thicker for bigger nodes.
+  g.lineCap = "round";
+  const largest = Math.max(1, tree.data.tree.size);
+  for (const branch of bloom.branches) {
+    const parentAngle = branch.level === 1 ? middle(branch) : middle(bloom.branches.find((b) => b.node === branch.parent));
+    const [x0, y0] = at(radius[branch.level - 1], parentAngle), [x1, y1] = at(radius[branch.level], middle(branch));
+    const mid = (radius[branch.level - 1] + radius[branch.level]) / 2;
+    const [c0x, c0y] = at(mid, parentAngle), [c1x, c1y] = at(mid, middle(branch));
+    g.beginPath(); g.moveTo(x0, y0); g.bezierCurveTo(c0x, c0y, c1x, c1y, x1, y1);
+    const open = here.has(branch.node.id);
+    g.strokeStyle = open ? css("--viz-focus") : ink; g.globalAlpha = open ? 0.95 : 0.5;
+    g.lineWidth = Math.max(1, 9 * Math.sqrt(branch.node.size / largest)); g.stroke();
+    // A thin arc holds the node's leaves or children together.
+    if (branch.level >= 2 && !branch.node.children.length || branch.level === 3) {
+      g.beginPath(); g.arc(cx, cy, rim - 3, branch.start + 0.004, branch.end - 0.004); g.lineWidth = 1; g.globalAlpha = open ? 0.9 : 0.35; g.stroke();
+      const [ex, ey] = at(rim - 3, middle(branch)); g.beginPath(); g.moveTo(x1, y1); g.lineTo(ex, ey); g.stroke();
+    }
+  }
+  g.globalAlpha = 1;
+
+  // Leaves: one stroke per bookmark; longer means more recent, a dot means no date.
+  const colours = { neutral: ink, selected: css("--viz-selected"), hover: css("--viz-focus") };
+  for (const leaf of bloom.leaves) {
+    const ok = passes(leaf.id);
+    const state = leaf === bloom.hover ? "hover" : selection.has(leaf.id) ? "selected" : "neutral";
+    const [x0, y0] = at(rim, leaf.angle);
+    g.strokeStyle = g.fillStyle = colours[state];
+    g.globalAlpha = state !== "neutral" ? 1 : ok ? 0.55 : 0.1; g.lineWidth = state === "neutral" ? 1.2 : 2.4;
+    if (leaf.recency === null) { g.beginPath(); g.arc(x0 + 3 * Math.cos(leaf.angle), y0 + 3 * Math.sin(leaf.angle), 1.3, 0, Math.PI * 2); g.fill(); continue; }
+    const [x1, y1] = at(rim + 6 + reach * leaf.recency, leaf.angle);
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+  }
+  g.globalAlpha = 1;
+
+  // Names of the topics, written outwards from the rim.
+  g.font = "12px system-ui, -apple-system, 'Segoe UI', sans-serif"; g.textBaseline = "middle";
+  let last = -Infinity;
+  for (const region of bloom.regions) {
+    const a = (region.start + region.end) / 2;
+    if ((a - last) * (rim + reach) < 15) continue;
+    last = a;
+    const text = region.node.name.split(" · ").slice(0, 2).join(" · "), label = text.length > 24 ? text.slice(0, 23) + "…" : text;
+    const flip = Math.cos(a) < 0;
+    g.save(); g.translate(...at(rim + reach + 14, a)); g.rotate(flip ? a + Math.PI : a);
+    g.textAlign = flip ? "right" : "left"; g.fillStyle = here.has(region.node.id) ? ink : muted;
+    g.font = (here.has(region.node.id) ? "700 " : "") + "12px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    g.fillText(label, 0, 0); g.restore();
+  }
+}
+
+function bloomAt(event) {
+  const rect = bloomCanvas.getBoundingClientRect(), geo = bloom.geometry;
+  if (!geo) return {};
+  const x = event.clientX - rect.left - geo.cx, y = event.clientY - rect.top - geo.cy, r = Math.hypot(x, y);
+  let a = Math.atan2(y, x); if (a < -Math.PI / 2) a += 2 * Math.PI;
+  const region = bloom.regions.find((reg) => a >= reg.start && a < reg.end);
+  if (r >= geo.rim - 2 && r <= geo.rim + geo.reach + 12) {
+    let best = null, distance = 0.012;
+    for (const leaf of bloom.leaves) { const d = Math.abs(leaf.angle - a); if (d < distance && passes(leaf.id)) { best = leaf; distance = d; } }
+    return { leaf: best, region, x: event.clientX - rect.left, y: event.clientY - rect.top, w: rect.width };
+  }
+  return { region: r > geo.inner * 0.6 && r < geo.rim ? region : null, x: event.clientX - rect.left, y: event.clientY - rect.top, w: rect.width };
+}
+bloomCanvas.addEventListener("pointermove", (event) => {
+  if (!tree.data || !tree.data.tree) return;
+  const hit = bloomAt(event), tipBox = $("bloomtip");
+  if (hit.leaf !== bloom.hover) { bloom.hover = hit.leaf || null; drawBloom(); }
+  bloomCanvas.style.cursor = hit.leaf || hit.region ? "pointer" : "default";
+  if (!hit.leaf && !hit.region) { tipBox.hidden = true; return; }
+  if (hit.leaf) { const item = tree.data.items[hit.leaf.id] || ["", null];
+    tipBox.replaceChildren(el("strong", { textContent: item[0].length > 90 ? item[0].slice(0, 89) + "…" : item[0] }), el("small", { textContent: (item[1] || "no date") + " · click to select" }));
+  } else tipBox.replaceChildren(el("strong", { textContent: hit.region.node.name }), el("small", { textContent: plural(hit.region.node.size) + " · click to open" }));
+  tipBox.hidden = false;
+  tipBox.style.left = Math.max(4, Math.min(hit.x + 14, hit.w - tipBox.offsetWidth - 6)) + "px"; tipBox.style.top = (hit.y + 16) + "px";
+});
+bloomCanvas.addEventListener("pointerleave", () => { $("bloomtip").hidden = true; if (bloom.hover) { bloom.hover = null; drawBloom(); } });
+bloomCanvas.addEventListener("click", (event) => {
+  if (!tree.data || !tree.data.tree) return;
+  const hit = bloomAt(event);
+  if (hit.leaf) { if (selection.has(hit.leaf.id)) selection.delete(hit.leaf.id); else selection.add(hit.leaf.id); refreshSelection(); drawBloom(); }
+  else if (hit.region) { tree.path = hit.region.path.slice(); drawTree(); }
+});
 
 /* ---- saved views and snapshots ---- */
 
@@ -2263,7 +2695,7 @@ function refreshSelection() {
   const n = selection.size;
   // After a delete the selection is empty, but its result and Undo must stay visible.
   // The bar serves the list and the map; it sits above both.
-  $("selbar").hidden = (n === 0 && !keepNote) || !["bookmarks", "map", "grid"].includes(currentView);
+  $("selbar").hidden = (n === 0 && !keepNote) || !["bookmarks", "map", "grid", "tree", "links"].includes(currentView);
   // Sticky over the long list; in place above the map, where it would cover the tools.
   $("selbar").style.position = currentView === "bookmarks" ? "" : "static";
   $("sel-show").hidden = n === 0;

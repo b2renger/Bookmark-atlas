@@ -76,13 +76,19 @@ def _movement(recent: Counter, before: Counter, names: dict, window: dict, minim
 
 
 def overview(
-    conn: sqlite3.Connection, run_id: str | None = None, topic_names: dict | None = None
+    conn: sqlite3.Connection,
+    run_id: str | None = None,
+    topic_names: dict | None = None,
+    only: set[str] | None = None,
 ) -> dict:
     """Everything the Trends tab shows. ``topic_names`` maps cluster numbers of
-    ``run_id`` to their labels; without a run, topics are left out."""
+    ``run_id`` to their labels; without a run, topics are left out. ``only``
+    restricts every figure to those bookmarks (the shared filter)."""
     rows = conn.execute(
         "SELECT id, saved_at, published_at FROM bookmarks WHERE deleted_at IS NULL"
     ).fetchall()
+    if only is not None:
+        rows = [row for row in rows if row["id"] in only]
     saved = {row["id"]: _day(row["saved_at"]) for row in rows}
     published = {row["id"]: _day(row["published_at"]) for row in rows}
     saved_days = [d for d in saved.values() if d]

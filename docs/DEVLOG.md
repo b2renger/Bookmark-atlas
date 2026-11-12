@@ -4,6 +4,44 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-12: v0.9.0 published; phase 10, filter everywhere, Threads, the whole tree
+
+**Asked:** the filter on the remaining tabs; beautiful visualisations in the
+spirit of Jer Thorp, Stefanie Posavec and related data artists; ways to
+discover new links.
+
+**Read:** Posavec's own page on Writing Without Words (structure of a text as
+a tree; hand-gathered data), Lupi's Data Humanism manifesto (embrace
+complexity, move beyond standards, sneak context in, data is imperfect;
+layered reading with an entry point), the Library of Congress page on Thorp's
+residency. Principles were taken, no artwork was reproduced.
+
+**Works**
+
+- `links.threads` and `/api/links/threads`; `trends.overview(only=...)`;
+  `/api/trends` takes the filter; `tree_data` returns a title and a day per
+  bookmark.
+- Canvas drawings `drawThreads` and `drawBloom`, each with hover, click and a
+  text equivalent (the list under Threads, the pearls under the tree).
+
+**Decisions**
+
+- Three neighbours per bookmark: enough to find surprises, few enough to read.
+- Above and below the line separates "across topics" from "inside a topic"
+  without a colour.
+- The fainter-when-crowded rule keeps 2,100 arcs legible as a texture.
+- Bloom orders the strokes of a part by date, so each part reads as a small
+  profile of when it grew.
+
+**Verified how**
+
+- 3 new Python tests (249 in all). Browser run on the real collection, light
+  and dark: the four "Show" choices, Surprise me, following a thread, both
+  orders, hover and click, the filter on Links, Trends and Tree, the tree
+  drawing with hover, selection and branch click.
+
+**Next:** publish 0.10.0.
+
 ## 2026-11-12: v0.8.0 published; phase 9, publication dates read from the pages
 
 **Asked:** a way, in Grooming, to get the publication date of a source.

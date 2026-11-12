@@ -77,9 +77,15 @@ In **Clusters**, group the collection by topic. Each cluster shows its telling
 tags and a few bookmarks; rename it, or "show bookmarks" to work on it in the
 list.
 
-A **filter bar** sits above the list, the map and the grid: tags, site, and a
-range of dates (saved, published, or saved with published as a fallback). What
-you set there applies to all three.
+A **filter bar** sits above the list, the map, the grid, the tree, the links
+and the trends: tags, site, and a range of dates (saved, published, or saved
+with published as a fallback). What you set there applies everywhere.
+
+**Threads** (in Links) puts every bookmark on one line and draws an arc between
+two that resemble each other: above the line when the link crosses topics,
+below when it stays inside one. "Surprise me" jumps to a link you would not
+have looked for. The **Tree** tab also draws the whole tree at once, with one
+stroke per bookmark on the rim.
 
 On the **Map**, "Arrange by" moves the same dots between four layouts, with an
 animation: by similarity, along a timeline with one row per topic, on the
