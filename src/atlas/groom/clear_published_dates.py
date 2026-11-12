@@ -22,6 +22,7 @@ PARAMS = [
             {"value": "date_column", "label": "the Date column of the import (not verified)"},
             {"value": "page", "label": "the bookmarked page"},
             {"value": "github", "label": "GitHub (repository creation day)"},
+            {"value": "huggingface", "label": "Hugging Face (creation day)"},
             {"value": "x_id", "label": "the X post ID"},
         ],
     }

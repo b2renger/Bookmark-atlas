@@ -477,6 +477,26 @@ class App:
         finally:
             conn.close()
 
+    def links_check_status(self) -> dict:
+        from atlas import pagedates
+
+        conn = self._conn()
+        try:
+            return pagedates.link_status(conn)
+        finally:
+            conn.close()
+
+    def links_check(self, body: dict) -> dict:
+        from atlas import pagedates
+
+        conn = self._conn()
+        try:
+            return pagedates.check_links(
+                conn, limit=int(body.get("limit") or 12), again=bool(body.get("again"))
+            )
+        finally:
+            conn.close()
+
     def groom_apply(self, body: dict) -> dict:
         script, params = self._script(body)
         mark = body.get("fingerprint")
@@ -699,6 +719,8 @@ def make_handler(app: App):
                 ("POST", "/api/import-csv"): lambda: app.import_csv(self._body()),
                 ("GET", "/api/bookmarks/ids"): lambda: app.bookmark_ids(parse_qs(url.query)),
                 ("GET", "/api/facets"): lambda: app.facets(),
+                ("GET", "/api/links/check"): lambda: app.links_check_status(),
+                ("POST", "/api/links/check"): lambda: app.links_check(self._body()),
                 ("GET", "/api/dates/lookup"): lambda: app.dates_status(),
                 ("POST", "/api/dates/lookup"): lambda: app.dates_lookup(self._body()),
                 ("POST", "/api/bookmarks/tags"): lambda: app.selection_tags(self._body()),

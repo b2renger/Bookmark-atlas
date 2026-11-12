@@ -119,64 +119,70 @@ def _same_link(conn, changes):
         if len(group_members) < 2:
             continue
         keeper, *others = group_members  # live_bookmarks is oldest first
-        group = f"bookmark:{keeper['id']}"
-        title = label(keeper)
-        present = tags_of(conn, keeper["id"])
-        saved = keeper["saved_at"]
-        for other in others:
-            for name in sorted(tags_of(conn, other["id"])):
-                if name not in present:
-                    present.add(name)
-                    changes.append(
-                        Change(
-                            "bookmark_tag",
-                            keeper["id"],
-                            "tag",
-                            None,
-                            name,
-                            group=group,
-                            title=title,
-                        )
+        absorb(conn, changes, keeper, others)
+
+
+def absorb(conn, changes, keeper, others, why="is merged into this bookmark"):
+    """The changes that fold ``others`` into ``keeper``: its tags and earliest
+    save date move over, and the others leave the list."""
+    group = f"bookmark:{keeper['id']}"
+    title = label(keeper)
+    present = tags_of(conn, keeper["id"])
+    saved = keeper["saved_at"]
+    for other in others:
+        for name in sorted(tags_of(conn, other["id"])):
+            if name not in present:
+                present.add(name)
+                changes.append(
+                    Change(
+                        "bookmark_tag",
+                        keeper["id"],
+                        "tag",
+                        None,
+                        name,
+                        group=group,
+                        title=title,
                     )
-            if _earlier(other["saved_at"], saved):
-                saved = other["saved_at"]
-            changes.append(
-                Change(
-                    "bookmark",
-                    other["id"],
-                    "merged_into",
-                    None,
-                    keeper["id"],
-                    group=group,
-                    title=title,
-                    note=f"“{label(other)}” is merged into this bookmark",
                 )
+        if _earlier(other["saved_at"], saved):
+            saved = other["saved_at"]
+        changes.append(
+            Change(
+                "bookmark",
+                other["id"],
+                "merged_into",
+                None,
+                keeper["id"],
+                group=group,
+                title=title,
+                note=f"“{label(other)}” {why}",
             )
-            changes.append(
-                Change(
-                    "bookmark",
-                    other["id"],
-                    "deleted_at",
-                    None,
-                    NOW,
-                    group=group,
-                    title=title,
-                    note="and leaves the list",
-                )
+        )
+        changes.append(
+            Change(
+                "bookmark",
+                other["id"],
+                "deleted_at",
+                None,
+                NOW,
+                group=group,
+                title=title,
+                note="and leaves the list",
             )
-        if saved != keeper["saved_at"]:
-            changes.append(
-                Change(
-                    "bookmark",
-                    keeper["id"],
-                    "saved_at",
-                    keeper["saved_at"],
-                    saved,
-                    group=group,
-                    title=title,
-                    note=f"save date moves to the earliest one, {saved}",
-                )
+        )
+    if saved != keeper["saved_at"]:
+        changes.append(
+            Change(
+                "bookmark",
+                keeper["id"],
+                "saved_at",
+                keeper["saved_at"],
+                saved,
+                group=group,
+                title=title,
+                note=f"save date moves to the earliest one, {saved}",
             )
+        )
 
 
 def plan(conn, params):

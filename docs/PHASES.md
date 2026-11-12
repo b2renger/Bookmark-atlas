@@ -17,6 +17,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 8 | Shared filter, animated layouts, timeline, 3D | v0.8.0 | done for list, map and grid |
 | 9 | Publication dates read from the pages | v0.9.0 | done; not yet run against real sites |
 | 10 | Filter everywhere; Threads and the whole-tree drawing | v0.10.0 | done |
+| 11 | Grooming loose ends | v0.11.0 | done; online parts not run against real sites |
 
 ## Phase 0: scaffolding
 
@@ -246,3 +247,22 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   topics and more than six months apart.
 - **Left out:** saved views do not remember a pinned thread; the filter does
   not rebuild the topic picture or the tree.
+
+## Phase 11: grooming loose ends
+
+- **Review what changed in Notion.** Rows edited in Notion after import were
+  only kept aside. The new script lists them with what differs; "take" brings
+  Notion's title, summary and tags in, "keep" marks them as seen.
+- **Merge near-duplicates.** Same thing under two links, found by comparing
+  the words of titles and summaries. A guess, to review group by group.
+- **Merge tag synonyms.** Plural and singular; initials and the words they
+  stand for, when only one tag fits (40 proposals on the real collection).
+- **Check the links, then "Tag dead links".** Same two steps as the date
+  lookup. Only a "not found" answer or a vanished site counts as gone;
+  refusals and timeouts flag nothing. The script adds a tag and deletes nothing.
+- **Dates for Hugging Face and YouTube.** Hugging Face models, datasets and
+  spaces: the creation day from its public API. YouTube: the date in the
+  video's page details.
+- **Scripts are listed in the order worth running them** (eleven now).
+- **Not verified:** the Hugging Face API field (`createdAt`) and the YouTube
+  page format, which could not be reached from the development session.

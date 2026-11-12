@@ -24,12 +24,13 @@ def plan(conn, params):
         "AND f.published_at IS NOT NULL AND f.url = b.url ORDER BY b.created_at, b.id"
     ).fetchall()
     for bookmark in rows:
-        source = "github" if bookmark["found_in"] == "github" else "page"
-        where = (
-            "the day the repository was created, from GitHub"
-            if source == "github"
-            else f"read from the page ({bookmark['found_in']})"
+        source = {"github": "github", "hugging face": "huggingface"}.get(
+            bookmark["found_in"], "page"
         )
+        where = {
+            "github": "the day the repository was created, from GitHub",
+            "huggingface": "the day it was created, from Hugging Face",
+        }.get(source, f"read from the page ({bookmark['found_in']})")
         group = f"bookmark:{bookmark['id']}"
         changes.append(
             Change(

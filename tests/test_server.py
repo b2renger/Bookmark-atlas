@@ -309,7 +309,7 @@ def test_grooming_through_the_api(site):
 
     code, answer = site.call("GET", "/api/groom/scripts")
     assert code == 200 and answer["problems"] == []
-    assert [s["name"] for s in answer["scripts"]][:2] == ["merge-duplicates", "normalize-tags"]
+    assert [s["name"] for s in answer["scripts"]][:2] == ["merge-duplicates", "review-source-edits"]
     assert answer["user_folder"].endswith("scripts")
 
     code, seen = site.call("POST", "/api/groom/preview", {"script": "derive-platform"})

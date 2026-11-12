@@ -4,6 +4,23 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-12: v0.10.0 published; phase 11, grooming loose ends
+
+**Works:** scripts `review-source-edits`, `merge-similar`,
+`merge-tag-synonyms`, `flag-dead-links`; migration 0005 (`link_checks`);
+`pagedates.check_links`; Hugging Face and YouTube readers; routes
+`/api/links/check`. `absorb` and `merge_families` are now shared helpers.
+
+**Decisions:** near-duplicates are found with word overlap of titles and
+summaries (the topic vectors are too coarse for this); every pair is compared,
+capped at 6,000 bookmarks. Ambiguous initials are left alone. A dead link is
+tagged, never deleted.
+
+**Verified:** 12 new Python tests (261 in all); browser run of the link check
+and its script with a stand-in for the web.
+
+**Next:** visual loose ends (date brush, tree editing, 3D link graph, export).
+
 ## 2026-11-12: v0.9.0 published; phase 10, filter everywhere, Threads, the whole tree
 
 **Asked:** the filter on the remaining tabs; beautiful visualisations in the

@@ -512,6 +512,7 @@
         the date the page declares for itself. For a GitHub repository it takes the day the
         repository was created. Nothing is changed by the lookup: what it finds is then proposed
         by the script “Publication date read from the page” above, where you review and apply it.
+        Hugging Face models, datasets and spaces give the day they were created.
         X posts are left out, since their date comes from the post ID.</p>
       <div class="row">
         <button class="action primary" id="dates-go">Look up dates</button>
@@ -519,6 +520,19 @@
         <label class="check"><input type="checkbox" id="dates-retry"> try again the pages that could not be reached</label>
       </div>
       <div class="note muted" id="dates-note"></div>
+    </section>
+    <section class="card">
+      <h2>Check the links</h2>
+      <p class="help">Goes online and asks each bookmarked page whether it still answers. Nothing
+        is changed by the check: the script “Tag dead links” above then proposes a tag for the
+        pages that are gone. A page that refuses or is slow to answer is left alone. X posts are
+        not checked.</p>
+      <div class="row">
+        <button class="action primary" id="check-go">Check the links</button>
+        <button class="action" id="check-stop" hidden>Stop</button>
+        <label class="check"><input type="checkbox" id="check-again"> check again those that were gone or unsure</label>
+      </div>
+      <div class="note muted" id="check-note"></div>
     </section>
     <section class="card">
       <h2>History</h2>
@@ -2559,8 +2573,37 @@ $("dates-go").onclick = async () => {
     + (last ? describeDates(last.status) : ""), found ? "good" : "muted");
 };
 
+const checks = { running: false, stop: false };
+function describeChecks(s) {
+  return s.to_check + " links not checked yet. Answering: " + s.ok + ". Gone: " + s.gone + ". Unsure: " + s.unsure + (s.skipped ? ". Left out: " + s.skipped : "") + ".";
+}
+async function loadChecks() {
+  if (checks.running) return;
+  try { note("check-note", describeChecks(await api("GET", "/api/links/check")), "muted"); }
+  catch (error) { note("check-note", error.message, "bad"); }
+}
+$("check-stop").onclick = () => { checks.stop = true; $("check-stop").disabled = true; };
+$("check-go").onclick = async () => {
+  if (checks.running) return;
+  checks.running = true; checks.stop = false;
+  $("check-go").disabled = true; $("check-stop").hidden = false; $("check-stop").disabled = false;
+  let done = 0, gone = 0, again = $("check-again").checked, last = null, problem = "";
+  try {
+    for (;;) {
+      const result = await api("POST", "/api/links/check", { limit: 12, again });
+      again = false; last = result; done += result.checked; gone += result.gone;
+      note("check-note", "Checking… " + done + " links asked, " + gone + " gone, " + result.remaining + " to go.", "muted");
+      if (checks.stop || result.remaining === 0 || result.checked === 0) break;
+    }
+  } catch (error) { problem = error.message; }
+  checks.running = false; $("check-go").disabled = false; $("check-stop").hidden = true; $("check-again").checked = false;
+  if (problem) { note("check-note", problem, "bad"); return; }
+  note("check-note", (checks.stop ? "Stopped. " : "Done. ") + done + " links asked. "
+    + (last && last.status.gone ? "Preview “Tag dead links” above to tag the " + last.status.gone + " that are gone. " : "") + (last ? describeChecks(last.status) : ""), "muted");
+};
+
 async function loadGrooming() {
-  loadDates();
+  loadDates(); loadChecks();
   const data = await api("GET", "/api/groom/scripts");
   const holder = $("scripts");
   holder.replaceChildren();

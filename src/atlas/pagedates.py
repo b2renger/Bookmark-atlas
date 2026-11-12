@@ -172,6 +172,37 @@ def github_repository(url: str) -> str | None:
     return f"{segments[0]}/{segments[1].removesuffix('.git')}"
 
 
+HF_NOT_A_REPOSITORY = {
+    "docs", "blog", "papers", "collections", "organizations", "settings", "join", "login",
+    "pricing", "tasks", "learn", "models", "posts", "chat", "enterprise", "api",
+}  # fmt: skip
+
+
+def huggingface_repository(url: str) -> str | None:
+    """``models/owner/name`` (or ``datasets/...``, ``spaces/...``) for a Hugging
+    Face repository page, as its public API names it."""
+    parts = urlsplit(url)
+    if (parts.hostname or "").lower() not in ("huggingface.co", "www.huggingface.co", "hf.co"):
+        return None
+    segments = [s for s in parts.path.split("/") if s]
+    kind = "models"
+    if segments and segments[0] in ("datasets", "spaces"):
+        kind, segments = segments[0], segments[1:]
+    elif segments and segments[0] in HF_NOT_A_REPOSITORY:
+        return None
+    if len(segments) < 1 or (kind != "models" and len(segments) < 2):
+        return None
+    return f"{kind}/{'/'.join(segments[:2])}"
+
+
+YOUTUBE_DATE = re.compile(r'"(?:publishDate|uploadDate)"\s*:\s*"([^"]{8,40})"')
+
+
+def is_youtube(url: str) -> bool:
+    host = (urlsplit(url).hostname or "").lower()
+    return host in ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")
+
+
 def refused(url: str) -> str | None:
     """Why a link is not fetched, or None when it may be."""
     parts = urlsplit(url)
@@ -233,10 +264,22 @@ def read_one(url: str, get=None) -> dict:
             if not created:
                 return {"status": "none", "detail": "GitHub gave no creation date"}
             return {"status": "found", "published_at": created, "found_in": "github"}
+        repository = huggingface_repository(url)
+        if repository:
+            status, body = get(f"https://huggingface.co/api/{repository}", "application/json")
+            if status == 200:
+                created = clean_date(str(json.loads(body).get("createdAt") or ""))
+                if created:
+                    return {"status": "found", "published_at": created, "found_in": "hugging face"}
+            # Otherwise fall through and read the page like any other.
         status, body = get(url)
         if status != 200:
             return {"status": "error", "detail": f"the site answered {status}"}
         found = extract_published(body)
+        if not found and is_youtube(url):
+            match = YOUTUBE_DATE.search(body)
+            if match and clean_date(match.group(1)):
+                found = (clean_date(match.group(1)), "video details")
         if not found:
             return {"status": "none", "detail": "the page declares no publication date"}
         return {"status": "found", "published_at": found[0], "found_in": found[1]}
@@ -348,4 +391,85 @@ def lookup(
         "github_limited": limited,
         "remaining": len(_candidates(conn, skip_github=skip_github)),
         "status": status(conn),
+    }
+
+
+# ---- do the links still answer? --------------------------------------------
+
+
+def check_one(url: str, get=None) -> dict:
+    """Does a link still answer? ``gone`` only when the site says so (404, 410)
+    or no longer exists; anything unclear is ``unsure`` and flags nothing."""
+    get = get or http_get
+    why = refused(url)
+    if why:
+        return {"result": "skipped", "detail": why}
+    try:
+        status, _ = get(url)
+    except urllib.error.URLError as error:
+        reason = getattr(error, "reason", error)
+        if isinstance(reason, OSError) and type(reason).__name__ == "gaierror":
+            return {"result": "gone", "detail": "the site's address no longer exists"}
+        return {"result": "unsure", "detail": f"could not connect: {reason}"[:200]}
+    except Exception as error:  # timeouts, certificates, resets
+        return {"result": "unsure", "detail": f"{type(error).__name__}: {error}"[:200]}
+    if 200 <= status < 400:
+        return {"result": "ok", "detail": None}
+    if status in (404, 410):
+        return {"result": "gone", "detail": f"the site answered {status}: page not found"}
+    return {"result": "unsure", "detail": f"the site answered {status}"}
+
+
+def _unchecked(conn: sqlite3.Connection) -> list:
+    return conn.execute(
+        "SELECT b.id, b.url FROM bookmarks b LEFT JOIN link_checks c "
+        "ON c.bookmark_id = b.id AND c.url = b.url WHERE b.deleted_at IS NULL AND c.result IS NULL "
+        "ORDER BY b.created_at, b.id"
+    ).fetchall()
+
+
+def link_status(conn: sqlite3.Connection) -> dict:
+    counts = dict(
+        conn.execute(
+            "SELECT c.result, COUNT(*) FROM link_checks c JOIN bookmarks b ON b.id = c.bookmark_id "
+            "AND b.url = c.url WHERE b.deleted_at IS NULL GROUP BY c.result"
+        ).fetchall()
+    )
+    return {
+        "to_check": len(_unchecked(conn)),
+        "ok": counts.get("ok", 0),
+        "gone": counts.get("gone", 0),
+        "unsure": counts.get("unsure", 0),
+        "skipped": counts.get("skipped", 0),
+    }
+
+
+def check_links(
+    conn: sqlite3.Connection, *, limit: int = 20, again: bool = False, get=None
+) -> dict:
+    """Check one batch of links. ``again`` first forgets every earlier answer
+    except "ok", so doubtful and dead links are tried once more (pass it on
+    the first batch only)."""
+    limit = max(1, min(int(limit), 50))
+    if again:
+        conn.execute("DELETE FROM link_checks WHERE result != 'ok'")
+        conn.commit()
+    batch = _unchecked(conn)[:limit]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda row: (row, check_one(row["url"], get)), batch))
+    done = {"ok": 0, "gone": 0, "unsure": 0, "skipped": 0}
+    for row, answer in results:
+        conn.execute(
+            "INSERT INTO link_checks (bookmark_id, url, checked_at, result, detail) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(bookmark_id) DO UPDATE SET url = excluded.url, "
+            "checked_at = excluded.checked_at, result = excluded.result, detail = excluded.detail",
+            (row["id"], row["url"], now_iso(), answer["result"], answer["detail"]),
+        )
+        done[answer["result"]] += 1
+    conn.commit()
+    return {
+        "checked": len(batch),
+        **done,
+        "remaining": len(_unchecked(conn)),
+        "status": link_status(conn),
     }

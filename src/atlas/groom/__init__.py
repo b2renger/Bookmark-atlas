@@ -33,12 +33,16 @@ from atlas.db import now_iso
 
 BUILTIN = [
     "merge_duplicates",
+    "review_source_edits",
+    "merge_similar",
     "normalize_tags",
+    "merge_tag_synonyms",
     "derive_platform",
     "published_from_x_id",
     "split_dates",
     "published_from_page",
     "clear_published_dates",
+    "flag_dead_links",
 ]
 
 # Bookmark columns a script may change. Anything else is refused.

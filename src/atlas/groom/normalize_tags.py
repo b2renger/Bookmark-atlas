@@ -32,6 +32,12 @@ def _preference(item):
 
 
 def plan(conn, params):
+    return merge_families(conn, spelling_key)
+
+
+def merge_families(conn, key, title_note=""):
+    """Tags with the same ``key`` become one: the most used spelling stays,
+    the others become its aliases and their bookmarks are retagged."""
     usage = Counter()
     holders = defaultdict(list)
     for name, bookmark_id in conn.execute(
@@ -43,9 +49,9 @@ def plan(conn, params):
 
     families = defaultdict(list)
     for name, count in usage.items():
-        key = spelling_key(name)
-        if key:
-            families[key].append((name, count))
+        family = key(name)
+        if family:
+            families[family].append((name, count))
 
     changes = []
     for _key, members in sorted(families.items()):
@@ -55,7 +61,7 @@ def plan(conn, params):
         keeper = members[0][0]
         others = [name for name, _ in members[1:]]
         group = f"tag:{keeper}"
-        title = f"{keeper}  ←  {', '.join(others)}"
+        title = f"{keeper}  ←  {', '.join(others)}{title_note}"
         has_keeper = set(holders[keeper])
         for other in others:
             for bookmark_id in holders[other]:
