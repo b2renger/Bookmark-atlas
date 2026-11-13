@@ -390,3 +390,43 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Now the five arrangements are buttons above the map,** always visible,
   the two 3D ones labelled as such. Pressed before the map exists, they say
   to draw the map first.
+
+## Phase 18: the 3D link graph organises itself by topic
+
+- **Reported, with a screenshot of 3,396 bookmarks:** the link graph settled
+  into one flat, even mesh in which no topic could be told from another.
+- **Why:** every bookmark pushed every other and every link pulled the same,
+  from a start that was the flat map. With three links per bookmark, nearly
+  all inside a topic, nothing held topics apart, and nothing gave depth.
+- **Now topics are placed first,** as a small graph of their own: topics that
+  share links sit close, the others are pushed apart on all three axes. Each
+  bookmark starts near its topic and is held to it; links inside a topic pull
+  hard, links across topics pull gently and stretch between the clouds.
+- **Drawing:** links inside a topic are a faint texture, links across topics
+  are stronger; far dots are fainter; dots shrink when there are thousands;
+  the picture turns slowly until it is taken hold of (not when the system
+  asks for reduced motion). Topic names follow their clouds.
+- **Speed:** bookmarks only push those near them, found with a grid of boxes.
+  Measured in Node on 3,400 invented bookmarks: 6.6 ms a step against 19.3,
+  and 180 steps instead of 300 (1.2 s against 5.8 s of computing). In the
+  browser the whole settling, drawing included, takes about 5.5 s for 3,400
+  bookmarks and 1.7 s for 956.
+- **Measured:** share of bookmarks nearer to their own topic's centre than to
+  any other: 13% before, 100% now (3,400 invented); 61% before, 99% now (the
+  956-bookmark test copy). Empty space between a topic and its nearest
+  neighbour: about 0.9 topic radius on average.
+
+## Phase 19: the page fills the window and makes room for the side panel
+
+- **Reported, with a screenshot of a 1912 px window:** the page stayed a
+  1040 px column, and the side panel lay over empty space beside it.
+- **Now the page fills the window,** centred, up to 1760 px. The map, the
+  threads and the tree grow with the window's height so a picture and its
+  controls fit on one screen.
+- **Opening the side panel moves the page over** instead of covering it: the
+  page is centred in what is left and the pictures are redrawn at their new
+  size; closing it gives the room back. On windows narrower than 1100 px the
+  panel lies over the page as before.
+- **Measured in a browser:** 1912 px window: page 1760 px with equal margins,
+  1472 px with the panel open, back to 1760 px on closing; 1366 px: 1366 then
+  926; 900 px: unchanged, panel over the page. No sideways scrolling.

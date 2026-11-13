@@ -45,7 +45,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test desktop/datafolder.test.js
+      - run: node --test desktop/datafolder.test.js desktop/weblayout.test.js
 
   windows:
     needs: test

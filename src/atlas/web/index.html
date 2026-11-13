@@ -34,7 +34,13 @@
   nav button[aria-current="page"] { background: var(--chip); color: var(--ink); font-weight: 600; }
   #summary { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
   @media (max-width: 1500px) { #summary { display: none; } header { gap: 14px; } }
-  main { max-width: 1040px; margin: 0 auto; padding: 24px; }
+  /* The page fills the window, centred, with a ceiling so lines never get absurdly long.
+     When the side panel is open on a window wide enough, the page makes room for it
+     instead of being covered; on a narrow window the panel lies over the page. */
+  main { max-width: 1760px; margin: 0 auto; padding: 24px; }
+  body { transition: padding-right .18s ease; }
+  @media (min-width: 1100px) { body.with-side { padding-right: min(440px, 94vw); } body.with-side #side { box-shadow: none; } }
+  @media (prefers-reduced-motion: reduce) { body { transition: none; } }
   section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 20px 22px; margin-bottom: 18px; }
   section.card h2 { font-size: 16px; margin: 0 0 4px; }
@@ -85,7 +91,7 @@
   #selbar .note { margin-top: 2px; }
   td.pick, th.pick { width: 28px; padding-right: 0; }
   #mapwrap { position: relative; background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  #mapcanvas { display: block; width: 100%; height: 620px; cursor: grab; touch-action: none; }
+  #mapcanvas { display: block; width: 100%; height: clamp(460px, calc(100vh - 440px), 1200px); cursor: grab; touch-action: none; }
   #mapcanvas.selecting { cursor: crosshair; }
   #maptip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     padding: 6px 9px; font-size: 13px; max-width: 320px; box-shadow: 0 2px 10px rgba(0,0,0,.15); z-index: 2; }
@@ -111,8 +117,8 @@
   #map-time { width: 100%; min-width: 180px; padding: 0; }
   #map-when { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 190px; }
   #threads-wrap, #bloom-wrap { position: relative; background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  #threadcanvas { display: block; width: 100%; height: 520px; }
-  #bloomcanvas { display: block; width: 100%; height: 760px; }
+  #threadcanvas { display: block; width: 100%; height: clamp(440px, calc(100vh - 420px), 900px); }
+  #bloomcanvas { display: block; width: 100%; height: clamp(560px, calc(100vh - 390px), 1300px); }
   #threadtip, #bloomtip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     padding: 6px 9px; font-size: 13px; max-width: 340px; box-shadow: 0 2px 10px rgba(0,0,0,.15); z-index: 2; }
   #threadtip small, #bloomtip small { display: block; color: var(--muted); }
@@ -383,6 +389,7 @@
           <option value="similarity">Similarity</option><option value="timeline">Timeline</option>
           <option value="grid">Grid</option><option value="spacetime">Space and time (3D)</option>
           <option value="links3d">Links (3D)</option></select></div>
+        <button class="action" id="map-spin" aria-pressed="false" hidden>Turn slowly</button>
         <button class="action" id="map-play">Play</button>
         <div class="grow"><label for="map-time">Time</label><input type="range" id="map-time" min="0" max="1000" value="1000"></div>
         <span id="map-when"></span>
@@ -690,7 +697,7 @@
           <li><strong>Timeline</strong>: left to right is time, one row per topic. See when each topic was active.</li>
           <li><strong>Grid</strong>: the dots gathered in the cells of the Grid tab.</li>
           <li><strong>Space and time (3D)</strong>: the map lies flat and time rises from it. Drag to turn.</li>
-          <li><strong>Links (3D)</strong>: each bookmark tied to its three closest; point at one to light its links.</li>
+          <li><strong>Links (3D)</strong>: each topic gathers into its own cloud, and topics that share links sit close. A line ties each bookmark to its three closest: faint inside a topic, stronger when it crosses to another topic. Those crossings are the ones worth following. The picture turns slowly so near and far can be told apart; drag it, or press <em>Stop turning</em>, to hold it still. Point at a bookmark to light its links.</li>
         </ul>
         <p><strong>Play</strong> replays the collection as it grew; the slider goes to any day.
           Shift+drag selects an area. In 3D, Alt+drag moves instead of turning.</p>
@@ -1473,8 +1480,13 @@ function computeLayout(name) {
   map.time = timeSpan(data.points);
   const topicLabels = () => data.clusters.map((c) => ({ text: c.label, x: c.x, y: c.y, z: 0, cluster: c, size: c.size }));
   if (name === "links3d") {
-    // Start from the flat map, a little thickened; the links then pull it into shape.
-    for (const p of data.points) targets.set(p.id, p.web ? [p.cx, p.cy, p.cz] : [p.x, p.y, 0.45 + (hashUnit(p.id) - 0.5) * 0.15]);
+    // Each bookmark glides to a place near its topic; the links then pull the whole into shape.
+    const places = webPlaces();
+    data.points.forEach((p, i) => targets.set(p.id, places.at(i)));
+    const centres = new Map();
+    data.points.forEach((p, i) => { const c = centres.get(p.cluster) || [0, 0, 0, 0], at = places.at(i); c[0] += at[0]; c[1] += at[1]; c[2] += at[2]; c[3] += 1; centres.set(p.cluster, c); });
+    guides.labels = data.clusters.filter((c) => centres.has(c.cluster)).map((c) => { const t = centres.get(c.cluster);
+      return { text: c.label.split(" · ").slice(0, 2).join(" · "), x: t[0] / t[3], y: t[1] / t[3], z: t[2] / t[3], cluster: c, size: c.size }; });
   } else if (name === "similarity" || !map.time && name !== "grid") {
     for (const p of data.points) targets.set(p.id, [p.x, p.y, 0]);
     guides.labels = topicLabels();
@@ -1548,68 +1560,170 @@ function mapRelayout(snap) {
   requestAnimationFrame(stepMap);
 }
 
-// The 3D link graph: bookmarks push each other apart, links pull their two
-// ends together, and the whole settles into a shape while you watch.
-function startWeb() {
-  if (!map.web || map.layout !== "links3d") return;
-  const points = map.data.points, n = points.length;
-  const index = new Map(points.map((p, i) => [p.id, i]));
-  const edges = map.web.links.map((l) => [index.get(l.a), index.get(l.b)]).filter(([a, b]) => a !== undefined && b !== undefined);
+// Lays a link graph out in space so that its topics show.
+//
+// Three ideas, in order:
+//  1. the topics are placed first, as a small graph of their own: topics that
+//     share many links sit close, the others are pushed apart on all three axes;
+//  2. each bookmark starts near its topic and is held to it by a weak pull, so
+//     topics stay apart while links across topics stretch between them;
+//  3. links inside a topic pull harder than links across topics.
+// Bookmarks only push the ones near them (found with a grid of boxes), so a
+// step costs about the same per bookmark whatever the size of the collection.
+function webLayout(clusterOf, edges, total, tune) {
+  const T = Object.assign({ room: 0.62, apart: 2.4, hold: 2, inside: 0.5, strangers: 3 }, tune || {});
+  const n = clusterOf.length;
+  const keys = [...new Set(clusterOf)], K = keys.length, slot = new Map(keys.map((key, i) => [key, i]));
+  const topic = Int32Array.from(clusterOf, (c) => slot.get(c)), sizes = new Float64Array(K);
+  for (let i = 0; i < n; i++) sizes[topic[i]] += 1;
+  let seed = 12345;
+  const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+
+  // 1. Topics as a graph: weight = links shared, for the sizes of the two.
+  const shared = new Float64Array(K * K);
+  for (const [a, b] of edges) if (topic[a] !== topic[b]) { shared[topic[a] * K + topic[b]] += 1; shared[topic[b] * K + topic[a]] += 1; }
+  const radius = Float64Array.from(sizes, (size) => T.room * Math.cbrt(size));     // room a topic needs, in link lengths
+  const centre = new Float64Array(K * 3);
+  for (let k = 0; k < K; k++) {                                                   // spread on a sphere to start
+    const y = K === 1 ? 0 : 1 - 2 * (k + 0.5) / K, r = Math.sqrt(Math.max(0, 1 - y * y)), a = k * 2.399963;
+    centre[3 * k] = r * Math.cos(a); centre[3 * k + 1] = y; centre[3 * k + 2] = r * Math.sin(a);
+  }
+  const reach = radius.reduce((sum, r) => sum + r, 0) / Math.max(K, 1) * 2.2;     // typical distance between neighbours
+  for (let k = 0; k < K * 3; k++) centre[k] *= reach * Math.cbrt(K) * 0.6;
+  for (let round = 0; round < 300 && K > 1; round++) {
+    const push = new Float64Array(K * 3), heat = reach * 0.2 * (1 - round / 300) + reach * 0.004;
+    for (let i = 0; i < K; i++) for (let j = i + 1; j < K; j++) {
+      const dx = centre[3 * i] - centre[3 * j], dy = centre[3 * i + 1] - centre[3 * j + 1], dz = centre[3 * i + 2] - centre[3 * j + 2];
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) + 1e-9, want = (radius[i] + radius[j]) * T.apart;
+      // Too close: push apart hard. Linked: pull together gently, down to "just apart".
+      const strength = shared[i * K + j] / Math.sqrt(sizes[i] * sizes[j]);
+      let f = d < want ? (want - d) / d : -Math.min(1, strength * 4) * (d - want) / d * 0.15;
+      f -= 0.01;                                                                  // and a slight pull to the middle, via every pair
+      push[3 * i] += dx * f; push[3 * i + 1] += dy * f; push[3 * i + 2] += dz * f;
+      push[3 * j] -= dx * f; push[3 * j + 1] -= dy * f; push[3 * j + 2] -= dz * f;
+    }
+    for (let k = 0; k < K; k++) {
+      const m = Math.hypot(push[3 * k], push[3 * k + 1], push[3 * k + 2]) + 1e-12, step = Math.min(m, heat) / m;
+      centre[3 * k] += push[3 * k] * step; centre[3 * k + 1] += push[3 * k + 1] * step; centre[3 * k + 2] += push[3 * k + 2] * step;
+    }
+  }
+  let mx = 0, my = 0, mz = 0;
+  for (let k = 0; k < K; k++) { mx += centre[3 * k] / K; my += centre[3 * k + 1] / K; mz += centre[3 * k + 2] / K; }
+  for (let k = 0; k < K; k++) { centre[3 * k] -= mx; centre[3 * k + 1] -= my; centre[3 * k + 2] -= mz; }
+
+  // 2. Bookmarks start in a ball around their topic.
   const pos = new Float64Array(n * 3), move = new Float64Array(n * 3);
-  const begin = () => points.forEach((p, i) => { pos[3 * i] = p.cx - 0.5; pos[3 * i + 1] = p.cy - 0.5; pos[3 * i + 2] = p.cz - 0.45; p.web = true; });
-  const k = 0.42 / Math.cbrt(Math.max(n, 1)), total = 300;
-  const run = { tick: 0, frame: 0 };
-  map.webRun = run;
-  const tick = () => {
+  for (let i = 0; i < n; i++) {
+    const k = topic[i];
+    let x, y, z;
+    do { x = random() * 2 - 1; y = random() * 2 - 1; z = random() * 2 - 1; } while (x * x + y * y + z * z > 1);
+    pos[3 * i] = centre[3 * k] + x * radius[k]; pos[3 * i + 1] = centre[3 * k + 1] + y * radius[k]; pos[3 * i + 2] = centre[3 * k + 2] + z * radius[k];
+  }
+  const inside = edges.map(([a, b]) => topic[a] === topic[b]);
+  const CUT = 2.2, state = { pos, tick: 0, total, centre, K };
+
+  // 3. One step of the forces. Lengths are in units of one comfortable link.
+  state.step = () => {
     move.fill(0);
+    const boxes = new Map();
     for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const dx = pos[3 * i] - pos[3 * j], dy = pos[3 * i + 1] - pos[3 * j + 1], dz = pos[3 * i + 2] - pos[3 * j + 2];
-        const d2 = dx * dx + dy * dy + dz * dz + 1e-6;
-        if (d2 > 16 * k * k) continue;                   // far pairs do not push
-        const f = k * k / d2;
-        move[3 * i] += dx * f; move[3 * i + 1] += dy * f; move[3 * i + 2] += dz * f;
-        move[3 * j] -= dx * f; move[3 * j + 1] -= dy * f; move[3 * j + 2] -= dz * f;
+      const key = (Math.floor(pos[3 * i] / CUT) + 512) * 1048576 + (Math.floor(pos[3 * i + 1] / CUT) + 512) * 1024 + (Math.floor(pos[3 * i + 2] / CUT) + 512);
+      const list = boxes.get(key); if (list) list.push(i); else boxes.set(key, [i]);
+    }
+    for (let i = 0; i < n; i++) {
+      const bx = Math.floor(pos[3 * i] / CUT) + 512, by = Math.floor(pos[3 * i + 1] / CUT) + 512, bz = Math.floor(pos[3 * i + 2] / CUT) + 512;
+      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) for (let oz = -1; oz <= 1; oz++) {
+        const list = boxes.get((bx + ox) * 1048576 + (by + oy) * 1024 + (bz + oz));
+        if (!list) continue;
+        for (const j of list) {
+          if (j <= i) continue;
+          const dx = pos[3 * i] - pos[3 * j], dy = pos[3 * i + 1] - pos[3 * j + 1], dz = pos[3 * i + 2] - pos[3 * j + 2];
+          const d2 = dx * dx + dy * dy + dz * dz + 1e-4;
+          if (d2 > CUT * CUT) continue;
+          const f = (topic[i] === topic[j] ? 1 : T.strangers) / d2;                        // strangers keep a little more distance
+          move[3 * i] += dx * f; move[3 * i + 1] += dy * f; move[3 * i + 2] += dz * f;
+          move[3 * j] -= dx * f; move[3 * j + 1] -= dy * f; move[3 * j + 2] -= dz * f;
+        }
       }
     }
-    for (const [a, b] of edges) {
+    for (let e = 0; e < edges.length; e++) {
+      const a = edges[e][0], b = edges[e][1];
       const dx = pos[3 * a] - pos[3 * b], dy = pos[3 * a + 1] - pos[3 * b + 1], dz = pos[3 * a + 2] - pos[3 * b + 2];
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) + 1e-6, f = d / k;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) + 1e-9, f = inside[e] ? d : Math.min(d, 6) * 0.06;
       move[3 * a] -= dx * f; move[3 * a + 1] -= dy * f; move[3 * a + 2] -= dz * f;
       move[3 * b] += dx * f; move[3 * b + 1] += dy * f; move[3 * b + 2] += dz * f;
     }
-    const heat = 0.03 * (1 - run.tick / total) + 0.0015;
+    const heat = 0.9 * (1 - state.tick / total) + 0.03;
     for (let i = 0; i < n; i++) {
-      const mx = move[3 * i] - pos[3 * i] * 0.04, my = move[3 * i + 1] - pos[3 * i + 1] * 0.04, mz = move[3 * i + 2] - pos[3 * i + 2] * 0.04;
-      const m = Math.sqrt(mx * mx + my * my + mz * mz) + 1e-9, step = Math.min(m, heat) / m;
-      pos[3 * i] += mx * step; pos[3 * i + 1] += my * step; pos[3 * i + 2] += mz * step;
+      const k = topic[i];
+      // Held to its topic: nothing inside the topic's own room, more and more beyond it.
+      const hx = centre[3 * k] - pos[3 * i], hy = centre[3 * k + 1] - pos[3 * i + 1], hz = centre[3 * k + 2] - pos[3 * i + 2];
+      const away = Math.sqrt(hx * hx + hy * hy + hz * hz) + 1e-9, hold = away > radius[k] * T.inside ? T.hold * (away - radius[k] * T.inside) / away : 0.02;
+      const fx = move[3 * i] + hx * hold, fy = move[3 * i + 1] + hy * hold, fz = move[3 * i + 2] + hz * hold;
+      const m = Math.sqrt(fx * fx + fy * fy + fz * fz) + 1e-12, step = Math.min(m, heat) / m;
+      pos[3 * i] += fx * step; pos[3 * i + 1] += fy * step; pos[3 * i + 2] += fz * step;
     }
-    run.tick += 1;
+    state.tick += 1;
   };
-  const place = () => {
-    // Fit nearly everything in the cube; a few strays may stick out.
-    const far = Array.from(pos, Math.abs).sort((a, b) => a - b);
-    const scale = 0.66 / Math.max(far[Math.floor(far.length * 0.985)], 1e-6);
-    points.forEach((p, i) => { p.cx = 0.5 + pos[3 * i] * scale; p.cy = 0.5 + pos[3 * i + 1] * scale; p.cz = 0.45 + pos[3 * i + 2] * scale; });
-  };
+  return state;
+}
+
+// Where the layout stands, fitted into the cube the camera looks at.
+function webPlaces() {
+  const sim = map.webSim, pos = sim.pos;
+  const far = Array.from(pos, Math.abs).sort((x, y) => x - y);
+  const scale = 0.62 / Math.max(far[Math.floor(far.length * 0.985)], 1e-6);
+  return { scale, at: (i) => [0.5 + pos[3 * i] * scale, 0.5 + pos[3 * i + 1] * scale, 0.45 + pos[3 * i + 2] * scale] };
+}
+function webLabels() {
+  const sums = new Map();
+  for (const p of map.data.points) { const c = sums.get(p.cluster) || [0, 0, 0, 0]; c[0] += p.cx; c[1] += p.cy; c[2] += p.cz; c[3] += 1; sums.set(p.cluster, c); }
+  map.guides = { ticks: [], labels: map.data.clusters.filter((c) => sums.has(c.cluster)).map((c) => { const t = sums.get(c.cluster);
+    return { text: c.label.split(" · ").slice(0, 2).join(" · "), x: t[0] / t[3], y: t[1] / t[3], z: t[2] / t[3], cluster: c, size: c.size }; }) };
+}
+// Prepare the layout for the bookmarks on the map and the links between them.
+function webPrepare(links) {
+  const points = map.data.points, index = new Map(points.map((p, i) => [p.id, i]));
+  const kept = links.filter((l) => index.has(l.a) && index.has(l.b));
+  map.web = { links: kept.map((l) => ({ a: l.a, b: l.b, across: points[index.get(l.a)].cluster !== points[index.get(l.b)].cluster })) };
+  map.webSim = webLayout(points.map((p) => p.cluster), kept.map((l) => [index.get(l.a), index.get(l.b)]), 180);
+  map.webSim.points = points;
+}
+// Let the forces work, a few steps per frame, while the picture is on screen.
+function startWeb() {
+  const sim = map.webSim;
+  if (!sim || map.layout !== "links3d" || !map.data || sim.points !== map.data.points) return;
+  const run = { frame: 0 };
+  map.webRun = run;
   const frame = () => {
-    if (map.webRun !== run || map.layout !== "links3d" || !map.data || map.data.points !== points) return;
+    if (map.webRun !== run || map.layout !== "links3d" || !map.data || sim.points !== map.data.points) return;
     if (map.anim) { run.frame = requestAnimationFrame(frame); return; }   // wait for the glide to end
-    if (!run.begun) { begin(); run.begun = true; }
-    const budget = reducedMotion ? total : 3;
-    for (let i = 0; i < budget && run.tick < total; i++) tick();
-    place();
-    if (run.tick >= total) {
-      // Topic names go where each topic ended up.
-      const sums = new Map();
-      for (const p of points) { const c = sums.get(p.cluster) || [0, 0, 0, 0]; c[0] += p.cx; c[1] += p.cy; c[2] += p.cz; c[3] += 1; sums.set(p.cluster, c); }
-      map.guides = { ticks: [], labels: map.data.clusters.filter((c) => sums.has(c.cluster)).map((c) => { const s = sums.get(c.cluster);
-        return { text: c.label.split(" · ").slice(0, 2).join(" · "), x: s[0] / s[3], y: s[1] / s[3], z: s[2] / s[3], cluster: c, size: c.size }; }) };
-      map.webRun = null; drawMap(); return;
-    }
+    const started = performance.now();
+    do { sim.step(); } while (sim.tick < sim.total && (reducedMotion || performance.now() - started < 9));
+    const places = webPlaces();
+    sim.points.forEach((p, i) => { [p.cx, p.cy, p.cz] = places.at(i); });
+    webLabels();
+    if (sim.tick >= sim.total) { map.webRun = null; drawMap(); return; }
     drawMap(); run.frame = requestAnimationFrame(frame);
   };
   run.frame = requestAnimationFrame(frame);
+}
+// A slow turn makes depth readable: near things pass in front of far ones.
+function spinMap() {
+  if (map.spinning) return;
+  map.spinning = true;
+  const turn = () => {
+    if (!map.spin || !TURNING.has(map.layout) || currentView !== "map" || !map.data) { map.spinning = false; return; }
+    if (!map.anim && !map.drag) { map.cam.yaw += 0.0035; if (!map.webRun) drawMap(); }
+    requestAnimationFrame(turn);
+  };
+  requestAnimationFrame(turn);
+}
+function setSpin(on) {
+  map.spin = !!on && !reducedMotion;
+  $("map-spin").setAttribute("aria-pressed", map.spin ? "true" : "false");
+  $("map-spin").textContent = map.spin ? "Stop turning" : "Turn slowly";
+  if (map.spin) spinMap();
 }
 function stepMap(now) {
   const a = map.anim;
@@ -1707,20 +1821,25 @@ function drawMap() {
     }
   }
 
-  // The link graph: a faint line per link, and the hovered bookmark's links in colour.
+  // The link graph. Links inside a topic are a faint texture; links across
+  // topics, the ones worth following, are stronger; the pointed bookmark's
+  // links are in colour.
   if (map.layout === "links3d" && map.web && !map.anim) {
     const at = new Map();
     for (const point of map.data.points) if (!hiddenByTime(point) && passes(point.id)) at.set(point.id, toScreen(point, frame));
-    const mine = [];
-    g.lineWidth = 1; g.strokeStyle = ink; g.globalAlpha = map.hover ? 0.1 : 0.22;
-    g.beginPath();
-    for (const link of map.web.links) {
-      const a = at.get(link.a), b = at.get(link.b);
-      if (!a || !b) continue;
-      if (map.hover && (link.a === map.hover.id || link.b === map.hover.id)) { mine.push([a, b]); continue; }
-      g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+    const mine = [], crowd = Math.min(1, Math.sqrt(2500 / Math.max(map.web.links.length, 1)));
+    for (const across of [false, true]) {
+      g.lineWidth = 1; g.strokeStyle = ink; g.globalAlpha = (across ? 0.42 : 0.16 * crowd) * (map.hover ? 0.5 : 1);
+      g.beginPath();
+      for (const link of map.web.links) {
+        if (link.across !== across) continue;
+        const a = at.get(link.a), b = at.get(link.b);
+        if (!a || !b) continue;
+        if (map.hover && (link.a === map.hover.id || link.b === map.hover.id)) { mine.push([a, b]); continue; }
+        g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+      }
+      g.stroke();
     }
-    g.stroke();
     g.globalAlpha = 1; g.lineWidth = 2; g.strokeStyle = colours.focus;
     g.beginPath(); for (const [a, b] of mine) { g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); } g.stroke();
   }
@@ -1736,9 +1855,12 @@ function drawMap() {
   }
   drawn.sort((a, b) => LAYER[a.layer] - LAYER[b.layer] || a.depth - b.depth);
   for (const d of drawn) {
-    const base = (d.layer === "out" ? 2.5 : d.layer === "neutral" ? 4 : 5) * (map.layout === "links3d" ? 0.75 : 1);
+    // Many bookmarks: smaller dots, so the space between topics stays empty.
+    const base = (d.layer === "out" ? 2.5 : d.layer === "neutral" ? 4 : 5) * (map.layout === "links3d" ? Math.max(0.45, Math.min(0.75, 0.75 * Math.sqrt(1000 / map.data.points.length))) * Math.min(1.8, Math.sqrt(map.scale)) : 1);
     g.beginPath(); g.arc(d.x, d.y, base * (tilted ? Math.max(0.6, Math.min(1.5, d.s)) : 1), 0, Math.PI * 2);
     g.globalAlpha = d.layer === "out" ? 0.22 : d.layer === "neutral" && anyState ? 0.7 : 1;
+    // In the link graph, what is far is fainter, so near and far can be told apart.
+    if (map.layout === "links3d" && d.layer === "neutral") g.globalAlpha *= Math.max(0.35, Math.min(1, 0.68 + d.depth * 1.1));
     g.fillStyle = colours[d.layer]; g.fill();
     g.globalAlpha = 1;
     if (d.layer !== "out") { g.lineWidth = tilted ? 1.5 : 2; g.strokeStyle = surface; g.stroke(); }
@@ -1796,7 +1918,7 @@ function mapLegend() {
   if (selection.size) rows.push(["--viz-selected", "Selected (" + map.data.points.filter((p) => selection.has(p.id)).length + ")"]);
   const what = { similarity: "similar bookmarks sit close together", timeline: "left to right is time, one row per topic",
     grid: "one group per cell of the grid", spacetime: "the map lies flat and time rises from it: the higher, the more recent",
-    links3d: "a line joins each bookmark to its three closest; linked bookmarks pull together" }[map.layout];
+    links3d: "topics gather apart; a line joins each bookmark to its three closest, stronger when it crosses topics" }[map.layout];
   rows.push(["--viz-neutral", rows.length ? "Other bookmarks" : "One dot per bookmark; " + what]);
   if (facetIds) rows.push(["--viz-neutral", "Small faint dots: left out by the filter (" + map.data.points.filter((p) => !facetIds.has(p.id)).length + ")", true]);
   for (const [colour, text, faint] of rows) {
@@ -1848,6 +1970,7 @@ canvas.addEventListener("pointerdown", (event) => {
   // In 3D a plain drag turns the view; Alt+drag moves it.
   const turning = TURNING.has(map.layout) && !map.anim && !event.shiftKey && !event.altKey;
   map.drag = { x, y, tx: map.tx, ty: map.ty, yaw: map.cam.yaw, pitch: map.cam.pitch, moved: false, selecting: event.shiftKey, turning };
+  if (turning && map.spin) setSpin(false);     // taking hold of the picture stops its turning
   if (event.shiftKey) { map.box = { x0: x, y0: y, x1: x, y1: y }; canvas.classList.add("selecting"); }
 });
 canvas.addEventListener("pointermove", (event) => {
@@ -1917,9 +2040,8 @@ async function setMapLayout(name, snap) {
   if (name === "links3d" && map.data && map.data.layout) {
     try {
       const web = await api("GET", "/api/links/threads");
-      map.web = { links: web.links.map((l) => ({ a: web.nodes[l.a].id, b: web.nodes[l.b].id })) };
+      webPrepare(web.links.map((l) => ({ a: web.nodes[l.a].id, b: web.nodes[l.b].id })));
     } catch (error) { note("map-note", error.message, "bad"); $("map-layout").value = map.layout; return; }
-    for (const p of map.data.points) p.web = false;
   }
   map.webRun = null;
   map.layout = LAYOUTS[name] ? name : "similarity";
@@ -1929,9 +2051,12 @@ async function setMapLayout(name, snap) {
     grid: "Bookmarks are gathered in the cells of the grid.", spacetime: "The map lies flat and time rises from it.",
     links3d: "Bookmarks float in space, joined by lines to the three they resemble most." }[map.layout]);
   syncArrange();
+  $("map-spin").hidden = !TURNING.has(map.layout);
+  setSpin(map.layout === "links3d");
   if (map.data && map.data.layout) { mapNote(); mapLegend(); mapRelayout(snap); if (map.layout === "links3d") startWeb(); }
 }
 $("map-layout").onchange = () => setMapLayout($("map-layout").value);
+$("map-spin").onclick = () => setSpin(!map.spin);
 // The five arrangements as buttons, always in sight: before the map is drawn
 // they say what is missing instead of doing nothing.
 function syncArrange() {
@@ -2020,8 +2145,7 @@ function applyMapData(data) {
   syncArrange();
   if (!data.layout) { note("map-note", "No map yet. Drawing it takes a few seconds: similar bookmarks are placed close together.", "muted"); mapLegend(); drawMap(); return; }
   if (map.layout === "grid" && !(map.cells && map.cells.grid)) map.layout = "similarity";
-  if (map.layout === "links3d" && !map.web) map.layout = "similarity";
-  for (const p of data.points) p.web = false;
+  if (map.layout === "links3d" && !(map.webSim && map.webSim.points === data.points)) map.layout = "similarity";
   $("map-layout").value = map.layout;
   mapNote(); mapLegend(); mapRelayout(true);
 }
@@ -2038,8 +2162,8 @@ async function loadMap(clusterRun) {
   select.disabled = runs.length === 0;
   if (map.layout === "grid") { try { map.cells = await api("GET", "/api/grid"); } catch (error) { map.cells = null; } }
   if (map.layout === "links3d") {
-    try { const web = await api("GET", "/api/links/threads"); map.web = { links: web.links.map((l) => ({ a: web.nodes[l.a].id, b: web.nodes[l.b].id })) }; }
-    catch (error) { map.web = null; }
+    try { const web = await api("GET", "/api/links/threads"); map.data = data; webPrepare(web.links.map((l) => ({ a: web.nodes[l.a].id, b: web.nodes[l.b].id }))); }
+    catch (error) { map.web = null; map.webSim = null; }
   }
   applyMapData(data);
   if (map.layout === "links3d") startWeb();
@@ -2661,14 +2785,21 @@ domPanZoom($("gridwrap"), $("gridcells"));
 // collection, what resembles it, and a button to open the page in the browser.
 
 const side = { id: null, from: null };
-function closePanel() { $("side").hidden = true; side.id = null; if (side.from && document.contains(side.from)) side.from.focus(); side.from = null; }
+// The page makes room for the panel; the pictures are then redrawn at their new size.
+function panelRoom(open) {
+  if (document.body.classList.contains("with-side") === open) return;
+  document.body.classList.toggle("with-side", open);
+  const redraw = () => window.dispatchEvent(new Event("resize"));
+  redraw(); setTimeout(redraw, 220);          // at once, and again when the page has finished sliding
+}
+function closePanel() { $("side").hidden = true; panelRoom(false); side.id = null; if (side.from && document.contains(side.from)) side.from.focus(); side.from = null; }
 $("side-close").onclick = closePanel;
 document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("side").hidden) closePanel(); });
 
 async function openPanel(id) {
   const body = $("side-body");
   if ($("side").hidden) side.from = document.activeElement;
-  side.id = id; $("side").hidden = false;
+  side.id = id; $("side").hidden = false; panelRoom(true);
   body.replaceChildren(el("p", { className: "tagline", textContent: "Loading…" }));
   let item;
   try { item = (await api("GET", "/api/bookmarks/item?id=" + encodeURIComponent(id))).item; }

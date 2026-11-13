@@ -4,6 +4,43 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-13: v0.17.0 published; phase 18, 3D link layout by topic
+
+**Reported by the user, with a screenshot:** Links · 3D on 3,396 bookmarks was
+a flat uniform mesh.
+
+**Works:** `webLayout(clusterOf, edges, total, tune)` in the page: topic
+centres relaxed first (repel below `apart` x the two radii, attract by shared
+links), bookmarks start in a ball round their centre, forces per step are
+neighbour repulsion through a grid of boxes (cut-off 2.2 link lengths,
+strangers x3), link attraction (full inside a topic, 0.06 across) and a hold
+toward the centre beyond half the topic's radius. `webPrepare`, `webPlaces`,
+`webLabels`, `startWeb` (9 ms of steps per frame), `spinMap`/`setSpin`
+(`#map-spin`). `map.web.links` carry `across`.
+
+**Decisions:** topic membership drives the layout, because the kNN graph alone
+has too few crossing links to separate anything. The layout is a pure
+function with its own random numbers, so the same collection gives the same
+picture and it can be tested in Node (`desktop/weblayout.test.js`, lifted out
+of the page; added to both workflows). Still Canvas 2D: no library can be
+installed here, and 3,400 dots with 6,800 lines draw fast enough.
+
+**Verified:** 7 new Node tests; browser run on 3,400 invented bookmarks and
+on the 956-bookmark copy, dark and light, no page error; turning stops on
+drag and the button hides outside 3D.
+
+**Also in 0.18.0 (phase 19), reported with a screenshot:** `main` goes from
+1040 to 1760 px; `body.with-side` (set by `panelRoom`, from `openPanel` and
+`closePanel`) pads the page by the panel's width from 1100 px up and fires a
+resize so canvases redraw; canvas heights follow the window (`clamp` on
+`100vh`). Checked at 1912, 1366 and 900 px.
+
+**Not verified:** the user's own 3,396 bookmarks (not available here), and
+frame rate on their machine.
+
+**Next:** open ideas only: live page in the side panel, neural text vectors,
+density contours, Intel Mac build, smaller installer, renaming workspaces.
+
 ## 2026-11-13: v0.16.0 published; phase 17, grid names and 3D buttons
 
 **Reported by the user, with a screenshot:** repeated names on the grid; the
