@@ -47,9 +47,10 @@
   input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
   .row > .grow { flex: 1 1 280px; }
-  button.action { padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line);
+  button.action, a.action { padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line);
     background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  button.primary, a.action.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  a.action { display: inline-block; text-decoration: none; }
   button:disabled { opacity: .5; cursor: default; }
   .note { margin-top: 10px; font-size: 14px; }
   .note.good { color: var(--good); } .note.bad { color: var(--bad); } .note.muted { color: var(--muted); }
@@ -122,6 +123,19 @@
   input[type=date] { color-scheme: light dark; }
   #mapdetail h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
   #mapdetail a { color: var(--ink); }
+  #side { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 94vw); z-index: 30; overflow-y: auto;
+    background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 28px rgba(0,0,0,.18); padding: 16px 20px 28px; }
+  #side h2 { font-size: 18px; margin: 0 34px 6px 0; overflow-wrap: anywhere; }
+  #side h3 { font-size: 14px; margin: 18px 0 4px; }
+  #side-close { position: absolute; top: 10px; right: 12px; background: none; border: 0; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; padding: 4px 8px; }
+  #side-close:hover { color: var(--ink); }
+  #side .chip { cursor: pointer; border: 0; font: inherit; font-size: 12px; }
+  #side .sum { white-space: pre-wrap; }
+  .zoomhint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  #gridwrap { overflow: hidden; touch-action: none; cursor: grab; }
+  #gridcells { transform-origin: 0 0; }
+  #threadcanvas, #bloomcanvas { touch-action: none; }
+  svg.chart { touch-action: none; }
   #workbanner { background: var(--chip); border: 1px solid var(--line); border-left: 4px solid var(--viz-selected);
     border-radius: 8px; padding: 10px 14px; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
   .wsrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -135,7 +149,7 @@
   .viewrow strong { overflow-wrap: anywhere; }
   textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
     color: var(--ink); font: inherit; min-height: 60px; resize: vertical; }
-  #gridwrap { overflow-x: auto; background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  #gridwrap { background: var(--viz-surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
   #gridcells { display: grid; gap: 2px; }
   .cell { background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 2px 4px; font: inherit; color: var(--ink);
     cursor: pointer; display: flex; flex-direction: column; align-items: center; min-width: 0; }
@@ -265,6 +279,10 @@
   </div>
   <div id="snapbanner" hidden></div>
   <div id="workbanner" hidden></div>
+  <aside id="side" hidden aria-label="Bookmark details">
+    <button id="side-close" aria-label="Close the panel">×</button>
+    <div id="side-body"></div>
+  </aside>
   <div id="view-bookmarks">
     <section class="card">
       <div class="toolbar">
@@ -369,6 +387,7 @@
           <input type="search" id="grid-search" placeholder="Words to find on the grid"></div>
       </div>
       <div id="gridwrap" hidden><div id="gridcells"></div></div>
+      <div class="zoomhint">Scroll to zoom, drag to move, double-click to go back.</div>
       <div class="legend" id="grid-legend"></div>
       <div class="note muted" id="grid-note"></div>
     </section>
@@ -390,6 +409,7 @@
         <div id="bloomtip" hidden></div>
       </div>
       <div class="legend" id="bloom-legend"></div>
+      <div class="zoomhint">Scroll to zoom, drag to move, double-click to go back.</div>
       <div id="bloom-keep"></div>
       <div class="crumbs" id="tree-path"></div>
       <div id="tree-here"></div>
@@ -420,6 +440,7 @@
         <canvas id="threadcanvas" role="img" aria-label="Bookmarks on a line, joined by arcs where two resemble each other. The list under the picture gives the same links in words for the bookmark you pick."></canvas>
         <div id="threadtip" hidden></div>
       </div>
+      <div class="zoomhint">Scroll to zoom, drag to move, double-click to go back.</div>
       <div id="threads-keep"></div>
       <div id="threads-detail" hidden></div>
       <div class="note muted" id="threads-note"></div>
@@ -430,6 +451,7 @@
         A line joins two topics that share many such links, thicker when they share more. Click a
         topic to see what it is closest to.</p>
       <div class="chartwrap" id="links-wrap" hidden><div id="links-graph"></div></div>
+      <div class="zoomhint">Scroll to zoom, drag to move, double-click to go back.</div>
       <div id="links-picked"></div>
       <div class="note muted" id="links-note"></div>
     </section>
@@ -460,6 +482,7 @@
       <div class="chartwrap"><div id="trends-saved"></div></div>
       <h3 class="tagline" id="trends-published-title" style="margin-top:16px"></h3>
       <div class="chartwrap"><div id="trends-published"></div></div>
+      <div class="zoomhint">Scroll to zoom, drag to move, double-click to go back.</div>
       <details class="numbers"><summary>Numbers</summary><div id="trends-table"></div></details>
       <div class="note muted" id="trends-note"></div>
     </section>
@@ -1495,25 +1518,7 @@ function setFocus(cluster) {
   mapLegend(); drawMap();
 }
 
-async function showDetail(point) {
-  const holder = $("mapdetail");
-  try {
-    const item = (await api("GET", "/api/bookmarks/item?id=" + encodeURIComponent(point.id))).item;
-    const href = safeLink(item.url);
-    const title = href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title || item.url }) : el("span", { textContent: item.title || item.url });
-    const cluster = map.data.clusters.find((c) => c.cluster === point.cluster);
-    const toggle = el("button", { className: "action", textContent: selection.has(item.id) ? "Remove from selection" : "Add to selection" });
-    toggle.onclick = () => { if (selection.has(item.id)) selection.delete(item.id); else selection.add(item.id);
-      toggle.textContent = selection.has(item.id) ? "Remove from selection" : "Add to selection"; refreshSelection(); mapLegend(); };
-    holder.replaceChildren(el("h3", {}, [title]),
-      el("div", { className: "nowrap", textContent: [item.platform && item.platform !== "Website" ? item.platform : item.domain, cluster ? "topic: " + cluster.label : "",
-        item.saved_at ? "saved " + item.saved_at.slice(0, 10) : "", item.published_at ? "published " + item.published_at.slice(0, 10) : ""].filter(Boolean).join(" · ") }),
-      el("p", { className: "sum", textContent: item.summary || "" }),
-      el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))),
-      el("div", { className: "row", style: "margin-top:12px" }, [toggle]));
-    holder.hidden = false;
-  } catch (error) { note("map-note", error.message, "bad"); }
-}
+function showDetail(point) { openPanel(point.id); }
 
 function zoomAt(factor, cx, cy) {
   const next = Math.min(40, Math.max(0.6, map.scale * factor));
@@ -1883,7 +1888,7 @@ function gridDetail(cell) {
   holder.replaceChildren(
     el("h2", { textContent: cell.tags.join(" · ") || "Empty cell" }),
     el("div", { className: "tagline", textContent: plural(cell.size) + " · row " + (cell.row + 1) + ", column " + (cell.col + 1) }),
-    el("ul", { className: "sum" }, cell.samples.map((s) => el("li", { textContent: s }))),
+    el("ul", { className: "sum" }, cell.samples.map((title, i) => el("li", {}, [bookmarkLink({ id: cell.ids[i], title })]))),
     el("div", { className: "row" }, cell.size ? [show, pick] : []));
   holder.hidden = false;
 }
@@ -1927,7 +1932,7 @@ async function drawTree() {
   if (!data || !data.tree) { note("tree-note", "No tree yet. Press Build the tree to make one from the latest clustering.", "muted"); return; }
   bloomLayout(); drawBloom();
   $("bloom-legend").append(el("span", { textContent: "From the centre: families, topics, parts. On the rim, one stroke per bookmark: the longer, the more recent; a dot has no date."
-    + (facetIds ? " Faint strokes are left out by the filter." : "") + " Click a branch to open it, a stroke to select the bookmark." }));
+    + (facetIds ? " Faint strokes are left out by the filter." : "") + " Click a branch to open it, a stroke to read the bookmark." }));
   $("tree-from").textContent = "Built " + new Date(data.created_at).toLocaleString() + ". Building again starts from the latest clustering and forgets your changes.";
   const trail = treeNode();
   const node = trail[trail.length - 1];
@@ -2017,10 +2022,7 @@ async function drawTree() {
       const listed = await api("POST", "/api/bookmarks/list", { ids, limit: 100, offset: 0 });
       if (trail[trail.length - 1] !== treeNode().pop()) return;
       for (const item of listed.items) {
-        const href = safeLink(item.url);
-        $("tree-items").append(el("li", {}, [href
-          ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title || item.url })
-          : el("span", { textContent: item.title || item.url })]));
+        $("tree-items").append(el("li", {}, [bookmarkLink(item)]));
       }
     } catch (error) { note("tree-note", error.message, "bad"); }
   }
@@ -2042,9 +2044,16 @@ function svg(tag, attrs, children) {
   for (const child of children || []) node.append(child);
   return node;
 }
+// A bookmark's name. With an ID it opens the side panel; Ctrl, Shift or a
+// middle click still go straight to the page. Without an ID (a bookmark that
+// is not in this collection) it is a plain link.
 function bookmarkLink(item) {
-  const href = safeLink(item.url);
-  return href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title }) : el("span", { textContent: item.title });
+  const href = safeLink(item.url), text = item.title || item.url || "Untitled";
+  if (!item.id) return href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: text }) : el("span", { textContent: text });
+  const link = href ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: text }) : el("button", { className: "linkish", textContent: text });
+  link.title = "Details (Ctrl+click opens the page)";
+  link.addEventListener("click", (event) => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); openPanel(item.id); });
+  return link;
 }
 function similarButton(item) {
   const button = el("button", { className: "linkish", textContent: "similar bookmarks" });
@@ -2121,6 +2130,7 @@ function drawLinks() {
     root.append(node, label);
   }
   holder.append(root);
+  svgPanZoom(root, "topics", W, H);
   if (links.picked !== null) {
     const mine = data.links.filter((l) => l.a === links.picked || l.b === links.picked).slice(0, 5);
     const show = el("button", { className: "linkish", textContent: "show its bookmarks" });
@@ -2187,6 +2197,7 @@ function barChart(holder, series, word) {
     if (m === peak && m.count) { const label = svg("text", { class: "val", x: x + width / 2, y: y(m.count) - 4, "text-anchor": "middle" }); label.textContent = String(m.count); root.append(label); }
   });
   holder.append(root);
+  svgPanZoom(root, "bars-" + word, W, H);
 }
 
 function moveRows(holder, moves, emptyText, action) {
@@ -2245,6 +2256,136 @@ async function loadTrends() {
   }
 }
 
+/* ---- pan and zoom, for every picture ---- */
+// Scroll to zoom around the pointer, drag to move, double-click to go back.
+// A drag is not a click: `moved` stays set until the next press, so click
+// handlers can tell the two apart.
+
+function panZoom(surface, redraw) {
+  const view = { k: 1, x: 0, y: 0, moved: false };
+  let drag = null;
+  const at = (event) => { const r = surface.getBoundingClientRect(); return [event.clientX - r.left, event.clientY - r.top]; };
+  view.local = (mx, my) => [(mx - view.x) / view.k, (my - view.y) / view.k];
+  view.reset = () => { view.k = 1; view.x = 0; view.y = 0; redraw(); };
+  view.dragging = () => !!(drag && view.moved);
+  surface.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const [mx, my] = at(event), next = Math.min(30, Math.max(0.5, view.k * (event.deltaY < 0 ? 1.15 : 1 / 1.15))), f = next / view.k;
+    view.x = mx - (mx - view.x) * f; view.y = my - (my - view.y) * f; view.k = next; redraw();
+  }, { passive: false });
+  surface.addEventListener("pointerdown", (event) => { if (event.button !== 0) return; const [mx, my] = at(event); drag = { mx, my, x: view.x, y: view.y }; view.moved = false; });
+  surface.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    const [mx, my] = at(event);
+    if (!view.moved && Math.abs(mx - drag.mx) + Math.abs(my - drag.my) > 4) { view.moved = true; try { surface.setPointerCapture(event.pointerId); } catch (error) { /* not capturable */ } }
+    if (view.moved) { view.x = drag.x + mx - drag.mx; view.y = drag.y + my - drag.my; redraw(); }
+  });
+  for (const name of ["pointerup", "pointercancel"]) surface.addEventListener(name, () => { drag = null; });
+  surface.addEventListener("dblclick", view.reset);
+  return view;
+}
+
+// The same for an SVG drawing, by moving its viewBox. Views are kept by name,
+// so a drawing rebuilt with new data stays where you left it.
+const svgViews = new Map();
+function svgPanZoom(root, key, W, H) {
+  const view = svgViews.get(key) || { x: 0, y: 0, w: W, h: H };
+  svgViews.set(key, view);
+  const apply = () => root.setAttribute("viewBox", [view.x, view.y, view.w, view.h].join(" "));
+  apply();
+  let drag = null, moved = false;
+  root.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const r = root.getBoundingClientRect();
+    const px = view.x + (event.clientX - r.left) / r.width * view.w, py = view.y + (event.clientY - r.top) / r.height * view.h;
+    const w = Math.min(W * 1.6, Math.max(W / 25, view.w * (event.deltaY < 0 ? 1 / 1.15 : 1.15))), f = w / view.w;
+    view.x = px - (px - view.x) * f; view.y = py - (py - view.y) * f; view.w = w; view.h = H * w / W; apply();
+  }, { passive: false });
+  root.addEventListener("pointerdown", (event) => { if (event.button === 0) { drag = { cx: event.clientX, cy: event.clientY, x: view.x, y: view.y }; moved = false; } });
+  root.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    if (!moved && Math.abs(event.clientX - drag.cx) + Math.abs(event.clientY - drag.cy) > 4) moved = true;
+    if (!moved) return;
+    const r = root.getBoundingClientRect();
+    view.x = drag.x - (event.clientX - drag.cx) / r.width * view.w; view.y = drag.y - (event.clientY - drag.cy) / r.height * view.h; apply();
+  });
+  for (const name of ["pointerup", "pointercancel", "pointerleave"]) root.addEventListener(name, () => { drag = null; });
+  root.addEventListener("click", (event) => { if (moved) { event.stopPropagation(); event.preventDefault(); moved = false; } }, true);
+  root.addEventListener("dblclick", () => { view.x = 0; view.y = 0; view.w = W; view.h = H; apply(); });
+}
+
+// And for a block of ordinary elements (the grid), with a CSS transform.
+function domPanZoom(wrap, inner) {
+  const view = { k: 1, x: 0, y: 0 };
+  let drag = null, moved = false;
+  const apply = () => { inner.style.transform = "translate(" + view.x + "px," + view.y + "px) scale(" + view.k + ")"; };
+  wrap.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const r = wrap.getBoundingClientRect(), mx = event.clientX - r.left, my = event.clientY - r.top;
+    const next = Math.min(6, Math.max(0.5, view.k * (event.deltaY < 0 ? 1.15 : 1 / 1.15))), f = next / view.k;
+    view.x = mx - (mx - view.x) * f; view.y = my - (my - view.y) * f; view.k = next; apply();
+  }, { passive: false });
+  wrap.addEventListener("pointerdown", (event) => { if (event.button === 0) { drag = { cx: event.clientX, cy: event.clientY, x: view.x, y: view.y }; moved = false; } });
+  wrap.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    if (!moved && Math.abs(event.clientX - drag.cx) + Math.abs(event.clientY - drag.cy) > 4) moved = true;
+    if (moved) { view.x = drag.x + event.clientX - drag.cx; view.y = drag.y + event.clientY - drag.cy; apply(); }
+  });
+  for (const name of ["pointerup", "pointercancel", "pointerleave"]) wrap.addEventListener(name, () => { drag = null; });
+  wrap.addEventListener("click", (event) => { if (moved) { event.stopPropagation(); event.preventDefault(); moved = false; } }, true);
+  wrap.addEventListener("dblclick", () => { view.k = 1; view.x = 0; view.y = 0; apply(); });
+}
+domPanZoom($("gridwrap"), $("gridcells"));
+
+/* ---- the side panel: one bookmark in full ---- */
+// Any bookmark named anywhere opens here: what it is, why it is in the
+// collection, what resembles it, and a button to open the page in the browser.
+
+const side = { id: null, from: null };
+function closePanel() { $("side").hidden = true; side.id = null; if (side.from && document.contains(side.from)) side.from.focus(); side.from = null; }
+$("side-close").onclick = closePanel;
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("side").hidden) closePanel(); });
+
+async function openPanel(id) {
+  const body = $("side-body");
+  if ($("side").hidden) side.from = document.activeElement;
+  side.id = id; $("side").hidden = false;
+  body.replaceChildren(el("p", { className: "tagline", textContent: "Loading…" }));
+  let item;
+  try { item = (await api("GET", "/api/bookmarks/item?id=" + encodeURIComponent(id))).item; }
+  catch (error) { if (side.id === id) body.replaceChildren(el("p", { className: "note bad", textContent: error.message })); return; }
+  if (side.id !== id) return;
+  const href = safeLink(item.url);
+  const open = href ? el("a", { className: "action primary", href, target: "_blank", rel: "noopener noreferrer", textContent: "Open in the browser", style: "text-decoration:none" }) : null;
+  const pick = el("button", { className: "action" });
+  const label = () => { pick.textContent = selection.has(item.id) ? "Remove from selection" : "Add to selection"; };
+  label();
+  pick.onclick = () => { if (selection.has(item.id)) selection.delete(item.id); else selection.add(item.id); label(); refreshSelection();
+    if (currentView === "map") { mapLegend(); drawMap(); } if (currentView === "tree") drawBloom(); if (currentView === "links") drawThreads(); };
+  const copy = el("button", { className: "linkish", textContent: "copy the link" });
+  copy.onclick = async () => { try { await navigator.clipboard.writeText(item.url); copy.textContent = "copied"; } catch (error) { copy.textContent = "could not copy"; } setTimeout(() => { copy.textContent = "copy the link"; }, 1500); };
+  const tags = item.tags.map((name) => { const chip = el("button", { className: "chip", textContent: name, title: "Filter on this tag" });
+    chip.onclick = () => { if (!facets.tags.some((t) => t.toLowerCase() === name.toLowerCase())) { facets.tags.push(name); applyFacets(); } }; return chip; });
+  const related = el("div", {}, [el("p", { className: "tagline", textContent: "Looking for similar bookmarks…" })]);
+  body.replaceChildren(
+    el("h2", { textContent: item.title || item.url }),
+    el("div", { className: "tagline", textContent: [item.platform && item.platform !== "Website" ? item.platform : item.domain,
+      item.saved_at ? "saved " + item.saved_at.slice(0, 10) : "", item.published_at ? "published " + item.published_at.slice(0, 10) : ""].filter(Boolean).join(" · ") }),
+    el("div", { className: "row", style: "margin:12px 0 4px" }, [open, pick].filter(Boolean)),
+    el("div", { className: "tagline", style: "overflow-wrap:anywhere" }, [item.url + " · ", copy]),
+    item.summary ? el("h3", { textContent: "Summary" }) : "", item.summary ? el("p", { className: "sum", textContent: item.summary }) : "",
+    tags.length ? el("h3", { textContent: "Tags" }) : "", tags.length ? el("div", { className: "chips" }, tags) : "",
+    el("h3", { textContent: "Similar bookmarks" }), related);
+  $("side-close").focus(); $("side").scrollTop = 0;
+  try {
+    const found = (await api("GET", "/api/links/related?id=" + encodeURIComponent(id))).related;
+    if (side.id !== id) return;
+    related.replaceChildren(found.length ? el("ol", { className: "plain" }, found.map((other) => el("li", {}, [bookmarkLink(other),
+      el("div", { className: "tagline", textContent: Math.round(other.similarity * 100) + "% alike" + (other.shared_tags.length ? " · both tagged " + other.shared_tags.slice(0, 4).join(", ") : "") + (other.same_site ? " · same site" : "") })])))
+      : el("p", { className: "tagline", textContent: "Nothing close." }));
+  } catch (error) { if (side.id === id) related.replaceChildren(el("p", { className: "tagline", textContent: "Similar bookmarks need NumPy, which this copy lacks." })); }
+}
+
 /* ---- pictures to keep ---- */
 // Save what a canvas shows, as an image or as a small web page that carries
 // the image with its title and the words that explain it.
@@ -2280,6 +2421,7 @@ function pictureButtons(holder, source, name, title, words) {
 
 const threads = { data: null, order: "time", show: "all", pinned: null, hover: null, pair: null, xs: [], span: null };
 const threadCanvas = $("threadcanvas");
+const threadView = panZoom(threadCanvas, () => drawThreads());
 
 function threadDay(node) { return dayNumber(node.day); }
 function threadGap(link) {
@@ -2355,6 +2497,7 @@ function drawThreads() {
   g.setTransform(ratio, 0, 0, ratio, 0, 0);
   const surface = css("--viz-surface"), ink = css("--ink"), muted = css("--muted"), line = css("--line");
   g.fillStyle = surface; g.fillRect(0, 0, frame.w, frame.h);
+  g.translate(threadView.x, threadView.y); g.scale(threadView.k, threadView.k);
   const width = frame.w - frame.left - frame.right, up = frame.base - 16, down = frame.h - frame.base - 34;
   const active = threads.pinned ?? threads.hover;
 
@@ -2465,7 +2608,8 @@ function threadPanel() {
 threadCanvas.addEventListener("pointermove", (event) => {
   if (!threads.data) return;
   const r = threadCanvas.getBoundingClientRect(), x = event.clientX - r.left, y = event.clientY - r.top;
-  const index = threadAt(x, y);
+  if (threadView.dragging()) { $("threadtip").hidden = true; return; }
+  const index = threadAt(...threadView.local(x, y));
   if (index !== threads.hover) { threads.hover = index; drawThreads(); }
   const tipBox = $("threadtip");
   if (index === null) { tipBox.hidden = true; threadCanvas.style.cursor = "default"; return; }
@@ -2480,9 +2624,9 @@ threadCanvas.addEventListener("pointermove", (event) => {
 });
 threadCanvas.addEventListener("pointerleave", () => { $("threadtip").hidden = true; if (threads.hover !== null) { threads.hover = null; drawThreads(); } });
 threadCanvas.addEventListener("click", (event) => {
-  if (!threads.data) return;
+  if (!threads.data || threadView.moved) return;
   const r = threadCanvas.getBoundingClientRect();
-  const index = threadAt(event.clientX - r.left, event.clientY - r.top);
+  const index = threadAt(...threadView.local(event.clientX - r.left, event.clientY - r.top));
   threads.pinned = index === threads.pinned ? null : index; threads.pair = null;
   drawThreads(); threadPanel();
 });
@@ -2522,6 +2666,7 @@ async function loadThreads() {
 
 const bloom = { leaves: [], regions: [], hover: null, geometry: null };
 const bloomCanvas = $("bloomcanvas");
+const bloomView = panZoom(bloomCanvas, () => drawBloom());
 
 function bloomLayout() {
   const data = tree.data, root = data.tree;
@@ -2564,6 +2709,7 @@ function drawBloom() {
   g.setTransform(ratio, 0, 0, ratio, 0, 0);
   const surface = css("--viz-surface"), ink = css("--ink"), muted = css("--muted");
   g.fillStyle = surface; g.fillRect(0, 0, rect.width, rect.height);
+  g.translate(bloomView.x, bloomView.y); g.scale(bloomView.k, bloomView.k);
   const cx = rect.width / 2, cy = rect.height / 2, half = Math.min(rect.width, rect.height) / 2, R = Math.max(30, half - Math.min(150, half * 0.4));
   const radius = [0, R * 0.2, R * 0.46, R * 0.7], rim = R * 0.74, reach = R * 0.3;
   bloom.geometry = { cx, cy, rim, R, reach, inner: radius[1] };
@@ -2624,7 +2770,8 @@ function drawBloom() {
 function bloomAt(event) {
   const rect = bloomCanvas.getBoundingClientRect(), geo = bloom.geometry;
   if (!geo) return {};
-  const x = event.clientX - rect.left - geo.cx, y = event.clientY - rect.top - geo.cy, r = Math.hypot(x, y);
+  const [lx, ly] = bloomView.local(event.clientX - rect.left, event.clientY - rect.top);
+  const x = lx - geo.cx, y = ly - geo.cy, r = Math.hypot(x, y);
   let a = Math.atan2(y, x); if (a < -Math.PI / 2) a += 2 * Math.PI;
   const region = bloom.regions.find((reg) => a >= reg.start && a < reg.end);
   if (r >= geo.rim - 2 && r <= geo.rim + geo.reach + 12) {
@@ -2636,12 +2783,14 @@ function bloomAt(event) {
 }
 bloomCanvas.addEventListener("pointermove", (event) => {
   if (!tree.data || !tree.data.tree) return;
-  const hit = bloomAt(event), tipBox = $("bloomtip");
+  const tipBox = $("bloomtip");
+  if (bloomView.dragging()) { tipBox.hidden = true; return; }
+  const hit = bloomAt(event);
   if (hit.leaf !== bloom.hover) { bloom.hover = hit.leaf || null; drawBloom(); }
   bloomCanvas.style.cursor = hit.leaf || hit.region ? "pointer" : "default";
   if (!hit.leaf && !hit.region) { tipBox.hidden = true; return; }
   if (hit.leaf) { const item = tree.data.items[hit.leaf.id] || ["", null];
-    tipBox.replaceChildren(el("strong", { textContent: item[0].length > 90 ? item[0].slice(0, 89) + "…" : item[0] }), el("small", { textContent: (item[1] || "no date") + " · click to select" }));
+    tipBox.replaceChildren(el("strong", { textContent: item[0].length > 90 ? item[0].slice(0, 89) + "…" : item[0] }), el("small", { textContent: (item[1] || "no date") + " · click for details" }));
   } else tipBox.replaceChildren(el("strong", { textContent: hit.region.node.name }), el("small", { textContent: plural(hit.region.node.size) + " · click to open" }));
   tipBox.hidden = false;
   tipBox.style.left = Math.max(4, Math.min(hit.x + 14, hit.w - tipBox.offsetWidth - 6)) + "px"; tipBox.style.top = (hit.y + 16) + "px";
@@ -2650,7 +2799,8 @@ bloomCanvas.addEventListener("pointerleave", () => { $("bloomtip").hidden = true
 bloomCanvas.addEventListener("click", (event) => {
   if (!tree.data || !tree.data.tree) return;
   const hit = bloomAt(event);
-  if (hit.leaf) { if (selection.has(hit.leaf.id)) selection.delete(hit.leaf.id); else selection.add(hit.leaf.id); refreshSelection(); drawBloom(); }
+  if (bloomView.moved) return;
+  if (hit.leaf) openPanel(hit.leaf.id);
   else if (hit.region) { tree.path = hit.region.path.slice(); drawTree(); }
 });
 
@@ -2771,6 +2921,7 @@ $("view-save").onclick = () => busy($("view-save"), async () => {
 
 // Everything on screen belongs to the collection that was open: start afresh.
 async function afterSwitch(message) {
+  closePanel(); svgViews.clear(); threadView.reset(); bloomView.reset();
   selection.clear(); keepNote = false;
   setClusterFilter(null);
   facets.tags = []; facets.platform = ""; facets.from = ""; facets.to = ""; facetIds = null; facetOptionsAt = 0;
@@ -3149,11 +3300,7 @@ async function loadBookmarks(reset) {
         el("th", { textContent: "Published" })])]), body]));
     }
     for (const item of data.items) {
-      const href = safeLink(item.url);
-      const title = href
-        ? el("a", { href, target: "_blank", rel: "noopener noreferrer", textContent: item.title || item.url })
-        : el("span", { textContent: item.title || item.url });
-      const cell = el("td", {}, [title]);
+      const cell = el("td", {}, [bookmarkLink(item)]);
       if (item.summary) cell.append(el("div", { className: "sum", textContent: item.summary }));
       if (item.tags.length) cell.append(el("div", { className: "chips" }, item.tags.map((t) => el("span", { className: "chip", textContent: t }))));
       cell.append(el("div", { className: "tagline", style: "margin-top:4px" }, [similarButton({ id: item.id, title: item.title || item.url })]));

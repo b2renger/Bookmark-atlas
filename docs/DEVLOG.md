@@ -4,6 +4,25 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-13: v0.14.0 published; phase 15, pan and zoom everywhere, side panel
+
+**Asked:** pan and zoom in all visualisations; every link openable in a side
+panel and in the browser.
+
+**Works:** three small helpers, `panZoom` (canvas), `svgPanZoom` (viewBox,
+kept by name across redraws) and `domPanZoom` (CSS transform, for the grid);
+`openPanel(id)` and a single `bookmarkLink` used everywhere a bookmark is
+named. The map's own detail card is replaced by the panel.
+
+**Decisions:** the wheel zooms wherever the pointer is over a picture, as on
+the map. The panel shows details, not the page. Escape closes it and focus
+returns to where it was.
+
+**Verified:** browser run on the real collection: panel from the list, the
+map, a thread, the tree and a grid cell; open in a new tab; Ctrl+click; zoom
+and pan on each picture, then a click on a mark while zoomed lands on the
+right bookmark. No server change; 271 Python tests still pass.
+
 ## 2026-11-12: v0.13.0 published on three platforms; phase 14, workspaces
 
 **Asked:** a workspace feature, to import specific data from other sources and

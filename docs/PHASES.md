@@ -21,6 +21,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 12 | Visual loose ends, 3D link graph, pictures to keep | v0.12.0 | done |
 | 13 | Snapshot comparison, Linux and macOS builds, screenshots | v0.13.0 | done; Linux and macOS not yet used by a person |
 | 14 | Workspaces and browser bookmarks | v0.14.0 | done |
+| 15 | Pan and zoom everywhere; the bookmark side panel | v0.15.0 | done |
 
 ## Phase 0: scaffolding
 
@@ -333,3 +334,20 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Left out:** renaming a workspace; remembering which one was open when the
   app restarts (it always starts in the main collection); comparing two
   workspaces directly (use Compare with a snapshot of one).
+
+## Phase 15: pan and zoom everywhere; the bookmark side panel
+
+- **Every picture zooms and moves the same way:** scroll to zoom around the
+  pointer, drag to move, double-click to go back. Threads, the whole tree, the
+  grid, the picture of topics and the monthly bars join the map.
+- **Pointing and clicking stay exact while zoomed,** and a drag is never taken
+  for a click.
+- **One side panel for any bookmark,** from wherever it is named: the list, a
+  dot on the map, a thread, a stroke of the tree, a grid cell, the lists in
+  Links. It shows the summary, dates, tags (click one to filter on it), the
+  bookmarks most like it (click one to go on), and **Open in the browser**.
+- **Ctrl, Shift or middle click** on a name still goes straight to the page.
+- **Read as:** the panel shows the bookmark's details, not the web page
+  itself. Showing the live page inside the app is a separate piece of work
+  (many sites refuse to be embedded, and it means loading outside content in
+  the app).

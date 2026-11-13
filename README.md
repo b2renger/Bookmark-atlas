@@ -150,6 +150,12 @@ under any bookmark shows its nearest neighbours.
 publication you save things, and which topics and tags take more or less room
 in the last 90 days.
 
+Every picture can be zoomed and moved: scroll to zoom, drag to move,
+double-click to go back. And every bookmark named anywhere (in a list, on the
+map, on a thread, on the tree) opens a **side panel** with its summary, tags
+and the bookmarks most like it, and a button to open the page in your browser.
+Ctrl+click goes straight to the page.
+
 **Workspaces** are copies of part of your collection that live apart: their
 own tags, topics, map, views, grooming history and Notion table. Start one
 from a filter, a selection, a topic, everything, or nothing; bring data in
