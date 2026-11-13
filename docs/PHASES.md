@@ -23,6 +23,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 14 | Workspaces and browser bookmarks | v0.14.0 | done |
 | 15 | Pan and zoom everywhere; the bookmark side panel | v0.15.0 | done |
 | 16 | In-app guide, getting-started steps, Notion token help | v0.16.0 | done |
+| 17 | Grid cells named apart; 3D arrangements in plain sight | v0.17.0 | done |
 
 ## Phase 0: scaffolding
 
@@ -374,3 +375,18 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   Settings.
 - **Header:** the bookmark count moved to Settings on windows narrower than
   1500 px, to leave room for twelve tabs.
+
+## Phase 17: grid cells named apart; 3D in plain sight
+
+- **Reported:** many grid cells carried the same name ("Open Source", "LLM").
+  Each cell was named by its most frequent telling tag, and neighbours share
+  that tag by construction.
+- **Now each cell is named by what sets it apart:** tags carried by many cells
+  weigh less, and a name given to a larger cell is not given again while the
+  cell has another tag that describes it. On the test collection: 88 cells,
+  88 different names (before: "Open Source" on 4, "ComfyUI" on 5).
+- **Reported:** the 3D views could not be found. They were two entries of a
+  drop-down that only appeared once the map was drawn.
+- **Now the five arrangements are buttons above the map,** always visible,
+  the two 3D ones labelled as such. Pressed before the map exists, they say
+  to draw the map first.

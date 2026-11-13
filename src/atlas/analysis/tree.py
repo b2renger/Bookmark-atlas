@@ -59,6 +59,52 @@ def telling_tags(tags: dict, ids: list[str], against: Counter, against_total: in
     return [name for name, _ in scored[:limit]]
 
 
+def distinct_names(groups: dict, tags: dict) -> dict:
+    """A name for each group of bookmarks that tells it apart from the others.
+
+    ``groups`` maps a key to bookmark IDs. A tag that many groups carry says
+    little about any of them, so tags are weighed by how few groups have them,
+    and a name already given to a larger group is not given again while the
+    group has another tag that describes it. Returns ``{key: [name, more...]}``:
+    the name first, then up to two other telling tags.
+    """
+    counts = {key: Counter(t for b in ids for t in tags.get(b, [])) for key, ids in groups.items()}
+    spread = Counter(tag for counter in counts.values() for tag in counter)
+    total = max(len(groups), 1)
+    taken: set[str] = set()
+    names = {}
+    for key in sorted(groups, key=lambda k: (-len(groups[k]), str(k))):
+        size = len(groups[key])
+        if not size or not counts[key]:
+            names[key] = []
+            continue
+        ranked = sorted(
+            counts[key].items(),
+            key=lambda item: (
+                -(item[1] / size) * math.log(1.0 + total / spread[item[0]]),
+                -item[1],
+                item[0],
+            ),
+        )
+        # A name must describe the group: carried by a fifth of it, and not by one bookmark only.
+        enough = max(2, math.ceil(size * 0.2)) if size > 2 else 1
+        solid = [tag for tag, count in ranked if count >= enough]
+        fresh = [tag for tag in solid if tag not in taken]
+        if fresh:
+            name = fresh[0]
+        elif solid:
+            # Nothing of its own: say the shared tag, and the next thing that sets it apart.
+            other = next((tag for tag, _ in ranked if tag != solid[0] and tag not in taken), None)
+            name = f"{solid[0]} · {other}" if other else solid[0]
+        else:
+            name = next((tag for tag, _ in ranked if tag not in taken), ranked[0][0])
+        taken.add(name)
+        taken.update(part for part in name.split(" · "))
+        rest = [tag for tag, _ in ranked if tag not in name.split(" · ")][:2]
+        names[key] = [name, *rest]
+    return names
+
+
 def build(ids, matrix, labels, centroids, tags: dict, topic_labels: dict, seed: int = 0) -> dict:
     """The tree for a clustering: ``ids`` and rows of ``matrix`` are aligned,
     ``labels`` gives each row's cluster, ``topic_labels`` each cluster's name."""

@@ -448,7 +448,7 @@ def grid_run(conn: sqlite3.Connection) -> dict:
 
 def grid_data(conn: sqlite3.Connection) -> dict:
     """The grid as drawn: for each cell its size, telling tags and a few titles."""
-    from atlas.analysis.tree import telling_tags
+    from atlas.analysis.tree import distinct_names
 
     run = conn.execute(
         "SELECT * FROM runs WHERE kind = 'som' ORDER BY created_at DESC, rowid DESC LIMIT 1"
@@ -468,12 +468,12 @@ def grid_data(conn: sqlite3.Connection) -> dict:
         members.setdefault(row["cluster"], []).append(row["bookmark_id"])
         titles[row["bookmark_id"]] = row["title"] or row["url"]
     _, _, _, tags = _documents(conn)
-    overall = Counter(tag for names in tags.values() for tag in names)
     placed = sum(len(ids) for ids in members.values())
+    named = distinct_names(members, tags)
     cells = []
     for number in range(params["rows"] * params["cols"]):
         ids = members.get(number, [])
-        top = telling_tags(tags, ids, overall, max(placed, 1)) if ids else []
+        top = named.get(number, [])
         cells.append(
             {
                 "cell": number,

@@ -48,10 +48,12 @@ def test_grid_run_places_every_bookmark_once(path):  # noqa: F811
     assert sum(cell["size"] for cell in data["cells"]) == 72 and data["missing"] == 0
     placed = [bookmark for cell in data["cells"] for bookmark in cell["ids"]]
     assert len(placed) == len(set(placed)) == 72
-    # A cell holds one topic: its bookmarks share their topic tag.
+    # A cell holds one topic: the topic tag is among its tags. (The name itself is
+    # chosen to tell the cell apart from its neighbours, which share that tag.)
     for cell in data["cells"]:
         if cell["size"]:
-            assert cell["tags"][0] in ("Splats", "Language models", "Audio")
+            parts = " · ".join(cell["tags"]).split(" · ")
+            assert any(tag in ("Splats", "Language models", "Audio") for tag in parts)
     # Drawing again replaces the grid; a deleted bookmark leaves it.
     again = store.grid_run(conn)
     assert conn.execute("SELECT COUNT(*) FROM runs WHERE kind = 'som'").fetchone()[0] == 1
@@ -145,3 +147,36 @@ def test_grid_and_tree_through_the_api_and_in_a_snapshot(path, tmp_path):  # noq
     shared = store.tree_data(received)
     assert shared["tree"]["size"] == 10 and shared["missing"] == 0
     assert tree.find(shared["tree"], topic["id"])[0]["name"] == "Renamed"
+
+
+def test_groups_get_names_that_tell_them_apart():
+    tags = {}
+    groups = {}
+    # Three groups all tagged "Open Source"; each also has something of its own.
+    for key, own, size in (("a", "Rust", 12), ("b", "Blender", 8), ("c", "Audio", 5)):
+        groups[key] = [f"{key}{i}" for i in range(size)]
+        for i, bookmark in enumerate(groups[key]):
+            tags[bookmark] = ["Open Source"] + ([own] if i % 2 == 0 else [])
+    groups["d"] = ["d0", "d1", "d2"]
+    for bookmark in groups["d"]:
+        tags[bookmark] = ["Open Source"]  # nothing of its own
+    groups["e"] = []
+    groups["f"] = ["f0"]
+    tags["f0"] = []
+    names = tree.distinct_names(groups, tags)
+    assert [names[k][0] for k in "abc"] == ["Rust", "Blender", "Audio"]
+    assert names["a"][1:] == ["Open Source"]
+    assert names["d"][0] == "Open Source"  # the only thing it has; free, since nobody took it
+    assert names["e"] == [] and names["f"] == []
+    firsts = [value[0] for value in names.values() if value]
+    assert len(firsts) == len(set(firsts))
+    # Two groups with the very same tags cannot both be told apart by one tag.
+    twins = {"x": ["x0", "x1"], "y": ["y0", "y1"]}
+    same = {b: ["LLM", "Agents"] for ids in twins.values() for b in ids}
+    named = tree.distinct_names(twins, same)
+    assert named["x"][0] != named["y"][0] and {named["x"][0], named["y"][0]} == {"LLM", "Agents"}
+    # A tag carried by a single bookmark of a large group does not name it.
+    big = {"g": [f"g{i}" for i in range(10)], "h": ["h0", "h1"]}
+    mixed = {b: ["Common"] for b in big["g"] + big["h"]}
+    mixed["g0"] = ["Common", "Oddity"]
+    assert tree.distinct_names(big, mixed)["g"][0] == "Common"

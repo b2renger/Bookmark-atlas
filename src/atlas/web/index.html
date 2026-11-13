@@ -102,6 +102,10 @@
   #tree-ask { margin: 10px 0; padding: 8px 12px; background: var(--chip); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   #facet-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   #facet-count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #map-arrange { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+  #map-arrange button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  #map-views .quiet { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+  #map-views { position: relative; }
   #map-views { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-bottom: 12px; }
   #map-views select { width: auto; }
   #map-time { width: 100%; min-width: 180px; padding: 0; }
@@ -366,8 +370,16 @@
         <button class="action" id="map-out" aria-label="Zoom out">−</button>
         <button class="action" id="map-reset">Reset view</button>
       </div>
+      <div id="map-arrange" role="group" aria-label="Arrange the bookmarks by">
+        <span class="tagline">Arrange by</span>
+        <button class="action" data-layout="similarity" aria-pressed="true">Similarity</button>
+        <button class="action" data-layout="timeline" aria-pressed="false">Timeline</button>
+        <button class="action" data-layout="grid" aria-pressed="false">Grid</button>
+        <button class="action" data-layout="spacetime" aria-pressed="false">Space and time · 3D</button>
+        <button class="action" data-layout="links3d" aria-pressed="false">Links · 3D</button>
+      </div>
       <div id="map-views" hidden>
-        <div><label for="map-layout">Arrange by</label><select id="map-layout">
+        <div class="quiet"><label for="map-layout">Arrange by</label><select id="map-layout" tabindex="-1" aria-hidden="true">
           <option value="similarity">Similarity</option><option value="timeline">Timeline</option>
           <option value="grid">Grid</option><option value="spacetime">Space and time (3D)</option>
           <option value="links3d">Links (3D)</option></select></div>
@@ -671,7 +683,8 @@
         <p><strong>Colour means state, not topic</strong>: blue is the topic in focus, green matches the
           highlight search, orange is selected, grey is everything else. Topics are named by labels;
           click a label to focus that topic. Small faint dots are left out by the filter.</p>
-        <p><strong>Arrange by</strong> moves the same dots:</p>
+        <p>The <strong>Arrange by</strong> buttons, just above the picture, move the same dots. The last
+          two are the 3D views:</p>
         <ul>
           <li><strong>Similarity</strong>: close dots are alike. Distances between far groups mean little.</li>
           <li><strong>Timeline</strong>: left to right is time, one row per topic. See when each topic was active.</li>
@@ -686,8 +699,8 @@
 
       <details id="guide-grid"><summary>Where the collection is dense (Grid)</summary><div>
         <p>A self-organising map: every bookmark falls in one cell, and neighbouring cells hold related
-          bookmarks. The bigger the disc, the more bookmarks; the name under it is the cell's most
-          telling tag. Where the map shows what is alike, the grid shows how much there is of each
+          bookmarks. The bigger the disc, the more bookmarks; the name under it is the tag that best
+          sets the cell apart from the others (point at it for its other tags). Where the map shows what is alike, the grid shows how much there is of each
           thing and which themes border which.</p>
         <p>Click a cell to read it, select its bookmarks or open them in the list. “Highlight” turns
           the cells that contain a match green.</p>
@@ -1915,9 +1928,21 @@ async function setMapLayout(name, snap) {
   canvas.setAttribute("aria-label", "Bookmarks as dots. " + { similarity: "Similar bookmarks are drawn close together.", timeline: "Left to right is time, with one row per topic.",
     grid: "Bookmarks are gathered in the cells of the grid.", spacetime: "The map lies flat and time rises from it.",
     links3d: "Bookmarks float in space, joined by lines to the three they resemble most." }[map.layout]);
+  syncArrange();
   if (map.data && map.data.layout) { mapNote(); mapLegend(); mapRelayout(snap); if (map.layout === "links3d") startWeb(); }
 }
 $("map-layout").onchange = () => setMapLayout($("map-layout").value);
+// The five arrangements as buttons, always in sight: before the map is drawn
+// they say what is missing instead of doing nothing.
+function syncArrange() {
+  for (const button of document.querySelectorAll("#map-arrange button")) button.setAttribute("aria-pressed", button.dataset.layout === map.layout ? "true" : "false");
+}
+for (const button of document.querySelectorAll("#map-arrange button")) {
+  button.onclick = () => {
+    if (!map.data || !map.data.layout) { note("map-note", "Draw the map first (the button above): the arrangements, 3D included, move its dots.", "bad"); return; }
+    setMapLayout(button.dataset.layout).then(syncArrange, syncArrange);
+  };
+}
 
 // Playing time: only what existed on a given day is shown.
 function syncTimeControls() {
@@ -1992,6 +2017,7 @@ function applyMapData(data) {
   $("map-run").textContent = data.layout ? "Redraw the map" : "Draw the map";
   $("map-run").className = data.layout ? "action" : "action primary";
   $("map-views").hidden = !data.layout;
+  syncArrange();
   if (!data.layout) { note("map-note", "No map yet. Drawing it takes a few seconds: similar bookmarks are placed close together.", "muted"); mapLegend(); drawMap(); return; }
   if (map.layout === "grid" && !(map.cells && map.cells.grid)) map.layout = "similarity";
   if (map.layout === "links3d" && !map.web) map.layout = "similarity";
@@ -2150,7 +2176,7 @@ function drawGrid() {
     const button = el("button", { className: "cell", type: "button" }, [
       el("div", { className: "disc" }, [disc]),
       el("span", { className: "n", textContent: String(cell.size) }),
-      el("span", { textContent: cell.tags[0] || "—" })]);
+      el("span", { textContent: cell.tags[0] || "—", title: cell.tags.join(" · ") })]);
     button.title = plural(cell.size) + (cell.tags.length ? " · " + cell.tags.join(", ") : "")
       + (hits ? " · " + hits + " matching" : "") + (selected ? " · " + selected + " selected" : "");
     button.setAttribute("aria-label", "Row " + (cell.row + 1) + ", column " + (cell.col + 1) + ": " + button.title);

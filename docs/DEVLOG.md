@@ -4,6 +4,20 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-13: v0.16.0 published; phase 17, grid names and 3D buttons
+
+**Reported by the user, with a screenshot:** repeated names on the grid; the
+3D not found.
+
+**Works:** `tree.distinct_names` (weight by how few groups carry a tag, greedy
+from the largest group, a name needs a fifth of the group); `grid_data` uses
+it. The map's arrangements are five buttons (`#map-arrange`), kept in step
+with the old selector, which stays for saved views.
+
+**Verified:** 1 new Python test (273 in all); browser run in dark mode on the
+real collection: 88 distinct names; each button, including pressing 3D before
+the map exists.
+
 ## 2026-11-13: v0.15.0 published; phase 16, guide, getting-started steps, token help
 
 **Asked:** explain and refine the in-app documentation and add a tutorial;
