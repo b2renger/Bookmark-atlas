@@ -273,7 +273,8 @@ def test_layout_copes_with_tiny_and_large_inputs(monkeypatch):
     assert np.isfinite(project.layout(np.random.default_rng(0).normal(size=(6, 4)))[0]).all()
     monkeypatch.setattr(project, "TSNE_LIMIT", 10)
     points, method = project.layout(np.random.default_rng(0).normal(size=(50, 4)))
-    assert method == "pca" and points.shape == (50, 2)
+    assert method == "t-sne-landmarks" and points.shape == (50, 2)
+    assert np.isfinite(points).all() and points.min() >= 0 and points.max() <= 1
 
 
 def test_map_data_places_every_bookmark_and_each_topic(conn):

@@ -11,6 +11,8 @@ from __future__ import annotations
 from atlas.analysis import require_numpy
 
 TSNE_LIMIT = 3500
+LANDMARKS = 2500  # bookmarks laid out exactly when the collection is larger than the limit
+TRUST_SAMPLE = 3000
 
 
 def pca(np, x, dims: int = 2):
@@ -80,12 +82,50 @@ def tsne(x, *, seed: int = 0, perplexity: float = 30.0, iterations: int = 500):
     return y
 
 
+def _by_landmarks(np, x, seed: int):
+    """A map for a collection too large for exact t-SNE, whose cost grows with
+    the square of the size. A sample of ``LANDMARKS`` bookmarks is laid out
+    exactly; every other bookmark is then set among the sample's bookmarks it
+    resembles most, nearer to the closest ones."""
+    n = len(x)
+    rng = np.random.default_rng(seed)
+    count = min(LANDMARKS, TSNE_LIMIT)
+    chosen = np.sort(rng.choice(n, size=count, replace=False))
+    placed = tsne(x[chosen], seed=seed)
+    y = np.empty((n, 2))
+    y[chosen] = placed
+    marks = x[chosen]
+    marks_squared = np.einsum("ij,ij->i", marks, marks)
+    # How far apart neighbours are drawn, to spread bookmarks that land together.
+    spread = float(np.median(np.abs(placed - placed.mean(axis=0)))) / np.sqrt(count) * 1.5
+    is_mark = np.zeros(n, dtype=bool)
+    is_mark[chosen] = True
+    rest = np.flatnonzero(~is_mark)
+    near = min(6, count - 1)
+    for start in range(0, len(rest), 1024):
+        rows = rest[start : start + 1024]
+        block = x[rows]
+        distance = np.maximum(
+            np.einsum("ij,ij->i", block, block)[:, None] - 2.0 * (block @ marks.T) + marks_squared,
+            0.0,
+        )
+        closest = np.argpartition(distance, near, axis=1)[:, :near]
+        d = np.take_along_axis(distance, closest, axis=1)
+        weight = 1.0 / (d + 1e-9) ** 2  # the nearest one counts most
+        weight /= weight.sum(axis=1, keepdims=True)
+        y[rows] = np.einsum("ij,ijk->ik", weight, placed[closest])
+    y[rest] += rng.normal(scale=spread, size=(len(rest), 2))
+    return y
+
+
 def layout(x, *, seed: int = 0):
     """``(points, method)``: an (n, 2) array scaled into the unit square."""
     np = require_numpy()
     x = np.asarray(x, dtype=np.float64)
-    method = "t-sne" if len(x) <= TSNE_LIMIT else "pca"
-    y = tsne(x, seed=seed) if method == "t-sne" else pca(np, x)
+    if len(x) <= TSNE_LIMIT:
+        method, y = "t-sne", tsne(x, seed=seed)
+    else:
+        method, y = "t-sne-landmarks", _by_landmarks(np, x, seed)
     if len(y):
         low, high = y.min(axis=0), y.max(axis=0)
         span = float(max((high - low).max(), 1e-12))
@@ -103,6 +143,10 @@ def trustworthiness(x, y, neighbours: int = 10) -> float:
     n = len(x)
     if n <= neighbours * 2:
         return 1.0
+    if n > TRUST_SAMPLE:
+        # Measured among a sample: the full measure needs every pair of bookmarks.
+        keep = np.sort(np.random.default_rng(0).choice(n, size=TRUST_SAMPLE, replace=False))
+        x, y, n = x[keep], y[keep], TRUST_SAMPLE
 
     def squared(a):
         s = np.einsum("ij,ij->i", a, a)

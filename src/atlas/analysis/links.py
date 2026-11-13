@@ -19,15 +19,32 @@ from datetime import date, timedelta
 from atlas.analysis import require_numpy, store
 
 NEIGHBOURS = 10
+BLOCK = 1024
 
 
 def _nearest(np, matrix, k: int):
     """Indices and similarities of the ``k`` nearest rows of each row."""
-    similarity = matrix @ matrix.T
-    np.fill_diagonal(similarity, -np.inf)
-    k = max(1, min(k, len(matrix) - 1))
-    index = np.argsort(-similarity, axis=1, kind="stable")[:, :k]
-    return index, np.take_along_axis(similarity, index, axis=1)
+    n = len(matrix)
+    k = max(1, min(k, n - 1))
+    index = np.empty((n, k), dtype=np.int64)
+    values = np.empty((n, k), dtype=matrix.dtype)
+    # A block of rows at a time: the whole table of similarities would need
+    # gigabytes for a collection of fifteen thousand.
+    for start in range(0, n, BLOCK):
+        similarity = matrix[start : start + BLOCK] @ matrix.T
+        rows = np.arange(len(similarity))
+        similarity[rows, start + rows] = -np.inf
+        if k < n - 1:
+            part = np.argpartition(-similarity, k, axis=1)[:, :k]
+        else:
+            part = np.tile(np.arange(n), (len(similarity), 1))
+            part = part[part != (start + rows)[:, None]].reshape(len(similarity), n - 1)
+        found = np.take_along_axis(similarity, part, axis=1)
+        # Ties go to the earlier row, as a full stable sort would have them.
+        order = np.lexsort((part, -found), axis=1)
+        index[start : start + BLOCK] = np.take_along_axis(part, order, axis=1)
+        values[start : start + BLOCK] = np.take_along_axis(found, order, axis=1)
+    return index, values
 
 
 def _load(conn: sqlite3.Connection):

@@ -166,7 +166,9 @@ own tags, topics, map, views, grooming history and Notion table. Start one
 from a filter, a selection, a topic, everything, or nothing; bring data in
 from a CSV, a bundle, a snapshot, another Notion table or a browser's
 bookmarks file; then merge it back (merging only adds) or delete it. They are
-kept in `Workspaces/` inside your data folder.
+kept in `Workspaces/` inside your data folder. A database dump (an `.sql`
+export of a site that kept links) is read into a workspace of its own: links,
+titles, descriptions, dates and tags only, never accounts.
 
 In **Views**, save where you are under a name and come back to it later, or
 export a **snapshot**: one file with bookmarks, clusters, map and views that
@@ -224,6 +226,8 @@ Everything the interface does is also a command:
 atlas init                              # create or upgrade the database
 atlas import-csv export.csv --dry-run   # a Notion CSV export, report only
 atlas import-csv export.csv
+atlas import-sql old_site.sql --dry-run # a MySQL/MariaDB dump: what it holds
+atlas import-sql old_site.sql --name "Old site"   # its links, into a new workspace
 atlas notion token                      # enter the token (input hidden)
 atlas notion tables                     # list tables with their IDs
 atlas notion select <table-id>

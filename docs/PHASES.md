@@ -430,3 +430,27 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Measured in a browser:** 1912 px window: page 1760 px with equal margins,
   1472 px with the panel open, back to 1760 px on closing; 1366 px: 1366 then
   926; 900 px: unchanged, panel over the page. No sideways scrolling.
+
+## Phase 20: import a database dump, and collections of fifteen thousand
+
+- **Asked for:** read an old site's database export (a phpMyAdmin dump of a
+  MariaDB database, 15,252 saved links from 2007 to 2019) into Atlas.
+- **`atlas.sqldump`** reads the `.sql` file as text and never runs it. It
+  finds the table of links (a column named url or link), its title,
+  description and date columns, and the tags tied to it through a table of
+  pairs. Everything else in the dump is left where it is.
+- **Privacy:** no account, author, e-mail address or password is copied, not
+  even into the record kept of what was read. Addresses inside descriptions
+  are replaced; a link carrying an address is skipped. A test searches the
+  resulting file for them.
+- **Repairs on the way in:** accents written in one encoding and read in
+  another, HTML entities, quotes stored as backslashes; the same link saved
+  several times becomes one bookmark; text that filled its column is marked
+  (an ellipsis, or the tag "link cut short"); tags used once are left out.
+- **Where it goes:** always a new workspace, opened after the import, from
+  Settings (Import a file, with a preview) or `atlas import-sql`.
+- **Large collections:** the neighbour search works a block of rows at a time
+  (the threads went from 4.8 GB to 0.5 GB of memory on 14,163 bookmarks);
+  above 3,500 bookmarks the map lays out a sample of 2,500 exactly and sets
+  the others among them (60 s); thousands of dots are drawn a shade at a time
+  (84 ms a frame down to 10); the more lines, the fainter each.

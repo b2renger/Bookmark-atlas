@@ -4,6 +4,41 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-13: v0.18.0 published; phase 20, SQL dump import and scale
+
+**Asked for:** import an old database export. The file given was a phpMyAdmin
+dump of a MariaDB database (not SQLite): 15,252 links, 8,621 tags, 471
+accounts. Answers: new workspace, no authors, no binders or categories,
+unpublished ones too.
+
+**Works:** `sqldump.read_tables` (a hand-written reader of `INSERT`
+statements), `column_widths`, `repair_text` (runs that form a UTF-8 sequence
+once mapped back through Windows-1252, up to three passes), `clean`,
+`read_dump` (finds the link table and the tag tables by column names),
+`import_dump`, `into_workspace`, `describe`. `/api/import-csv` hands a dump
+to `App._import_sql`. CLI `import-sql`. `links._nearest` in blocks of 1,024
+rows; `project._by_landmarks` and a sampled `trustworthiness`; batched dots
+in `drawMap`.
+
+**Decisions:** the dump is parsed, never executed. Table and column roles are
+guessed from names, so other link-keeping schemas may work, but only this
+one was tried. Privacy is by construction: only five fields are taken.
+Single-use tags are dropped from bookmarks but kept in `source_records.raw`.
+The published date is left empty: in this schema it is when the site showed
+the link, not when the page was written.
+
+**Verified:** 9 new tests on an invented dump (282 in all), one of which
+searches the workspace file for addresses and password hashes. The real file,
+locally only: 14,163 bookmarks in 5 s, 8,115 repaired, 6 still broken,
+1,084 merged; every view opened in a browser with timings. The real file and
+its workspace are not in the repository.
+
+**Not verified:** dumps from other tools (mysqldump's extended inserts should
+read the same; PostgreSQL's `COPY` blocks will not).
+
+**Next:** the grooming scripts on this workspace (dead links are likely many
+for 2007-2012); a name for the workspace chosen at import.
+
 ## 2026-11-13: v0.17.0 published; phase 18, 3D link layout by topic
 
 **Reported by the user, with a screenshot:** Links · 3D on 3,396 bookmarks was

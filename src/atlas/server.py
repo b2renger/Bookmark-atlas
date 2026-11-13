@@ -29,7 +29,18 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from atlas import __version__, batch, bundle, db, groom, settings, snapshot, views, workspaces
+from atlas import (
+    __version__,
+    batch,
+    bundle,
+    db,
+    groom,
+    settings,
+    snapshot,
+    sqldump,
+    views,
+    workspaces,
+)
 from atlas.exporter import facet_options, matching_ids, search_clause, status
 from atlas.importer import (
     import_browser_bookmarks,
@@ -220,12 +231,30 @@ class App:
         finally:
             conn.close()
 
+    def _import_sql(self, content: str, filename: str, dry_run: bool) -> dict:
+        """A database dump goes into a workspace of its own, which is then opened."""
+        name = Path(filename).stem.replace("_", " ").strip() or "Imported"
+        if dry_run:
+            figures = sqldump.describe(sqldump.read_dump(content))
+            created = None
+        else:
+            made = sqldump.into_workspace(self.home_path, content, name)
+            figures, created = made["reading"], made["workspace"]
+            self.db_path = workspaces.path_of(self.home_path, created["id"])
+        conn = self._conn()
+        try:
+            return {"dump": figures, "workspace": created, "name": name, "status": status(conn)}
+        finally:
+            conn.close()
+
     def import_csv(self, body: dict) -> dict:
         content = body.get("content")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("Choose a file first.")
         content = content.lstrip("\ufeff")
         dry_run = bool(body.get("dry_run"))
+        if sqldump.looks_like_sql_dump(content):
+            return self._import_sql(content, str(body.get("filename") or "Imported"), dry_run)
         conn = self._conn()
         try:
             if looks_like_browser_export(content):

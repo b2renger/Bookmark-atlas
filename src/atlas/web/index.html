@@ -1012,10 +1012,15 @@
         bookmarks file exported by a browser (an .html file; its folders become tags). No token
         needed. Links already in the collection are not duplicated. The file goes into whatever
         is open: your collection, or a workspace.</p>
+      <p class="help">A fourth kind goes to a workspace of its own: a <strong>database dump</strong>
+        (an .sql file written by phpMyAdmin or mysqldump for a site that kept links). Only links,
+        titles, descriptions, dates and tags are read. Accounts, authors, e-mail addresses and
+        passwords stay in the file. Broken accents are repaired and repeated links merged.
+        Preview first to see what the file holds.</p>
       <div class="row">
         <div class="grow">
           <label for="csv-file">File</label>
-          <input type="file" id="csv-file" accept=".csv,.json,.html,.htm,text/csv,application/json,text/html">
+          <input type="file" id="csv-file" accept=".csv,.json,.html,.htm,.sql,text/csv,application/json,text/html">
         </div>
         <button class="action" id="preview-csv" disabled>Preview</button>
         <button class="action primary" id="run-csv" disabled>Import file</button>
@@ -1223,6 +1228,34 @@ function showCsvReport(report) {
   list.hidden = false;
 }
 
+// A database dump: what was found in it, and what was done to it on the way in.
+async function showDumpReport(result, dryRun) {
+  const d = result.dump;
+  const rows = [
+    ["Rows read", d.rows, "table “" + d.table + "”"],
+    ["Bookmarks", d.bookmarks, d.first_day ? "saved from " + d.first_day + " to " + d.last_day : ""],
+    ["Repeated links merged", d.merged, "one bookmark each, earliest date, all the tags"],
+    ["Accents repaired", d.repaired, "bookmarks whose text read like “ScÃ©nographie”"],
+    ["Links cut short", d.cut_links, "they filled their column; tagged “link cut short”, likely dead"],
+    ["Descriptions cut short", d.cut_texts, "they end with …"],
+    ["Without a title", d.no_title, ""],
+    ["Tags kept", d.tags_kept, ""],
+    ["Tags used once, left out", d.tags_dropped, "they tie nothing together"],
+    ["Rows skipped", d.skipped, "not a web link, or a link carrying an e-mail address"],
+    ["Tables not read", d.left_out.length, d.left_out.join(", ")],
+  ];
+  const list = $("csv-report");
+  list.replaceChildren();
+  for (const [label, value, hint] of rows) {
+    if (!value && label !== "Bookmarks") continue;
+    list.append(el("dt", { textContent: label }), el("dd", { textContent: value }), el("span", { textContent: hint }));
+  }
+  list.hidden = false;
+  if (dryRun) { note("csv-note", "Preview only, nothing was written. Importing will create the workspace “" + result.name + "” and open it; your collection is not touched.", "muted"); return; }
+  note("csv-note", "Imported into the new workspace “" + result.workspace.name + "”, now open. Next: Clusters, then the Map.", "good");
+  await afterSwitch("Workspace “" + result.workspace.name + "” opened: " + d.bookmarks + " bookmarks read from the dump.");
+}
+
 async function runCsv(button, dryRun) {
   const file = $("csv-file").files[0];
   if (!file) return;
@@ -1231,6 +1264,7 @@ async function runCsv(button, dryRun) {
     try {
       const content = await file.text();
       const result = await api("POST", "/api/import-csv", { filename: file.name, content, dry_run: dryRun });
+      if (result.dump) { await showDumpReport(result, dryRun); return; }
       note("csv-note", dryRun ? "Preview only, nothing was written." : "Import finished.", dryRun ? "muted" : "good");
       showCsvReport(result.report);
       if (!dryRun) { await refreshState(); await loadBookmarks(true); }
@@ -1827,9 +1861,11 @@ function drawMap() {
   if (map.layout === "links3d" && map.web && !map.anim) {
     const at = new Map();
     for (const point of map.data.points) if (!hiddenByTime(point) && passes(point.id)) at.set(point.id, toScreen(point, frame));
-    const mine = [], crowd = Math.min(1, Math.sqrt(2500 / Math.max(map.web.links.length, 1)));
+    // The more lines, the fainter each one, so that a mass of them stays a tone and not a blot.
+    const mine = [], crossing = map.web.links.reduce((sum, l) => sum + l.across, 0);
+    const faint = (n, most) => Math.max(0.03, most * Math.min(1, Math.sqrt(2500 / Math.max(n, 1))));
     for (const across of [false, true]) {
-      g.lineWidth = 1; g.strokeStyle = ink; g.globalAlpha = (across ? 0.42 : 0.16 * crowd) * (map.hover ? 0.5 : 1);
+      g.lineWidth = 1; g.strokeStyle = ink; g.globalAlpha = (across ? faint(crossing * 10, 0.42) : faint(map.web.links.length, 0.16)) * (map.hover ? 0.5 : 1);
       g.beginPath();
       for (const link of map.web.links) {
         if (link.across !== across) continue;
@@ -1854,16 +1890,38 @@ function drawMap() {
     drawn.push({ x, y, s, depth, layer: passes(point.id) ? stateOf(point) : "out" });
   }
   drawn.sort((a, b) => LAYER[a.layer] - LAYER[b.layer] || a.depth - b.depth);
+  // Many bookmarks: smaller dots, so the space between topics stays empty.
+  const web = map.layout === "links3d", count = map.data.points.length;
+  const shrink = web ? Math.max(0.45, Math.min(0.75, 0.75 * Math.sqrt(1000 / count))) * Math.min(1.8, Math.sqrt(map.scale))
+    : count > 4000 ? Math.max(0.55, Math.sqrt(4000 / count)) * Math.min(1.8, Math.sqrt(map.scale)) : 1;
+  const radiusOf = (d) => (d.layer === "out" ? 2.5 : d.layer === "neutral" ? 4 : 5) * shrink * (tilted ? Math.max(0.6, Math.min(1.5, d.s)) : 1);
+  // In the link graph, what is far is fainter, so near and far can be told apart.
+  const alphaOf = (d) => (d.layer === "out" ? 0.22 : d.layer === "neutral" && anyState ? 0.7 : 1) * (web && d.layer === "neutral" ? Math.max(0.35, Math.min(1, 0.68 + d.depth * 1.1)) : 1);
+  // Thousands of plain dots are drawn a shade at a time, without the ring that
+  // sets each apart: one by one they would take too long to follow the pointer.
+  const crowd = drawn.length > 4000, batches = new Map();
   for (const d of drawn) {
-    // Many bookmarks: smaller dots, so the space between topics stays empty.
-    const base = (d.layer === "out" ? 2.5 : d.layer === "neutral" ? 4 : 5) * (map.layout === "links3d" ? Math.max(0.45, Math.min(0.75, 0.75 * Math.sqrt(1000 / map.data.points.length))) * Math.min(1.8, Math.sqrt(map.scale)) : 1);
-    g.beginPath(); g.arc(d.x, d.y, base * (tilted ? Math.max(0.6, Math.min(1.5, d.s)) : 1), 0, Math.PI * 2);
-    g.globalAlpha = d.layer === "out" ? 0.22 : d.layer === "neutral" && anyState ? 0.7 : 1;
-    // In the link graph, what is far is fainter, so near and far can be told apart.
-    if (map.layout === "links3d" && d.layer === "neutral") g.globalAlpha *= Math.max(0.35, Math.min(1, 0.68 + d.depth * 1.1));
+    if (crowd && (d.layer === "out" || d.layer === "neutral")) {
+      const alpha = Math.round(alphaOf(d) * 8) / 8, key = d.layer + alpha;
+      if (!batches.has(key)) batches.set(key, { layer: d.layer, alpha, dots: [] });
+      batches.get(key).dots.push(d);
+      continue;
+    }
+    if (batches.size) flushDots();
+    g.beginPath(); g.arc(d.x, d.y, radiusOf(d), 0, Math.PI * 2);
+    g.globalAlpha = alphaOf(d);
     g.fillStyle = colours[d.layer]; g.fill();
     g.globalAlpha = 1;
     if (d.layer !== "out") { g.lineWidth = tilted ? 1.5 : 2; g.strokeStyle = surface; g.stroke(); }
+  }
+  flushDots();
+  function flushDots() {
+    for (const batch of [...batches.values()].sort((a, b) => LAYER[a.layer] - LAYER[b.layer] || a.alpha - b.alpha)) {
+      g.globalAlpha = batch.alpha; g.fillStyle = colours[batch.layer]; g.beginPath();
+      for (const d of batch.dots) { const r = radiusOf(d); g.moveTo(d.x + r, d.y); g.arc(d.x, d.y, r, 0, Math.PI * 2); }
+      g.fill();
+    }
+    g.globalAlpha = 1; batches.clear();
   }
   if (map.hover && !hiddenByTime(map.hover)) {
     const [x, y] = toScreen(map.hover, frame);
@@ -2926,6 +2984,7 @@ function threadLayout() {
     if (day > hi) break;
     const at = 0.1 + 0.9 * (day - lo) / (hi - lo);
     const month = m - (m % 3);
+    if (hi - lo > 4 * 365 && month !== 0) continue;      // many years: one mark a year
     threads.ticks.push({ at, mid: at, text: month === 0 ? String(y) : MONTH[month], edge: true, strong: month === 0 });
   }
 }

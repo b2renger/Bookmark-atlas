@@ -31,6 +31,42 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_import_sql(args: argparse.Namespace) -> int:
+    from atlas import sqldump
+
+    data = args.file.read_bytes()
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        text = data.decode("cp1252", "replace")
+    if args.dry_run:
+        figures = sqldump.describe(sqldump.read_dump(text))
+        print(f"Dry run, nothing written: {args.file}")
+    else:
+        db.open_ready(args.db).close()
+        made = sqldump.into_workspace(args.db, text, args.name or args.file.stem)
+        figures = made["reading"]
+        print(f"Imported {args.file} into the new workspace “{made['workspace']['name']}”")
+    lines = [
+        ("rows read", figures["rows"], f"table {figures['table']}"),
+        ("bookmarks", figures["bookmarks"], ""),
+        ("repeated links merged", figures["merged"], ""),
+        ("with accents repaired", figures["repaired"], ""),
+        ("links cut short", figures["cut_links"], f"tagged “{sqldump.TRUNCATED_TAG}”"),
+        ("descriptions cut short", figures["cut_texts"], "end with …"),
+        ("without a title", figures["no_title"], ""),
+        ("tags kept", figures["tags_kept"], ""),
+        ("tags used once, left out", figures["tags_dropped"], ""),
+        ("rows skipped", figures["skipped"], "not a web link"),
+    ]
+    for label, count, note in lines:
+        print(f"  {label:<30}{count:>6}" + (f"  ({note})" if note else ""))
+    if figures["first_day"]:
+        print(f"  saved from {figures['first_day']} to {figures['last_day']}")
+    print("  tables not read: " + (", ".join(figures["left_out"]) or "none"))
+    return 0
+
+
 def _cmd_import_csv(args: argparse.Namespace) -> int:
     from atlas.importer import import_csv
 
@@ -552,6 +588,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="report what would happen without writing"
     )
     import_csv.set_defaults(func=_cmd_import_csv)
+
+    import_sql = commands.add_parser(
+        "import-sql",
+        help="read the links of a MySQL/MariaDB dump (.sql) into a new workspace",
+    )
+    import_sql.add_argument("file", type=Path)
+    import_sql.add_argument("--name", help="name of the workspace (default: the file's name)")
+    import_sql.add_argument(
+        "--dry-run", action="store_true", help="report what the file holds without writing"
+    )
+    import_sql.set_defaults(func=_cmd_import_sql)
 
     import_bundle = commands.add_parser(
         "import-bundle", help="import a bundle shared by another Atlas user"
