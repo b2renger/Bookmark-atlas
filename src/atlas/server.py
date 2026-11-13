@@ -84,6 +84,7 @@ class App:
                 "data_folder": str(self.db_path.resolve().parent),
                 "snapshot": snapshot.snapshot_info(conn),
                 "workspace": workspaces.info(conn) if self.db_path != self.home_path else None,
+                "progress": _progress(conn),
                 "version": app_version(),
                 "status": status(conn),
                 "notion": {
@@ -93,6 +94,19 @@ class App:
                     "selected": selected(conn),
                 },
             }
+        finally:
+            conn.close()
+
+    def tutorial(self, body: dict) -> dict:
+        """Remember that the getting-started steps were put away, or bring them back."""
+        conn = self._conn()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('tutorial_hidden', ?)",
+                ("1" if body.get("hidden") else "0",),
+            )
+            conn.commit()
+            return {"progress": _progress(conn)}
         finally:
             conn.close()
 
@@ -739,6 +753,22 @@ class App:
             conn.close()
 
 
+def _progress(conn) -> dict:
+    """How far this collection has come, for the getting-started steps."""
+    kinds = {row[0] for row in conn.execute("SELECT DISTINCT kind FROM runs")}
+    count = lambda sql: conn.execute(sql).fetchone()[0]  # noqa: E731
+    hidden = conn.execute("SELECT value FROM meta WHERE key = 'tutorial_hidden'").fetchone()
+    return {
+        "bookmarks": count("SELECT COUNT(*) FROM bookmarks WHERE deleted_at IS NULL") > 0,
+        "groomed": count("SELECT COUNT(*) FROM script_runs") > 0,
+        "clustered": "cluster" in kinds,
+        "mapped": "projection" in kinds,
+        "tree": "tree" in kinds,
+        "saved_view": count("SELECT COUNT(*) FROM views") > 0,
+        "hidden": bool(hidden and hidden[0] == "1"),
+    }
+
+
 def _passing(conn, query: dict) -> set[str] | None:
     """The bookmarks that pass the shared filter, or None when nothing is filtered."""
     chosen = _facets(query)
@@ -856,6 +886,7 @@ def make_handler(app: App):
                 ("GET", "/api/links/related"): lambda: app.links_related(parse_qs(url.query)),
                 ("GET", "/api/links/threads"): lambda: app.links_threads(),
                 ("GET", "/api/trends"): lambda: app.trends_show(parse_qs(url.query)),
+                ("POST", "/api/tutorial"): lambda: app.tutorial(self._body()),
                 ("GET", "/api/workspaces"): lambda: app.workspaces_list(),
                 ("POST", "/api/workspaces"): lambda: app.workspace_create(self._body()),
                 ("POST", "/api/workspaces/open"): lambda: app.workspace_open(self._body()),

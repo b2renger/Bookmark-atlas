@@ -397,3 +397,38 @@ def test_selection_batch_export_and_bundle_import_through_the_api(site):
 def test_state_names_the_data_folder(site):
     state = site.call("GET", "/api/state")[1]
     assert state["data_folder"] == str(site.db_path.resolve().parent)
+
+
+def test_progress_follows_what_has_been_done(tmp_path):
+    from atlas import db as database
+    from atlas.cli import main
+    from atlas.server import App as Application
+
+    target = tmp_path / "atlas.sqlite"
+    main(["--db", str(target), "init"])
+    app = Application(target)
+    start = app.state()["progress"]
+    assert start == {
+        "bookmarks": False,
+        "groomed": False,
+        "clustered": False,
+        "mapped": False,
+        "tree": False,
+        "saved_view": False,
+        "hidden": False,
+    }
+    conn = database.open_ready(target)
+    conn.execute(
+        "INSERT INTO bookmarks (id, url, url_normalized, domain, title, created_at, updated_at) "
+        "VALUES ('b1', 'https://e.org/1', 'e.org/1', 'e.org', 'one', '2026-01-01', '2026-01-01')"
+    )
+    conn.execute(
+        "INSERT INTO runs (id, created_at, kind, algorithm, params, app_version) "
+        "VALUES ('r', '2026-01-01', 'cluster', 'x', '{}', 'x')"
+    )
+    conn.commit()
+    now = app.state()["progress"]
+    assert now["bookmarks"] and now["clustered"] and not now["mapped"]
+    assert app.tutorial({"hidden": True})["progress"]["hidden"] is True
+    assert app.state()["progress"]["hidden"] is True
+    assert app.tutorial({})["progress"]["hidden"] is False

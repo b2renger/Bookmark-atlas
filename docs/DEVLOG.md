@@ -4,6 +4,35 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-13: v0.15.0 published; phase 16, guide, getting-started steps, token help
+
+**Asked:** explain and refine the in-app documentation and add a tutorial;
+for instance, how to get a Notion token.
+
+**Read at the source (developers.notion.com, 2026-11-13):** personal access
+tokens are made at notion.so/developers/tokens (New token, name, capability
+"Notion API", expiry 7 days to 1 year, shown once), act as their creator and
+need nothing shared; who may create one depends on the plan. Internal
+connections are made at app.notion.com/developers/connections (Build >
+Internal connections > Create a new connection, token in the Configuration
+tab), by workspace owners only, and see nothing until a page or database is
+shared with them (••• > Connections > + Add connection, or the Content access
+tab).
+
+**Works:** `progress` in `/api/state`; `/api/tutorial`; the Guide tab; the "?"
+button; the Getting started card; the token how-to.
+
+**Decisions:** the steps are driven by facts in the collection, not by clicks,
+so they stay right after an import or in a workspace. The guide is in the app,
+not in a separate manual, so it ships with the version it describes.
+
+**Verified:** 1 new Python test (272 in all). Browser run: an empty collection
+(steps, the button of the next step, the token how-to and its two links) and
+the demo collection (ticks, "?" from five tabs, put away, reload, bring back).
+
+**Not verified:** Notion's screens themselves; the steps follow their
+documentation, and labels there can change.
+
 ## 2026-11-13: v0.14.0 published; phase 15, pan and zoom everywhere, side panel
 
 **Asked:** pan and zoom in all visualisations; every link openable in a side

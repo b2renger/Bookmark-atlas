@@ -150,6 +150,11 @@ under any bookmark shows its nearest neighbours.
 publication you save things, and which topics and tags take more or less room
 in the last 90 days.
 
+The app explains itself: a **Guide** tab with a section per tab (the **?** at
+the top right opens the section for where you are), five **getting-started
+steps** on the first screen that tick themselves off, and in Settings the
+steps to get a Notion token.
+
 Every picture can be zoomed and moved: scroll to zoom, drag to move,
 double-click to go back. And every bookmark named anywhere (in a list, on the
 map, on a thread, on the tree) opens a **side panel** with its summary, tags

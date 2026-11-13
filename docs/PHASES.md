@@ -22,6 +22,7 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 13 | Snapshot comparison, Linux and macOS builds, screenshots | v0.13.0 | done; Linux and macOS not yet used by a person |
 | 14 | Workspaces and browser bookmarks | v0.14.0 | done |
 | 15 | Pan and zoom everywhere; the bookmark side panel | v0.15.0 | done |
+| 16 | In-app guide, getting-started steps, Notion token help | v0.16.0 | done |
 
 ## Phase 0: scaffolding
 
@@ -351,3 +352,25 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   itself. Showing the live page inside the app is a separate piece of work
   (many sites refuse to be embedded, and it means loading outside content in
   the app).
+
+## Phase 16: the app explains itself
+
+- **Guide tab.** Fourteen short sections: the idea and a first tour, one
+  section per tab (what it shows, how to read it, what to press), your data
+  and updates, and the words the app uses. Each ends with a button that opens
+  the tab it describes.
+- **"?" at the top right** opens the guide at the section for the tab you are
+  on.
+- **Getting started, on the first screen.** Five steps (bring bookmarks in,
+  clean, find topics, draw the map, follow a thread and save a view). Each is
+  ticked from what the collection already has, the next one is highlighted,
+  and each has a button that goes there. They can be put away and brought
+  back from the guide; the choice is kept with the collection.
+- **How to get a Notion token,** in Settings: the personal access token (five
+  steps), the internal connection (five steps, including sharing the table),
+  who can create each depending on the plan, and what to do when it fails.
+  Written from Notion's developer documentation as read on 2026-11-13.
+- **An empty collection now opens on the steps** instead of jumping to
+  Settings.
+- **Header:** the bookmark count moved to Settings on windows narrower than
+  1500 px, to leave room for twelve tabs.

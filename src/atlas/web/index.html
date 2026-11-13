@@ -26,13 +26,14 @@
     font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   header { display: flex; align-items: center; gap: 24px; padding: 14px 24px;
     border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
-  header h1 { font-size: 17px; margin: 0; letter-spacing: .01em; }
-  nav { display: flex; gap: 4px; min-width: 0; overflow-x: auto; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .01em; white-space: nowrap; }
+  nav { display: flex; gap: 2px; min-width: 0; overflow-x: auto; flex: 1 1 auto; }
   nav button { white-space: nowrap; }
-  nav button { background: none; border: 0; color: var(--muted); padding: 6px 12px; border-radius: 6px;
+  nav button { background: none; border: 0; color: var(--muted); padding: 6px 9px; border-radius: 6px;
     font: inherit; cursor: pointer; }
   nav button[aria-current="page"] { background: var(--chip); color: var(--ink); font-weight: 600; }
-  #summary { margin-left: auto; color: var(--muted); font-size: 13px; }
+  #summary { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; }
+  @media (max-width: 1500px) { #summary { display: none; } header { gap: 14px; } }
   main { max-width: 1040px; margin: 0 auto; padding: 24px; }
   section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 20px 22px; margin-bottom: 18px; }
@@ -136,6 +137,31 @@
   #gridcells { transform-origin: 0 0; }
   #threadcanvas, #bloomcanvas { touch-action: none; }
   svg.chart { touch-action: none; }
+  #start { border-left: 4px solid var(--accent); }
+  #start ol { list-style: none; margin: 8px 0 0; padding: 0; }
+  #start li { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+  #start li:first-child { border-top: 0; }
+  #start .mark { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  #start li.done .mark { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  #start li.done strong { font-weight: 500; color: var(--muted); }
+  #start li.next { background: var(--chip); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+  .guide details { border-top: 1px solid var(--line); padding: 10px 0; }
+  .guide details:first-of-type { border-top: 0; }
+  .guide summary { cursor: pointer; font-weight: 600; font-size: 16px; }
+  .guide details > div { margin-top: 8px; max-width: 74ch; }
+  .guide h4 { margin: 14px 0 4px; font-size: 14px; }
+  .guide p, .guide li { line-height: 1.55; }
+  .guide ol, .guide ul { margin: 6px 0; padding-left: 22px; }
+  .guide kbd { font: inherit; font-size: 13px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--chip); }
+  .guide .where { margin-top: 8px; }
+  details.howto { margin: 10px 0 14px; padding: 10px 14px; background: var(--chip); border-radius: 8px; }
+  details.howto summary { cursor: pointer; font-weight: 600; }
+  details.howto a, .guide a { color: var(--accent); }
+  details.howto ol { margin: 8px 0; padding-left: 22px; }
+  details.howto li { margin: 4px 0; line-height: 1.5; }
+  details.howto h4 { margin: 14px 0 2px; font-size: 14px; }
+  #help-here { background: none; border: 1px solid var(--line); border-radius: 50%; width: 30px; height: 30px; font: inherit; font-weight: 700; color: var(--muted); cursor: pointer; flex: none; }
+  #help-here:hover { color: var(--ink); border-color: var(--ink); }
   #workbanner { background: var(--chip); border: 1px solid var(--line); border-left: 4px solid var(--viz-selected);
     border-radius: 8px; padding: 10px 14px; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
   .wsrow { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -256,8 +282,10 @@
     <button id="tab-workspaces">Workspaces</button>
     <button id="tab-grooming">Grooming</button>
     <button id="tab-settings">Settings</button>
+    <button id="tab-guide">Guide</button>
   </nav>
   <div id="summary"></div>
+  <button id="help-here" title="Help for this tab" aria-label="Help for this tab">?</button>
 </header>
 
 <main>
@@ -284,6 +312,15 @@
     <div id="side-body"></div>
   </aside>
   <div id="view-bookmarks">
+    <section class="card" id="start" hidden>
+      <h2>Getting started</h2>
+      <p class="help" id="start-help"></p>
+      <ol id="start-steps"></ol>
+      <div class="row" style="margin-top:10px">
+        <button class="linkish" id="start-guide">Read the guide</button>
+        <button class="linkish" id="start-hide">put these steps away</button>
+      </div>
+    </section>
     <section class="card">
       <div class="toolbar">
         <input type="search" id="search" placeholder="Search titles, summaries, links and tags" aria-label="Search bookmarks">
@@ -540,6 +577,215 @@
     </section>
   </div>
 
+  <div id="view-guide" hidden>
+    <section class="card guide">
+      <h2>Guide</h2>
+      <p class="help">What each part of the app is for and how to read it. Open a section, or press
+        the <strong>?</strong> at the top right from any tab to land on its section.</p>
+
+      <details id="guide-start" open><summary>The idea, and a first tour</summary><div>
+        <p>Bookmark Atlas keeps your bookmarks on your computer and helps you see what is in them:
+          which subjects they form, how those subjects connect, what you are collecting more of, and
+          what you had forgotten. Notion (or a file) is where bookmarks come from; the app is where
+          they are cleaned, explored and kept.</p>
+        <ol>
+          <li><strong>Bring bookmarks in</strong> (Settings): from Notion with a token, or from a file.</li>
+          <li><strong>Clean them</strong> (Grooming): merge duplicates, tidy tags, fill in dates. Every
+            change is shown before it is made and can be undone.</li>
+          <li><strong>Find the topics</strong> (Clusters): one press groups similar bookmarks.</li>
+          <li><strong>Look at them</strong>: Map, Grid, Tree, Links, Trends. Each answers a different question.</li>
+          <li><strong>Keep and share</strong> (Views, Workspaces): save a view, send a snapshot, work on a copy.</li>
+        </ol>
+        <p>Everywhere: click a bookmark's name to open it in the side panel; press <kbd>Ctrl</kbd>+click
+          to go straight to the page. On any picture, scroll to zoom, drag to move, double-click to go back.</p>
+        <div class="where"><button class="linkish" id="guide-steps">Show the getting-started steps on the Bookmarks tab</button></div>
+      </div></details>
+
+      <details id="guide-settings"><summary>Bringing bookmarks in (Settings)</summary><div>
+        <h4>From Notion</h4>
+        <ol>
+          <li><strong>Token.</strong> Paste a Notion token and press Check and save. “How to get a token”,
+            in that card, gives the steps in Notion.</li>
+          <li><strong>Table.</strong> Press List tables and choose the one that holds your bookmarks. The app
+            guesses which columns hold the link, title, summary, tags and date; check the guess.</li>
+          <li><strong>Sync.</strong> Press Preview first: it shows what would arrive and changes nothing. Then
+            Sync. Later syncs only fetch what is new or was edited.</li>
+        </ol>
+        <p>The sync never overwrites what you changed here. A row edited in Notion after its import is
+          kept aside; “Review what changed in Notion” in Grooming lets you take it or keep yours. A
+          bookmark you deleted here stays deleted.</p>
+        <h4>From a file</h4>
+        <p>“Import a file” reads a CSV exported from Notion, a bundle exported from another Atlas, and
+          the bookmarks file a browser exports (its folders become tags). Preview first, as with Notion.</p>
+        <div class="where"><button class="linkish" data-go="settings">Open Settings</button></div>
+      </div></details>
+
+      <details id="guide-bookmarks"><summary>The list, the filter and the selection (Bookmarks)</summary><div>
+        <p><strong>Search</strong> looks in titles, summaries, links and tags.</p>
+        <p><strong>The filter bar</strong> above the list also appears on Map, Grid, Tree, Links and Trends,
+          and applies to all of them at once: tags (a bookmark must have all of them), site, and dates.
+          Drag across the small month chart to pick a period; double-click it to clear. “Date used”
+          says which date counts: the day you saved, the day it was published, or saved with published
+          as a fallback.</p>
+        <p><strong>Selecting.</strong> Tick bookmarks here, Shift+drag an area on the map, or use “add to
+          selection” elsewhere. The bar that appears lets you add or remove tags on all of them, delete
+          them, show only them, export them, or start a workspace from them. Edits made this way are in
+          the Grooming history and can be undone.</p>
+        <div class="where"><button class="linkish" data-go="bookmarks">Open Bookmarks</button></div>
+      </div></details>
+
+      <details id="guide-grooming"><summary>Cleaning the collection (Grooming)</summary><div>
+        <p>Each script does one job. <strong>Preview</strong> shows every change it would make, grouped
+          by bookmark; untick what you do not want; <strong>Apply</strong> makes the rest in one go, after a
+          backup. The history at the bottom undoes any run.</p>
+        <p>They are listed in the order worth running them:</p>
+        <ol>
+          <li><strong>Merge duplicates</strong>: the same link saved twice.</li>
+          <li><strong>Review what changed in Notion</strong>: rows edited there since their import.</li>
+          <li><strong>Merge near-duplicates</strong>: the same thing under two links. A guess: read it.</li>
+          <li><strong>Merge tag spellings</strong>, then <strong>Merge tag synonyms</strong> (plurals, initials).</li>
+          <li><strong>Set the platform</strong> (X, GitHub, YouTube…) from the link.</li>
+          <li><strong>Publication dates</strong>: from X post IDs; from the Date column; and “Look up
+            publication dates”, which goes online to read the date each page declares, then proposes it.</li>
+          <li><strong>Check the links</strong>, then <strong>Tag dead links</strong>. Nothing is deleted.</li>
+        </ol>
+        <p>The two lookups are the only parts of the app, with the Notion sync and the update check,
+          that go online. They change nothing by themselves.</p>
+        <div class="where"><button class="linkish" data-go="grooming">Open Grooming</button></div>
+      </div></details>
+
+      <details id="guide-clusters"><summary>Topics (Clusters)</summary><div>
+        <p>Press <strong>Cluster</strong>. Bookmarks whose words and tags resemble each other are grouped
+          into topics, each named after its most telling tags. Leave the number on “choose for me”, or
+          set it: fewer gives broad topics, more gives narrow ones.</p>
+        <p>You can rename a topic. Clustering again makes a new set and keeps the old ones in the list.
+          Topics are a reading aid, not a fact: a bookmark sits where most of its words point, and some
+          sit between two.</p>
+        <p class="tagline">Three methods are offered because the app began as a test of e-means; k-means
+          is the default and the two give similar topics at this size.</p>
+        <div class="where"><button class="linkish" data-go="clusters">Open Clusters</button></div>
+      </div></details>
+
+      <details id="guide-map"><summary>The map and its five arrangements (Map)</summary><div>
+        <p>One dot per bookmark. <strong>Draw the map</strong> once; redraw after large imports.</p>
+        <p><strong>Colour means state, not topic</strong>: blue is the topic in focus, green matches the
+          highlight search, orange is selected, grey is everything else. Topics are named by labels;
+          click a label to focus that topic. Small faint dots are left out by the filter.</p>
+        <p><strong>Arrange by</strong> moves the same dots:</p>
+        <ul>
+          <li><strong>Similarity</strong>: close dots are alike. Distances between far groups mean little.</li>
+          <li><strong>Timeline</strong>: left to right is time, one row per topic. See when each topic was active.</li>
+          <li><strong>Grid</strong>: the dots gathered in the cells of the Grid tab.</li>
+          <li><strong>Space and time (3D)</strong>: the map lies flat and time rises from it. Drag to turn.</li>
+          <li><strong>Links (3D)</strong>: each bookmark tied to its three closest; point at one to light its links.</li>
+        </ul>
+        <p><strong>Play</strong> replays the collection as it grew; the slider goes to any day.
+          Shift+drag selects an area. In 3D, Alt+drag moves instead of turning.</p>
+        <div class="where"><button class="linkish" data-go="map">Open the Map</button></div>
+      </div></details>
+
+      <details id="guide-grid"><summary>Where the collection is dense (Grid)</summary><div>
+        <p>A self-organising map: every bookmark falls in one cell, and neighbouring cells hold related
+          bookmarks. The bigger the disc, the more bookmarks; the name under it is the cell's most
+          telling tag. Where the map shows what is alike, the grid shows how much there is of each
+          thing and which themes border which.</p>
+        <p>Click a cell to read it, select its bookmarks or open them in the list. “Highlight” turns
+          the cells that contain a match green.</p>
+        <div class="where"><button class="linkish" data-go="grid">Open the Grid</button></div>
+      </div></details>
+
+      <details id="guide-tree"><summary>Topics as a tree (Tree)</summary><div>
+        <p><strong>Build the tree</strong> from the latest clustering. Close topics are gathered into
+          families; large topics are split into parts.</p>
+        <p>The round drawing shows it all at once: families, topics and parts from the centre, and on
+          the rim one stroke per bookmark, longer when more recent. A part whose strokes are all long
+          is a recent interest; a part with short strokes is an old one.</p>
+        <p>The pearls below are the same tree, one level at a time. Open one to go inside. You can
+          rename anything, drag one topic onto another to merge them, split a topic into its parts,
+          move it to another family or give it its own. Building the tree again starts over.</p>
+        <div class="where"><button class="linkish" data-go="tree">Open the Tree</button></div>
+      </div></details>
+
+      <details id="guide-links"><summary>Links between bookmarks (Links)</summary><div>
+        <p><strong>Threads.</strong> All bookmarks on one line. An arc joins a bookmark to each of its
+          three closest. Above the line: the two are in different topics. Below: the same topic. Lined
+          up by time, a tall arc joins two bookmarks far apart in time, an idea you came back to.
+          Point at a bookmark, click to keep it, read why each link exists (shared tags, time apart),
+          and follow one. <strong>Surprise me</strong> picks a link across topics.</p>
+        <p>A link is a resemblance between words and tags, not a fact. The shared tags are shown so
+          you can judge.</p>
+        <p><strong>How topics connect</strong> draws a line between topics that share many links.
+          <strong>Bridges</strong> are bookmarks filed in one topic whose neighbours are mostly in
+          another. <strong>Worth another look</strong> lists old bookmarks close to recent ones.
+          <strong>On their own</strong> lists bookmarks that resemble nothing else.</p>
+        <div class="where"><button class="linkish" data-go="links">Open Links</button></div>
+      </div></details>
+
+      <details id="guide-trends"><summary>What is rising (Trends)</summary><div>
+        <p>Bookmarks saved and published per month; how long after publication you save things; and
+          which topics and tags take more or less room in the last 90 days than before.</p>
+        <p>“+3.2 pts” means the topic's share of your bookmarks grew by 3.2 percentage points. The
+          first line of the tab says how many bookmarks have each date: with few save dates, read the
+          movements with care. Run the date scripts in Grooming, or sync from Notion, to fill them.</p>
+        <div class="where"><button class="linkish" data-go="trends">Open Trends</button></div>
+      </div></details>
+
+      <details id="guide-views"><summary>Keeping and sharing (Views)</summary><div>
+        <ul>
+          <li><strong>A view</strong> remembers where you are: the tab, the search, the filter, the selection,
+            the topic in focus, the arrangement of the map, the thread you were reading.</li>
+          <li><strong>A snapshot</strong> is one file holding bookmarks (all, or the selection) with their
+            topics, maps and views. Send it to someone: they open it from the app's menu and see what
+            you saw. It never contains your Notion token.</li>
+          <li><strong>Compare with a snapshot</strong> shows what a snapshot has that you lack and the
+            reverse, and can add the missing bookmarks.</li>
+          <li><strong>Keep this picture</strong>, under the map, the threads and the tree, saves an image or
+            a single web page.</li>
+        </ul>
+        <p>To send only bookmarks, for merging into someone's collection, select them in the list and
+          export a bundle instead.</p>
+        <div class="where"><button class="linkish" data-go="views">Open Views</button></div>
+      </div></details>
+
+      <details id="guide-workspaces"><summary>Working on a copy (Workspaces)</summary><div>
+        <p>A workspace is a copy of part of your collection that lives apart, with its own tags, topics,
+          map, views and Notion table. Use it to study one subject, to try a risky clean-up, or to look
+          at data from elsewhere before deciding what to keep.</p>
+        <p>Create one from nothing, everything, the selection, the filter or a topic. A banner shows
+          that you are in it and takes you back. <strong>Merge into my collection</strong> only adds:
+          bookmarks your collection lacks, and tags the workspace gave to those it has. Deleting a
+          workspace does not touch your collection.</p>
+        <div class="where"><button class="linkish" data-go="workspaces">Open Workspaces</button></div>
+      </div></details>
+
+      <details id="guide-data"><summary>Your data, backups and updates</summary><div>
+        <p>Everything is in one folder on your computer: the collection (<code>atlas.sqlite</code>, an
+          ordinary SQLite file), your token, your scripts, backups and workspaces. Its place is shown at
+          the bottom of Settings. To move to another computer, copy that folder, or use
+          <strong>Atlas &gt; Choose data folder…</strong> in the menu.</p>
+        <p>A backup is made before every grooming run. Nothing leaves your computer except the calls
+          you start yourself: the Notion sync, the two lookups in Grooming, and the check for a new
+          version of the app.</p>
+        <p>On Windows and Linux (AppImage) the app updates itself. On macOS, <strong>Check for
+          updates…</strong> opens the download page.</p>
+      </div></details>
+
+      <details id="guide-words"><summary>Words used in the app</summary><div>
+        <ul>
+          <li><strong>Topic</strong>: a group of similar bookmarks found by clustering. <strong>Family</strong>:
+            a group of close topics. <strong>Part</strong>: a piece of a large topic.</li>
+          <li><strong>Link</strong>: a resemblance between two bookmarks, from their words and tags.
+            <strong>Thread</strong>: a link drawn as an arc.</li>
+          <li><strong>Bridge</strong>: a bookmark between two topics.</li>
+          <li><strong>Saved date</strong>: when you bookmarked it. <strong>Published date</strong>: when it
+            came out.</li>
+          <li><strong>View</strong>: a remembered place in the app. <strong>Snapshot</strong>: a file to
+            share. <strong>Bundle</strong>: bookmarks to merge. <strong>Workspace</strong>: a copy to work on.</li>
+        </ul>
+      </div></details>
+    </section>
+  </div>
+
   <div id="view-views" hidden>
     <section class="card">
       <h2>Save what you are looking at</h2>
@@ -632,10 +878,54 @@
   <div id="view-settings" hidden>
     <section class="card">
       <h2><span class="step">1</span>Notion token</h2>
-      <p class="help">Create a token in Notion's Developer portal. A personal access token sees what
-        you can see, with nothing to share. An internal connection token only sees the pages and
-        databases shared with that connection. The token is stored on this computer, outside the
-        bookmark database.</p>
+      <p class="help">A token is a long password that lets this app read your Notion table. You make
+        it yourself in Notion, in a minute, and paste it below. It is stored on this computer,
+        outside the bookmark database, and is never put in a snapshot or an export.</p>
+      <details class="howto" id="token-howto">
+        <summary>How to get a token</summary>
+        <h4>The simple way: a personal access token</h4>
+        <ol>
+          <li>Open <a href="https://www.notion.so/developers/tokens" target="_blank" rel="noopener noreferrer">notion.so/developers/tokens</a>
+            (Notion's Developer portal, “Personal access tokens”) and sign in.</li>
+          <li>Select <strong>New token</strong>.</li>
+          <li>Give it a name, such as “Bookmark Atlas”. Under capabilities keep <strong>Notion API</strong>.
+            Choose when it expires: from 7 days to 1 year. If a workspace is asked for, pick the one
+            that holds your table.</li>
+          <li>Select <strong>Create token</strong> and copy the token straight away: Notion shows it
+            only once.</li>
+          <li>Paste it in the box below and press <strong>Check and save</strong>.</li>
+        </ol>
+        <p>This token sees everything you can see in Notion, so there is nothing to share. When it
+          expires the sync stops with a message; make a new one the same way.</p>
+        <p class="tagline">Who can make one depends on the Notion plan. Free: workspace owners only.
+          Plus: every member. Business and Enterprise: owners, or whoever the admins allow. Guests
+          cannot.</p>
+        <h4>The other way: an internal connection</h4>
+        <p>Use this if you cannot make a personal token, or if you want the app to see one table and
+          nothing else. Only a workspace owner can create one.</p>
+        <ol>
+          <li>Open <a href="https://app.notion.com/developers/connections" target="_blank" rel="noopener noreferrer">app.notion.com/developers/connections</a>.
+            In the sidebar, under <strong>Build</strong>, select <strong>Internal connections</strong>.</li>
+          <li>Select <strong>Create a new connection</strong>, name it, and choose your workspace.</li>
+          <li>Open its <strong>Configuration</strong> tab. Make sure it may read content, and copy the
+            API token shown there.</li>
+          <li>Give it your table: in Notion, open the database, open the <strong>•••</strong> menu at
+            the top right, choose <strong>Connections</strong>, then <strong>+ Add connection</strong>,
+            and pick the connection. (Or, in the portal, the connection's <strong>Content access</strong>
+            tab, <strong>Edit access</strong>.) A new connection sees nothing until you do this.</li>
+          <li>Paste the token below and press <strong>Check and save</strong>.</li>
+        </ol>
+        <h4>If something goes wrong</h4>
+        <ul>
+          <li><strong>The token is refused:</strong> it was copied incompletely, has expired, or was
+            revoked. Make a new one.</li>
+          <li><strong>Your table is not in the list (step 2):</strong> with an internal connection,
+            the database has not been shared with it; with a personal token, you are in another
+            workspace or cannot open that table in Notion yourself.</li>
+          <li><strong>You would rather not use a token at all:</strong> export the table from Notion
+            as CSV and use “Import a file” further down.</li>
+        </ul>
+      </details>
       <div class="row">
         <div class="grow">
           <label for="token">Token</label>
@@ -688,6 +978,7 @@
       <p class="help">Everything is in this one folder: your bookmarks, your grooming scripts, the
         backups and the Notion token.</p>
       <p><code id="data-folder"></code></p>
+      <p class="tagline" id="about-line"></p>
       <p class="help">To move to another computer, copy this folder there, then pick it with the menu
         <strong>Atlas &gt; Choose data folder…</strong>. The same menu moves your data to another place
         on this computer, such as a synced drive. Because the folder holds your Notion token, do not
@@ -758,7 +1049,7 @@ let lastWorkView = "bookmarks";   // what "Save view" captures
 function showView(name) {
   currentView = name;
   if (["bookmarks", "map", "clusters", "grid", "tree", "links", "trends"].includes(name)) lastWorkView = name;
-  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "views", "workspaces", "grooming", "settings"]) {
+  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "views", "workspaces", "grooming", "settings", "guide"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -778,6 +1069,8 @@ async function refreshState() {
     + (s.pending_review ? " · " + s.pending_review + " to review" : "") + " · v" + state.version;
 
   $("data-folder").textContent = state.data_folder;
+  $("about-line").textContent = $("summary").textContent.replace(" · v", " · Bookmark Atlas version ");
+  renderStart();
   const snap = state.snapshot;
   $("snapbanner").hidden = !snap;
   if (snap) {
@@ -3421,8 +3714,52 @@ $("sel-export").onclick = () => busy($("sel-export"), async () => {
 let searchTimer = null;
 $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadBookmarks(true).catch(() => {}), 200); };
 $("more").onclick = () => loadBookmarks(false);
-$("tab-bookmarks").onclick = () => { showView("bookmarks"); loadBookmarks(true).catch(() => {}); };
+$("tab-bookmarks").onclick = () => { showView("bookmarks"); refreshState().catch(() => {}); loadBookmarks(true).catch(() => {}); };
 $("tab-settings").onclick = () => showView("settings");
+// The guide: one section per tab, and "?" lands on the section for where you are.
+let helpFrom = "bookmarks";
+function openGuide(section) {
+  showView("guide");
+  const target = $("guide-" + section) || $("guide-start");
+  for (const part of document.querySelectorAll(".guide details")) part.open = part === target;
+  target.scrollIntoView({ block: "start" }); window.scrollBy(0, -80);
+  target.querySelector("summary").focus({ preventScroll: true });
+}
+$("tab-guide").onclick = () => openGuide("start");
+$("help-here").onclick = () => openGuide(currentView === "guide" ? "start" : currentView);
+for (const button of document.querySelectorAll(".guide [data-go]")) button.onclick = () => $("tab-" + button.dataset.go).click();
+
+// Getting started: five steps whose ticks follow what the collection already has.
+function renderStart() {
+  const progress = state && state.progress;
+  const card = $("start");
+  if (!progress || progress.hidden || (progress.bookmarks && progress.groomed && progress.clustered && progress.mapped && progress.saved_view)) { card.hidden = true; return; }
+  const steps = [
+    ["bookmarks", "Bring your bookmarks in", "From Notion with a token, or from a file. Settings explains how to get a token.", "Open Settings", () => $("tab-settings").click()],
+    ["groomed", "Clean them up", "Merge duplicates and tidy tags. Every change is previewed and can be undone.", "Open Grooming", () => $("tab-grooming").click()],
+    ["clustered", "Find the topics", "One press groups similar bookmarks and names each group.", "Open Clusters", () => $("tab-clusters").click()],
+    ["mapped", "Draw the map", "See the collection as dots, then try the timeline and the 3D arrangements.", "Open the Map", () => $("tab-map").click()],
+    ["saved_view", "Follow a thread, then save a view", "In Links, press Surprise me. In Views, save where you are to come back to it.", "Open Links", () => $("tab-links").click()],
+  ];
+  const next = steps.find(([key]) => !progress[key]);
+  const done = steps.filter(([key]) => progress[key]).length;
+  $("start-help").textContent = done === 0 ? "Five steps from an empty app to a collection you can explore. Each takes a minute or two."
+    : done + " of 5 done. Next: " + next[1].toLowerCase() + ".";
+  $("start-steps").replaceChildren(...steps.map(([key, title, text, label, go], index) => {
+    const button = el("button", { className: next && next[0] === key ? "action primary" : "action", textContent: label });
+    button.onclick = go;
+    const row = el("li", { className: progress[key] ? "done" : next && next[0] === key ? "next" : "" }, [
+      el("span", { className: "mark", textContent: progress[key] ? "✓" : String(index + 1) }),
+      el("div", {}, [el("strong", { textContent: title }), el("div", { className: "tagline", textContent: progress[key] ? "Done." : text })]), button]);
+    return row;
+  }));
+  card.hidden = false;
+}
+$("start-guide").onclick = () => openGuide("start");
+$("guide-steps").onclick = async () => { try { await api("POST", "/api/tutorial", { hidden: false }); } catch (error) { /* shown anyway if possible */ } $("tab-bookmarks").click(); };
+$("start-hide").onclick = async () => {
+  try { await api("POST", "/api/tutorial", { hidden: true }); await refreshState(); note("sel-note", "", "muted"); } catch (error) { /* stays visible */ }
+};
 $("tab-workspaces").onclick = () => { showView("workspaces"); loadWorkspaces().catch((e) => note("ws-note", e.message, "bad")); };
 $("tab-views").onclick = () => { showView("views"); loadViews().catch((e) => note("view-note-msg", e.message, "bad")); };
 $("tab-map").onclick = () => { showView("map"); loadMap($("map-clusters").value || undefined).catch((e) => note("map-note", e.message, "bad")); };
@@ -3438,7 +3775,9 @@ document.querySelector("main").prepend($("selbar"));
   try {
     await refreshState();
     await loadBookmarks(true);
-    if (!state.status.bookmarks) showView("settings");
+    // An empty collection opens on the getting-started steps; if they were put
+    // away, on Settings, where bookmarks come in.
+    if (!state.status.bookmarks && state.progress.hidden) showView("settings");
     if (state.notion.token_set) loadTables();
   } catch (error) {
     $("list").replaceChildren(el("div", { className: "empty", textContent: error.message }));
