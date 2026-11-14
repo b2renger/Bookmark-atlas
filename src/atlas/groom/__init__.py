@@ -45,6 +45,8 @@ BUILTIN = [
     "flag_dead_links",
     "summary_from_model",
     "tags_from_model",
+    "merge_tags_from_model",
+    "flag_changed_pages",
 ]
 
 # Bookmark columns a script may change. Anything else is refused.

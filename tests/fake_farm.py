@@ -160,6 +160,25 @@ class FakeFarm:
                 n: f"About {t.strip() or 'things'}" for n, t in zip(numbers, tags, strict=False)
             }
             return "<think>hmm</think>" + json.dumps({"names": names})
+        if "tidy the tags" in system:
+            tags = re.search(r"<<<TAGS\n(.*)\nTAGS>>>", user, re.S).group(1).split("\n")
+            # "Synonyms", for the stand-in: tags that share their first four letters.
+            families: dict[str, list[str]] = {}
+            for tag in tags:
+                families.setdefault(tag[:4].lower(), []).append(tag)
+            groups = [g for g in families.values() if len(g) > 1]
+            return json.dumps({"groups": [*groups, ["not a tag", "nor this"], [tags[0]]]})
+        if "wrote a note about it" in system:
+            note = re.search(r"Note then: (.*)", user).group(1).lower()
+            page = re.search(r"<<<PAGE\n(.*)\nPAGE>>>", user, re.S).group(1).lower()
+            if "domain is for sale" in page:
+                return '{"verdict": "replaced", "note": "The domain is now parked and for sale."}'
+            shared = [w for w in re.findall(r"[a-z]{6,}", note) if w in page]
+            if shared:
+                return '{"verdict": "same", "note": "should be dropped"}'
+            return (
+                '{"verdict": "changed", "note": "The page no longer mentions what the note says."}'
+            )
         if "single word: ready" in user:
             return "ready"
         numbers = re.findall(r"^\[(\d+)\]", user, re.M) or re.findall(r"\[(\d+)\]", user)

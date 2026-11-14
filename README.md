@@ -196,7 +196,16 @@ vLLM, LM Studio). Connect it in **Settings ▸ Language models**. Then:
 - **Ask**: what a selection, the filter or a topic shares; a briefing; what is
   missing; a reading order; or your own question, with numbered sources that
   open the bookmarks.
+- **Compare then and now** (Grooming): is each page still what its summary
+  says, has it moved on, or is it now something else? A script tags the ones
+  that changed.
+- **Find tags that mean the same** (Grooming): synonyms, translations and
+  abbreviations, proposed as merges.
 - **Suggest names** for topics, and **why?** two bookmarks are alike.
+
+The app teaches this itself: a four-step tour on the Bookmarks tab, and the
+Guide section "A language model on your network" (first-time steps, what each
+thing does, what is sent, what to do when something fails).
 
 Only titles, summaries, tags and (for summaries) page text are sent, and only
 to the server you connected. The password is kept in the system keychain.

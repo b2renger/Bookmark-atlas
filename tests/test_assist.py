@@ -383,3 +383,150 @@ def test_through_the_api_connect_then_use_and_errors_are_sentences(path, farm): 
     assert app.llm_explain({"a": ids["map0"], "b": ids["cook0"]})["answer"]
     assert app.llm_forget()["connection"]["connected"] is False
     assert json.dumps(app.llm_state()).count("password") == 1  # only "has_password"
+
+
+# ---- tags that mean the same ----
+
+
+def test_the_model_groups_tags_and_a_script_proposes_the_merges(conn, path, farm):  # noqa: F811
+    for i, tags in enumerate((["dataviz", "data visualisation"], ["dataviz", "maps"], ["mapping"])):
+        add(conn, f"https://example.org/t{i}", f"T{i}", "words", tags, "2024-03-01")
+    connection = llm.Connection(farm.config(), password="")
+    assert assist.tag_groups_status(conn) == {"tags": 4, "groups": 0, "lots_left": 0}
+    result = assist.find_tag_groups(conn, connection, start=True)
+    assert result["found"] == 1 and result["remaining"] == 0 and result["ordered_by"] == "all"
+    sent = farm.calls[-1]["body"]["messages"]
+    assert "Do NOT group a broad" in sent[0]["content"]
+    assert sent[1]["content"] == "<<<TAGS\ndata visualisation\ndataviz\nmapping\nmaps\nTAGS>>>"
+    # Only tags of the lot are kept, each in one group; invented ones are dropped.
+    rows = conn.execute("SELECT tag, family FROM llm_tag_groups ORDER BY tag").fetchall()
+    assert [r["tag"] for r in rows] == ["data visualisation", "dataviz"]
+    assert len({r["family"] for r in rows}) == 1
+    shown = preview(conn, "merge-tags-from-model")
+    assert shown["changes"] >= 1 and "dataviz" in shown["groups"][0]["title"]
+    run(conn, path, "merge-tags-from-model")
+    names = {r[0]: r[1] for r in conn.execute("SELECT name, alias_of FROM tags")}
+    assert names["data visualisation"] is not None and names["dataviz"] is None
+    assert preview(conn, "merge-tags-from-model")["changes"] == 0
+    # Starting again forgets the earlier groups.
+    assert assist.find_tag_groups(conn, connection, start=True)["status"]["groups"] == 0
+
+
+def test_many_tags_are_read_in_lots_of_close_meaning_or_by_the_alphabet(conn, farm, monkeypatch):
+    monkeypatch.setattr(assist, "TAG_CHUNK", 4)
+    words = [
+        "river",
+        "bread",
+        "rivers",
+        "oven",
+        "stream",
+        "flour",
+        "water",
+        "yeast",
+        "lake",
+        "dough",
+    ]
+    for i, word in enumerate(words):
+        add(conn, f"https://example.org/w{i}", f"W{i}", "x", [word], "2024-03-01")
+    connection = llm.Connection(farm.config(), password="")
+    chunks, how = assist.tag_chunks(conn, connection)
+    assert how == "meaning" and [len(c) for c in chunks] == [4, 4, 2]
+    assert sorted(t for c in chunks for t in c) == sorted(words)
+    plain = FakeFarm(embeddings=False)
+    try:
+        chunks, how = assist.tag_chunks(conn, llm.Connection(plain.config(), password=""))
+        assert how == "alphabet" and chunks[0] == ["bread", "dough", "flour", "lake"]
+    finally:
+        plain.close()
+    first = assist.find_tag_groups(conn, connection, start=True)
+    assert first["remaining"] == 2
+    farm.busy, farm.retry_after = 50, 120
+    full = assist.find_tag_groups(conn, connection)
+    assert full["retry_after"] == 120 and full["remaining"] == 2  # the lot is kept for later
+    farm.busy = 0
+    assert assist.find_tag_groups(conn, connection)["remaining"] == 1
+    assert assist.find_tag_groups(conn, connection)["remaining"] == 0
+    assert assist.find_tag_groups(conn, connection)["found"] == 0
+
+
+# ---- then and now ----
+
+
+def test_then_and_now_is_judged_and_a_script_flags_what_changed(conn, path, farm):  # noqa: F811
+    ids = fill(conn)
+    conn.execute("UPDATE bookmarks SET summary = 'short' WHERE id = ?", (ids["map3"],))
+    conn.execute(
+        "UPDATE bookmarks SET summary = 'A long note about sourdough starters and ovens for baking' "
+        "WHERE id = ?",
+        (ids["map1"],),
+    )
+    conn.commit()
+    parked = (
+        "<html><body><p>"
+        + "This domain is for sale. Contact the broker today. " * 6
+        + "</p></body></html>"
+    )
+    urls = {f"https://example.org/map{i}": ARTICLE for i in range(4)}
+    urls["https://example.org/map2"] = parked
+    assist.read_pages(conn, limit=40, get=pages(urls))
+    connection = llm.Connection(farm.config(), password="")
+    assert assist.compare_status(conn)["remaining"] == 3  # map3's summary is too short to compare
+    result = assist.compare_pages(conn, connection, limit=20)
+    assert result["compared"] == 3 and result["remaining"] == 0
+    status = result["status"]
+    assert (status["same"], status["changed"], status["replaced"]) == (1, 1, 1)
+    sent = farm.calls[-1]["body"]["messages"]
+    assert "Note then: " in sent[1]["content"] and "<<<PAGE" in sent[1]["content"]
+    assert "Saved: 2024-01-0" in sent[1]["content"]
+    assert assist.about(conn, ids["map0"])["then_now"]["note"] == ""  # nothing to say for "same"
+    about = assist.about(conn, ids["map2"])
+    assert about["then_now"]["verdict"] == "replaced" and "parked" in about["then_now"]["note"]
+    assert about["page"]["status"] == "ok" and about["proposed_summary"] is None
+    assert assist.about(conn, ids["cook5"])["page"]["status"] == "error"
+    shown = preview(conn, "flag-changed-pages")
+    assert shown["changes"] == 2
+    run(conn, path, "flag-changed-pages")
+    tagged = dict(
+        conn.execute(
+            "SELECT bt.bookmark_id, t.name FROM bookmark_tags bt JOIN tags t ON t.id = bt.tag_id "
+            "WHERE t.name LIKE 'page %'"
+        )
+    )
+    assert tagged == {ids["map1"]: "page changed", ids["map2"]: "page replaced"}
+    assert preview(conn, "flag-changed-pages")["changes"] == 0
+    assert assist.compare_pages(conn, connection)["compared"] == 0
+
+
+def test_the_new_jobs_through_the_api_and_the_tour_progress(path, farm):  # noqa: F811
+    conn = db.open_ready(path)
+    ids = fill(conn)
+    conn.close()
+    app = App(path)
+    assert app.state()["progress"]["model"] == {
+        "connected": False,
+        "meaning": False,
+        "notes": False,
+        "asked": False,
+        "hidden": False,
+    }
+    app.llm_connect(farm.config())
+    assert app.tag_groups({"status_only": True})["tags"] == 3
+    assert app.tag_groups({"start": True})["remaining"] == 0
+    assert app.compare({"status_only": True})["remaining"] == 0 and "now" in app.compare(
+        {"status_only": True}
+    )
+    app.llm_vectors({"limit": 200})
+    app.llm_vectors({"source": "model"})
+    app.ask({"ids": [ids["map0"]], "kind": "common"})
+    progress = app.state()["progress"]["model"]
+    assert (
+        progress["connected"]
+        and progress["meaning"]
+        and progress["asked"]
+        and not progress["notes"]
+    )
+    assert app.tutorial({"tour": "model", "hidden": True})["progress"]["model"]["hidden"] is True
+    assert app.state()["progress"]["hidden"] is False
+    item = app.bookmark_item({"id": [ids["map0"]]})["item"]
+    assert item["model"] == {"page": None, "proposed_summary": None, "then_now": None}
+    app.llm_forget()

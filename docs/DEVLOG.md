@@ -4,6 +4,31 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-14: v0.20.0 published; phase 22, the rest and the tutorial
+
+**Asked for:** build what was left, document, make the in-app tutorials,
+release.
+
+**Works:** `compare_pages`/`compare_status`/`about`, `tag_chunks`/
+`find_tag_groups` (lots kept in `meta.tag_chunks` so a full farm does not lose
+one), scripts `merge-tags-from-model` and `flag-changed-pages`, routes
+`/api/compare` and `/api/tags/groups`, `progress.model` and
+`tutorial {tour: "model"}`, `#start-model`, the four-job Grooming card,
+`modelNotes` in the side panel, the rewritten `guide-models`.
+
+**Decisions:** "then and now" needs an existing summary of 30 characters or
+more: with nothing written then, there is nothing to compare. Tag groups are
+recomputed from scratch on each pass. The tour's steps are judged from what
+the collection holds, not from clicks.
+
+**Verified:** 308 Python tests (4 new), 22 Node tests; browser walk through
+all jobs, both scripts' previews, the tour, the panel and the guide, light
+and dark, no page error.
+
+**Not verified:** a real farm and model, as before.
+
+**Next:** feedback from the rig; prompts will need tuning on real answers.
+
 ## 2026-11-14: v0.19.0 published; phase 21, language models
 
 **Asked for:** LLMs reasoning over selections, refetching links, rewriting

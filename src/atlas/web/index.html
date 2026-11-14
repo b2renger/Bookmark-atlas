@@ -91,6 +91,20 @@
     border: 1px solid var(--line); border-radius: 9px; background: var(--chip); color: var(--ink); cursor: pointer; }
   .cite:hover, .cite:focus-visible { border-color: var(--accent); }
   table.plainrows { border-collapse: collapse; } table.plainrows td, table.plainrows th { padding: 4px 12px 4px 0; text-align: left; vertical-align: middle; }
+  ol.jobs { list-style: none; margin: 12px 0 0; padding: 0; counter-reset: none; }
+  ol.jobs li { display: grid; grid-template-columns: 250px 1fr; gap: 14px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+  ol.jobs li > button { width: 100%; text-align: left; }
+  ol.jobs li > div { max-width: 78ch; color: var(--muted); } ol.jobs li strong { color: var(--ink); }
+  @media (max-width: 760px) { ol.jobs li { grid-template-columns: 1fr; } }
+  #start-model { border-left: 4px solid var(--accent); }
+  #start-model ol { list-style: none; margin: 8px 0 0; padding: 0; }
+  #start-model li { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+  #start-model li:first-child { border-top: 0; }
+  #start-model .mark { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  #start-model li.done .mark { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  #start-model li.done strong { font-weight: 500; color: var(--muted); }
+  #start-model li.next { background: var(--chip); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+  .fromodel { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; margin: 6px 0; }
   #llm-vectors h3 { margin: 18px 0 4px; } #llm-vectors p.help { max-width: 78ch; color: var(--muted); }
   #selbar { position: sticky; top: 58px; z-index: 1; background: var(--chip); border: 1px solid var(--line);
     border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
@@ -338,6 +352,15 @@
       <div class="row" style="margin-top:10px">
         <button class="linkish" id="start-guide">Read the guide</button>
         <button class="linkish" id="start-hide">put these steps away</button>
+      </div>
+    </section>
+    <section class="card" id="start-model" hidden>
+      <h2>Going further with a language model</h2>
+      <p class="help" id="start-model-help"></p>
+      <ol id="start-model-steps"></ol>
+      <div class="row" style="margin-top:10px">
+        <button class="linkish" id="start-model-guide">Read how it works</button>
+        <button class="linkish" id="start-model-hide">not for me, put this away</button>
       </div>
     </section>
     <section class="card">
@@ -805,29 +828,95 @@
       <details id="guide-models"><summary>A language model on your network (Settings, Ask, Grooming)</summary><div>
         <p>Optional. Atlas can use a language model that runs on a machine of yours: a
           <strong>LlmOnLan farm</strong>, which it finds by itself, or any server that speaks the OpenAI
-          API (Ollama, llama.cpp, vLLM, LM Studio). Connect it in <strong>Settings ▸ Language models</strong>:
-          Find farms (or type the machine's name), Test, Connect. A farm's password is asked once and
-          kept in this computer's keychain.</p>
+          API (Ollama, llama.cpp, vLLM, LM Studio). Everything below is off until you connect one.</p>
+        <div class="where"><button class="linkish" id="guide-model-steps">Show the four model steps on the Bookmarks tab</button></div>
+
+        <h4>First time, in ten minutes</h4>
+        <ol>
+          <li><strong>Connect.</strong> Settings ▸ Language models ▸ <em>Find farms on this network</em>.
+            If nothing shows after a few seconds, type the machine's name or address (the one shown in
+            the farm's panel) and press <em>Use this address</em>. Type the farm's password if it has
+            one, press <em>Test</em>: you should read “It answers: ready”. Then <em>Connect</em>.</li>
+          <li><strong>Try a question.</strong> Open <em>Ask</em>, choose “one topic”, press
+            <em>What do they share?</em>. The first answer can take a minute while the model loads.</li>
+          <li><strong>Rewrite ten summaries.</strong> In Bookmarks, tick ten bookmarks. In Grooming,
+            under “With the language model”, keep “the selection” and press <em>Read the pages</em>,
+            then <em>Write summaries and tags</em>. Scroll up to “Summaries written by the language
+            model”, choose “every bookmark”, press <em>Preview</em>: old and new text side by side.
+            Apply if you like them; History can undo it.</li>
+          <li><strong>Place bookmarks by meaning.</strong> Back in Settings, <em>Compute the vectors</em>
+            (a few minutes for some thousands of bookmarks), choose “meaning”, then run
+            <em>Clusters</em> again and redraw the <em>Map</em>.</li>
+        </ol>
+
+        <h4>What each thing does</h4>
         <ul>
-          <li><strong>Place bookmarks by meaning</strong> (Settings): the model turns each bookmark into
-            a vector, and the map, topics, links and “similar bookmarks” compare meaning in place of
-            shared words. Compute the vectors, choose “meaning”, then run Clusters and redraw the Map.
-            A farm offers vectors when its operator has “Document search” on.</li>
-          <li><strong>Rewrite summaries and tags</strong> (Grooming): step 1 reads each page again,
-            step 2 has the model write a summary and pick tags. Nothing changes until you preview and
-            apply the two scripts, and any run can be undone.</li>
-          <li><strong>Ask</strong>: what a selection, the filter or a topic has in common, a briefing,
-            what is missing, a reading order, or your own question. Numbers in the answer open the
-            bookmarks. “The whole collection” first finds the bookmarks closest to your question.</li>
-          <li><strong>Suggest names</strong> (Clusters): a short name for each topic, to tick or edit.</li>
-          <li><strong>why?</strong> (side panel): one sentence on what ties two similar bookmarks.</li>
+          <li><strong>Place bookmarks by meaning</strong> (Settings). The model turns the title, summary
+            and tags of each bookmark into a vector: a list of numbers that sits close to the vectors
+            of bookmarks on the same subject, even when they share no word or are in another language.
+            The map, topics, links and “similar bookmarks” then use these in place of word counts.
+            Vectors are kept in the collection; a bookmark whose text changes needs its vector again
+            (press Compute once more), and until every bookmark has one, words are used. A farm
+            offers vectors when its operator has “Document search” on.</li>
+          <li><strong>Read the pages</strong> (Grooming, job 1). Fetches each page as it is today and
+            keeps its readable text, without menus or scripts. Pages that need a login, private
+            addresses and X posts are left out. No model is involved.</li>
+          <li><strong>Write summaries and tags</strong> (job 2). The model reads that text and writes two
+            or three sentences and three to six tags, preferring tags you already use. Two scripts
+            then propose them: summaries only where one is missing or cut short unless you choose
+            “every bookmark”; tags only among those in use unless you choose “new tags too”.</li>
+          <li><strong>Compare then and now</strong> (job 3). For bookmarks that already have a summary,
+            the model says whether the page still matches it, has moved on, or is now something else
+            (a parked domain, a shop). The verdict shows in the bookmark's side panel, and the script
+            “Flag pages that changed” adds the tag “page changed” or “page replaced” so you can
+            filter on them. Most useful on old collections.</li>
+          <li><strong>Find tags that mean the same</strong> (job 4). The model reads your list of tags
+            and groups synonyms, translations and abbreviations (“dataviz”, “data visualisation”,
+            “visualisation de données”). The script “Merge tags that mean the same” then proposes
+            each merge; untick the ones that should stay apart. With vectors, tags of close meaning
+            are read together; without, in alphabetical lots, which finds fewer.</li>
+          <li><strong>Ask</strong>. Four ready questions (what they share, a briefing, what is missing,
+            a reading order) or your own, about the selection, what passes the filter, or one topic.
+            Each number in the answer is a bookmark: press it to open it. Up to 60 bookmarks are read
+            at once; larger sets are read in parts, and beyond 480 only those nearest the middle of
+            the set. “The whole collection” takes a question, finds the 24 bookmarks closest to it
+            (by meaning when vectors exist, else by its words) and answers from those. Answers are
+            kept under “Earlier answers”.</li>
+          <li><strong>Suggest names</strong> (Clusters). A short name for each topic, from its tags and
+            a few titles. Tick or edit, then apply; a name can always be changed by hand.</li>
+          <li><strong>why?</strong> (side panel). One or two sentences on what ties this bookmark to a
+            similar one.</li>
         </ul>
-        <p><strong>What is sent:</strong> titles, summaries and tags for vectors, questions and names;
-          the text of a page for a summary. Only to the server you connected, and Settings says when
-          that address is not on your local network. <strong>What to expect:</strong> a model can be
-          wrong. It only sees what is in your collection; treat its answers as a reading aid and
-          check what matters on the pages. A farm serves a few people at a time: when it is full,
-          Atlas waits and tries again.</p>
+
+        <h4>What is sent, and what to expect</h4>
+        <ul>
+          <li><strong>Sent:</strong> titles, summaries and tags (vectors, questions, names, tags); the
+            text of a page (summaries, then and now). Only to the server you connected. Settings
+            says so when that address is not on your local network.</li>
+          <li><strong>Never changed without you:</strong> summaries, tags and merges are proposals in
+            Grooming. Topic names are applied only when you press the button.</li>
+          <li><strong>A model can be wrong.</strong> It sees only what is in your collection, not the
+            pages (except in jobs 2 and 3). Use answers as a reading aid and check what matters.</li>
+          <li><strong>Long jobs</strong> go batch by batch and can be stopped; pressing the button again
+            continues where they stopped. Tick “do again those already done” to redo.</li>
+        </ul>
+
+        <h4>When something does not work</h4>
+        <ul>
+          <li><strong>No farm found.</strong> Some networks (guest Wi-Fi, VPN) block the announcements.
+            Type the machine's name or address. On Windows, allow the app on private networks if the
+            firewall asks.</li>
+          <li><strong>“The server did not accept the password.”</strong> It is the farm's shared
+            password, the one its operator set, not a personal one.</li>
+          <li><strong>“The server is full… trying again in N s.”</strong> A farm serves a few people at
+            a time. Atlas waits and continues by itself; or press Stop and come back later.</li>
+          <li><strong>“This farm does not offer text vectors.”</strong> Ask its operator to turn
+            “Document search” on. Everything except “meaning” still works.</li>
+          <li><strong>“The model did not answer in the form that was asked for.”</strong> Small models
+            sometimes ignore the format. Try again, or choose a larger model in Settings.</li>
+          <li><strong>Summaries in the wrong language.</strong> Choose English or French under “Write
+            summaries in”, tick “do again”, and run job 2 again.</li>
+        </ul>
       </div></details>
       <details id="guide-views"><summary>Keeping and sharing (Views)</summary><div>
         <ul>
@@ -876,6 +965,13 @@
           <li><strong>Link</strong>: a resemblance between two bookmarks, from their words and tags.
             <strong>Thread</strong>: a link drawn as an arc.</li>
           <li><strong>Bridge</strong>: a bookmark between two topics.</li>
+          <li><strong>Language model</strong>: a program that reads and writes text. <strong>Farm</strong>:
+            a machine on your network that runs one for several people (LlmOnLan). <strong>Seat</strong>:
+            a place on a farm; when all are taken, others wait.</li>
+          <li><strong>Vector</strong>: the list of numbers a model gives a text; close meanings give
+            close vectors. <strong>By meaning</strong>: comparing bookmarks by their vectors, not their words.</li>
+          <li><strong>Proposal</strong>: something a script or a model suggests, which changes nothing
+            until you apply it.</li>
           <li><strong>Saved date</strong>: when you bookmarked it. <strong>Published date</strong>: when it
             came out.</li>
           <li><strong>View</strong>: a remembered place in the app. <strong>Snapshot</strong>: a file to
@@ -969,27 +1065,37 @@
       <div class="note muted" id="check-note"></div>
     </section>
     <section class="card" id="assist-card">
-      <h2>Rewrite summaries and tags with the language model</h2>
-      <p class="help">Two steps, then two scripts. <strong>Read the pages</strong> goes online and keeps
-        the readable text of each bookmarked page as it is today. <strong>Write summaries and tags</strong>
-        sends that text to the language model connected in Settings, which writes a short summary and
-        picks tags, preferring the ones you already use. Neither step changes a bookmark: the scripts
-        “Summaries written by the language model” and “Tags picked by the language model” above then
-        propose the changes, which you preview, apply and can undo.</p>
+      <h2>With the language model <button class="linkish" id="assist-help">how does this work?</button></h2>
+      <p class="help">These steps go online or call the language model connected in Settings. None of
+        them changes a bookmark: each one prepares proposals, and a script above then shows them for
+        you to preview, apply and undo.</p>
       <div class="row">
         <div><label for="assist-scope">Which bookmarks</label>
           <select id="assist-scope" style="width:auto"></select></div>
-        <div><label for="assist-language">Write in</label>
+        <div><label for="assist-language">Write summaries in</label>
           <select id="assist-language" style="width:auto"><option value="page">the page's language</option><option value="en">English</option><option value="fr">French</option></select></div>
         <label class="check"><input type="checkbox" id="assist-again"> do again those already done</label>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="action primary" id="pages-go">1 · Read the pages</button>
-        <button class="action primary" id="notes-go">2 · Write summaries and tags</button>
         <button class="action" id="assist-stop" hidden>Stop</button>
       </div>
-      <div class="note muted" id="pages-note" role="status"></div>
-      <div class="note muted" id="notes-note" role="status"></div>
+      <ol class="jobs">
+        <li><button class="action primary" id="pages-go">Read the pages</button>
+          <div><strong>Fetch each page as it is today</strong> and keep its readable text. No model involved.
+            <div class="note muted" id="pages-note" role="status"></div></div></li>
+        <li><button class="action primary" id="notes-go">Write summaries and tags</button>
+          <div><strong>The model reads each page</strong> and writes a short summary and a few tags, preferring tags you already use.
+            Then: scripts “Summaries written by the language model” and “Tags picked by the language model”.
+            <div class="note muted" id="notes-note" role="status"></div></div></li>
+        <li><button class="action primary" id="compare-go">Compare then and now</button>
+          <div><strong>For bookmarks that have a summary:</strong> is the page still what the summary says, has it moved on, or is it now something else?
+            Then: script “Flag pages that changed since they were saved”. The verdict also shows in each bookmark's side panel.
+            <div class="note muted" id="compare-note" role="status"></div></div></li>
+      </ol>
+      <ol class="jobs" start="4">
+        <li><button class="action primary" id="taggroups-go">Find tags that mean the same</button>
+          <div><strong>The model reads the list of tags</strong> (all of them, whatever is chosen above) and groups synonyms, translations and abbreviations.
+            Then: script “Merge tags that mean the same (language model)”.
+            <div class="note muted" id="taggroups-note" role="status"></div></div></li>
+      </ol>
     </section>
     <section class="card">
       <h2>History</h2>
@@ -1246,7 +1352,7 @@ async function refreshState() {
 
   $("data-folder").textContent = state.data_folder;
   $("about-line").textContent = $("summary").textContent.replace(" · v", " · Bookmark Atlas version ");
-  renderStart();
+  renderStart(); renderModelTour();
   const snap = state.snapshot;
   $("snapbanner").hidden = !snap;
   if (snap) {
@@ -3033,6 +3139,7 @@ async function openPanel(id) {
     el("div", { className: "row", style: "margin:12px 0 4px" }, [open, pick].filter(Boolean)),
     el("div", { className: "tagline", style: "overflow-wrap:anywhere" }, [item.url + " · ", copy]),
     item.summary ? el("h3", { textContent: "Summary" }) : "", item.summary ? el("p", { className: "sum", textContent: item.summary }) : "",
+    ...modelNotes(item),
     tags.length ? el("h3", { textContent: "Tags" }) : "", tags.length ? el("div", { className: "chips" }, tags) : "",
     el("h3", { textContent: "Similar bookmarks" }), related);
   $("side-close").focus(); $("side").scrollTop = 0;
@@ -4088,7 +4195,7 @@ $("tab-settings").onclick = () => { showView("settings"); loadLlm().catch((e) =>
 let helpFrom = "bookmarks";
 function openGuide(section) {
   showView("guide");
-  const target = $("guide-" + section) || $("guide-start");
+  const target = $("guide-" + ({ ask: "models" }[section] || section)) || $("guide-start");
   for (const part of document.querySelectorAll(".guide details")) part.open = part === target;
   target.scrollIntoView({ block: "start" }); window.scrollBy(0, -80);
   target.querySelector("summary").focus({ preventScroll: true });
@@ -4124,6 +4231,32 @@ function renderStart() {
   card.hidden = false;
 }
 $("start-guide").onclick = () => openGuide("start");
+// A second, optional tour: the four things a language model adds.
+function renderModelTour() {
+  const progress = state && state.progress, tour = progress && progress.model, card = $("start-model");
+  if (!tour || tour.hidden || !progress.bookmarks || (tour.connected && tour.meaning && tour.notes && tour.asked && !renderModelTour.asked)) { card.hidden = true; return; }
+  const settings = () => { $("tab-settings").click(); setTimeout(() => $("llm-card").scrollIntoView({ block: "start" }), 60); };
+  const steps = [
+    ["connected", "Connect a model on your network", "A LlmOnLan farm is found by itself; any OpenAI-compatible server works with its address. Test, then Connect.", "Open Settings", settings],
+    ["meaning", "Place bookmarks by meaning", "Compute the vectors, choose “meaning”, then run Clusters and redraw the Map: bookmarks on one subject meet, whatever their words or language.", "Open Settings", settings],
+    ["notes", "Rewrite a few summaries", "Select ten bookmarks, then in Grooming: read the pages, let the model write, and preview the result before applying.", "Open Grooming", () => { $("tab-grooming").click(); setTimeout(() => $("assist-card").scrollIntoView({ block: "start" }), 200); }],
+    ["asked", "Ask about a topic", "Pick a topic and press “What do they share?”. Numbers in the answer open the bookmarks.", "Open Ask", () => $("tab-ask").click()],
+  ];
+  const next = steps.find(([key]) => !tour[key]), done = steps.filter(([key]) => tour[key]).length;
+  $("start-model-help").textContent = !next ? "All four done. The guide lists what else the model can do: compare then and now, find tags that mean the same, suggest topic names." : done === 0 ? "Optional. If a language model runs on a machine of yours, Atlas can use it. Nothing leaves your network, and nothing it writes changes a bookmark without a preview."
+    : done + " of 4 done. Next: " + next[1].toLowerCase() + ".";
+  $("start-model-steps").replaceChildren(...steps.map(([key, title, text, label, go], index) => {
+    const button = el("button", { className: next && next[0] === key ? "action primary" : "action", textContent: label });
+    button.onclick = go;
+    return el("li", { className: tour[key] ? "done" : next && next[0] === key ? "next" : "" }, [
+      el("span", { className: "mark", textContent: tour[key] ? "✓" : String(index + 1) }),
+      el("div", {}, [el("strong", { textContent: title }), el("div", { className: "tagline", textContent: tour[key] ? "Done." : text })]), button]);
+  }));
+  card.hidden = false;
+}
+$("start-model-guide").onclick = () => openGuide("models");
+$("guide-model-steps").onclick = async () => { renderModelTour.asked = true; try { await api("POST", "/api/tutorial", { tour: "model", hidden: false }); } catch (error) { /* shown anyway if possible */ } $("tab-bookmarks").click(); };
+$("start-model-hide").onclick = async () => { try { state.progress = (await api("POST", "/api/tutorial", { tour: "model", hidden: true })).progress; } catch (error) { /* hidden for now anyway */ } $("start-model").hidden = true; };
 $("guide-steps").onclick = async () => { try { await api("POST", "/api/tutorial", { hidden: false }); } catch (error) { /* shown anyway if possible */ } $("tab-bookmarks").click(); };
 $("start-hide").onclick = async () => {
   try { await api("POST", "/api/tutorial", { hidden: true }); await refreshState(); note("sel-note", "", "muted"); } catch (error) { /* stays visible */ }
@@ -4305,11 +4438,38 @@ async function loadAssist() {
   try {
     const p = await api("POST", "/api/pages", { status_only: true, ids: null }), n = await api("POST", "/api/notes", { status_only: true, ids: null });
     note("pages-note", "Pages: " + p.ok + " read, " + p.none + " without text, " + p.error + " not reached, " + p.skipped + " left out, " + p.remaining + " not tried yet.", "muted");
-    note("notes-note", "Notes: " + n.written + " bookmarks have one; " + n.remaining + " pages read are waiting for theirs." + (llmOn() ? "" : " Connect a language model in Settings for step 2."), "muted");
+    note("notes-note", "Notes: " + n.written + " bookmarks have one; " + n.remaining + " pages read are waiting for theirs." + (llmOn() ? "" : " Connect a language model in Settings for steps 2 to 4."), "muted");
+    const c = await api("POST", "/api/compare", { status_only: true, ids: null }), g = await api("POST", "/api/tags/groups", { status_only: true });
+    note("compare-note", c.remaining + " waiting to be compared. " + describeCompare(c), "muted");
+    note("taggroups-note", g.tags + " tags in use; " + g.groups + " groups found so far" + (g.lots_left ? "; a pass was interrupted with " + g.lots_left + " lots left (pressing the button starts again)" : "") + ".", "muted");
   } catch (error) { note("pages-note", error.message, "bad"); }
 }
 const assistIds = () => scopeIds($("assist-scope").value);
-function assistButtons(on) { $("pages-go").disabled = on; $("notes-go").disabled = on; $("assist-stop").hidden = !on; }
+function assistButtons(on) { for (const id of ["pages-go", "notes-go", "compare-go", "taggroups-go"]) $(id).disabled = on; $("assist-stop").hidden = !on; }
+$("assist-help").onclick = () => openGuide("models");
+$("compare-go").onclick = async () => {
+  let ids; try { ids = await assistIds(); } catch (error) { note("compare-note", error.message, "bad"); return; }
+  assistButtons(true); let compared = 0, failed = 0, since = null, last = null;
+  try { if ($("assist-again").checked) since = (await api("POST", "/api/compare", { status_only: true, ids })).now; }
+  catch (error) { assistButtons(false); note("compare-note", error.message, "bad"); return; }
+  assist.finished = (r) => r.remaining === 0 || (r.compared + r.failed === 0 && !r.busy);
+  const problem = await inBatches(assist, () => api("POST", "/api/compare", { ids, limit: 4, since }),
+    (r, waiting) => { last = r; if (waiting === false) { compared += r.compared; failed += r.failed; } note("compare-note", waiting || ("Comparing… " + compared + " done, " + r.remaining + " to go."), "muted"); });
+  assistButtons(false);
+  note("compare-note", problem || ((assist.stop ? "Stopped. " : "Done. ") + compared + " compared" + (failed ? ", " + failed + " answers could not be read" : "") + ". "
+    + (last ? describeCompare(last.status) : "") + (compared ? " Now preview “Flag pages that changed since they were saved” above." : " Nothing to compare: it needs pages read (step 1) and bookmarks that already have a summary.")), problem ? "bad" : "good");
+};
+function describeCompare(s) { return "Still the same: " + s.same + ". Moved on: " + s.changed + ". Now something else: " + s.replaced + "."; }
+$("taggroups-go").onclick = async () => {
+  assistButtons(true); let found = 0, first = true, how = "";
+  assist.finished = (r) => r.remaining === 0;
+  const problem = await inBatches(assist, () => { const body = { start: first }; first = false; return api("POST", "/api/tags/groups", body); },
+    (r, waiting) => { if (waiting === false) found += r.found; if (r.ordered_by) how = r.ordered_by; note("taggroups-note", waiting || ("Reading the tags… " + found + " groups so far, " + r.remaining + " lots to go."), "muted"); });
+  assistButtons(false);
+  note("taggroups-note", problem || ((assist.stop ? "Stopped. " : "Done. ") + found + " groups of tags that mean the same. "
+    + (how === "alphabet" ? "Without vectors the tags were read in alphabetical lots, so a tag and its translation may not have met: connect a server with vectors for a better pass. " : "")
+    + (found ? "Now preview “Merge tags that mean the same (language model)” above." : "")), problem ? "bad" : "good");
+};
 $("assist-stop").onclick = () => { assist.stop = true; };
 $("pages-go").onclick = async () => {
   let ids; try { ids = await assistIds(); } catch (error) { note("pages-note", error.message, "bad"); return; }
@@ -4431,6 +4591,22 @@ $("cl-names").onclick = () => busy($("cl-names"), async () => {
   } catch (error) { note("cl-note", error.message, "bad"); }
 });
 
+// In the side panel: what the page reading and the model have on this bookmark.
+function modelNotes(item) {
+  const m = item.model || {}, out = [];
+  if (m.then_now) {
+    const words = { same: "The page still matches this summary", changed: "The page has moved on since this summary", replaced: "The page is now something else" }[m.then_now.verdict];
+    out.push(el("div", { className: "fromodel tagline" }, [el("strong", { textContent: words + " " }), "(read " + m.then_now.on + " by the model)" + (m.then_now.note ? ": " + m.then_now.note : ".")]));
+  } else if (m.page && m.page.status !== "ok") {
+    out.push(el("div", { className: "fromodel tagline", textContent: "Page read " + m.page.fetched_at.slice(0, 10) + ": " + (m.page.detail || "no text") + "." }));
+  }
+  if (m.proposed_summary && m.proposed_summary !== (item.summary || "").trim()) {
+    const go = el("button", { className: "linkish", textContent: "review it in Grooming" });
+    go.onclick = () => { closePanel(); $("tab-grooming").click(); };
+    out.push(el("div", { className: "fromodel" }, [el("div", { className: "tagline" }, ["Summary proposed by the model, not applied · ", go]), el("p", { className: "sum", textContent: m.proposed_summary })]));
+  }
+  return out;
+}
 // In the side panel: why are these two alike?
 function whyButton(firstId, other) {
   if (!llmOn()) return "";

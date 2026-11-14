@@ -480,5 +480,25 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   bookmark.
 - **Tested against a stand-in farm** (`tests/fake_farm.py`, real HTTP, written
   from LlmOnLan's source), not against a real one.
-- **Not built:** tag merges proposed by the model; comparing what a page
-  said then and now.
+
+## Phase 22: then and now, tags that mean the same, and the in-app tutorial
+
+- **Compare then and now** (`assist.compare_pages`, Grooming job 3): for
+  bookmarks with a summary and a page read, the model answers same, changed
+  or replaced, with one sentence. Shown in the side panel; the script
+  `flag-changed-pages` adds the tag "page changed" or "page replaced".
+- **Tags that mean the same** (`assist.find_tag_groups`, migration 0007, job
+  4): the tags in use are read in lots of 150. With vectors the lots follow a
+  walk from each tag to its nearest, so a tag and its translation meet;
+  without, the alphabet. Only tags of the lot are accepted, each in one group.
+  The script `merge-tags-from-model` proposes the merges with the same
+  machinery as the spelling merges.
+- **Side panel:** the model's verdict on the page, why a page could not be
+  read, and a summary proposed but not applied, with a way to Grooming.
+- **Tutorial:** a second tour on the Bookmarks tab (connect, meaning, rewrite,
+  ask) that follows what has been done and can be put away or brought back;
+  the Grooming card rebuilt as four jobs, each saying what it does and which
+  script follows; a Guide section with first-time steps, each feature, what is
+  sent, and what to do when something fails; `?` on Ask opens it; new words
+  in the glossary.
+- **Still tested against the stand-in farm only.**

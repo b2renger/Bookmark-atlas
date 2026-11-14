@@ -113,9 +113,10 @@ class App:
         """Remember that the getting-started steps were put away, or bring them back."""
         conn = self._conn()
         try:
+            key = "tutorial_model_hidden" if body.get("tour") == "model" else "tutorial_hidden"
             conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('tutorial_hidden', ?)",
-                ("1" if body.get("hidden") else "0",),
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                (key, "1" if body.get("hidden") else "0"),
             )
             conn.commit()
             return {"progress": _progress(conn)}
@@ -412,6 +413,35 @@ class App:
                 ids=self._ids(body),
                 limit=int(body.get("limit") or 6),
                 language=str(body.get("language") or "page"),
+                since=str(body["since"]) if body.get("since") else None,
+            ),
+            model=True,
+        )
+
+    def tag_groups(self, body: dict) -> dict:
+        from atlas import assist
+
+        if body.get("status_only"):
+            return self._with(assist.tag_groups_status)
+        return self._with(
+            lambda conn, connection: assist.find_tag_groups(
+                conn, connection, start=bool(body.get("start"))
+            ),
+            model=True,
+        )
+
+    def compare(self, body: dict) -> dict:
+        from atlas import assist
+
+        if body.get("status_only"):
+            ids = self._ids(body)
+            return self._with(lambda conn: {**assist.compare_status(conn, ids), "now": now_iso()})
+        return self._with(
+            lambda conn, connection: assist.compare_pages(
+                conn,
+                connection,
+                ids=self._ids(body),
+                limit=int(body.get("limit") or 6),
                 since=str(body["since"]) if body.get("since") else None,
             ),
             model=True,
@@ -894,6 +924,9 @@ class App:
                     (row["id"],),
                 )
             ]
+            from atlas import assist
+
+            item["model"] = assist.about(conn, row["id"])
             return {"item": item}
         finally:
             conn.close()
@@ -967,6 +1000,22 @@ def _progress(conn) -> dict:
         "tree": "tree" in kinds,
         "saved_view": count("SELECT COUNT(*) FROM views") > 0,
         "hidden": bool(hidden and hidden[0] == "1"),
+        "model": _model_progress(conn),
+    }
+
+
+def _model_progress(conn) -> dict:
+    """How far the language-model steps have come, for their own short tour."""
+    from atlas import assist, llm
+
+    count = lambda sql: conn.execute(sql).fetchone()[0]  # noqa: E731
+    put_away = conn.execute("SELECT value FROM meta WHERE key = 'tutorial_model_hidden'").fetchone()
+    return {
+        "connected": bool(llm.load().get("base_url")),
+        "meaning": assist.vector_status(conn)["in_use"] == "model",
+        "notes": count("SELECT COUNT(*) FROM llm_notes WHERE kind = 'summary'") > 0,
+        "asked": count("SELECT COUNT(*) FROM llm_answers") > 0,
+        "hidden": bool(put_away and put_away[0] == "1"),
     }
 
 
@@ -1104,6 +1153,8 @@ def make_handler(app: App):
                 ("POST", "/api/pages"): lambda: app.pages(self._body()),
                 ("POST", "/api/notes"): lambda: app.notes(self._body()),
                 ("POST", "/api/ask"): lambda: app.ask(self._body()),
+                ("POST", "/api/tags/groups"): lambda: app.tag_groups(self._body()),
+                ("POST", "/api/compare"): lambda: app.compare(self._body()),
                 ("GET", "/api/answers"): lambda: app.answers(),
                 ("POST", "/api/answers"): lambda: app.answers(self._body()),
                 ("GET", "/api/views"): lambda: app.views_list(),

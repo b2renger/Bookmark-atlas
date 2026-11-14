@@ -416,6 +416,13 @@ def test_progress_follows_what_has_been_done(tmp_path):
         "tree": False,
         "saved_view": False,
         "hidden": False,
+        "model": {
+            "connected": False,
+            "meaning": False,
+            "notes": False,
+            "asked": False,
+            "hidden": False,
+        },
     }
     conn = database.open_ready(target)
     conn.execute(
