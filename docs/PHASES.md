@@ -454,3 +454,31 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   above 3,500 bookmarks the map lays out a sample of 2,500 exactly and sets
   the others among them (60 s); thousands of dots are drawn a shade at a time
   (84 ms a frame down to 10); the more lines, the fainter each.
+
+## Phase 21: a language model on the local network
+
+- **Asked for:** have language models reason over a selection of links,
+  refetch links, rewrite summaries and tags, connected to a LlmOnLan farm.
+- **Connection** (`atlas.llm`, Settings ▸ Language models): the
+  OpenAI-compatible API, so any such server works. A LlmOnLan farm is found
+  by its UDP announcement or its `/lol/self` page; its password goes to the
+  keychain; a full farm (429 with Retry-After) is waited for.
+- **Vectors by meaning** (`assist.compute_vectors`, `model_vectors`): the
+  farm's EmbeddingGemma vectors are kept per bookmark; once chosen and
+  complete they replace word counts for topics, map, links and similar
+  bookmarks. Turned by PCA to 64 leading directions.
+- **Rewrite summaries and tags**: `page_texts` keeps the readable text of
+  each page; `llm_notes` what the model wrote; the scripts
+  `summary-from-model` and `tags-from-model` propose them (preview, apply,
+  undo). Page text is fenced in the prompt as material, and answers are
+  cleaned before they are kept.
+- **Ask tab**: common thread, briefing, gaps, reading order or any question
+  over the selection, the filter or a topic; the whole collection by
+  retrieval. Sources are numbered and open the side panel. Sets above 60
+  bookmarks are read in parts; above 480 the nearest to the middle are read.
+- **Also:** topic names proposed in Clusters; "why?" beside each similar
+  bookmark.
+- **Tested against a stand-in farm** (`tests/fake_farm.py`, real HTTP, written
+  from LlmOnLan's source), not against a real one.
+- **Not built:** tag merges proposed by the model; comparing what a page
+  said then and now.

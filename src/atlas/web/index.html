@@ -84,6 +84,14 @@
   .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .toolbar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+  .answer p { margin: 0 0 10px; max-width: 78ch; line-height: 1.55; }
+  .answer p.dash { padding-left: 16px; text-indent: -16px; }
+  .answer p.dash::before { content: "– "; color: var(--muted); }
+  .cite { font: inherit; font-size: .78em; line-height: 1.5; min-width: 1.7em; padding: 0 5px; margin: 0 2px; vertical-align: 1px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--chip); color: var(--ink); cursor: pointer; }
+  .cite:hover, .cite:focus-visible { border-color: var(--accent); }
+  table.plainrows { border-collapse: collapse; } table.plainrows td, table.plainrows th { padding: 4px 12px 4px 0; text-align: left; vertical-align: middle; }
+  #llm-vectors h3 { margin: 18px 0 4px; } #llm-vectors p.help { max-width: 78ch; color: var(--muted); }
   #selbar { position: sticky; top: 58px; z-index: 1; background: var(--chip); border: 1px solid var(--line);
     border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
   .selrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 6px; }
@@ -288,6 +296,7 @@
     <button id="tab-tree">Tree</button>
     <button id="tab-links">Links</button>
     <button id="tab-trends">Trends</button>
+    <button id="tab-ask">Ask</button>
     <button id="tab-views">Views</button>
     <button id="tab-workspaces">Workspaces</button>
     <button id="tab-grooming">Grooming</button>
@@ -421,6 +430,7 @@
             <option value="e-means++">e-means, k-means++ start</option>
           </select></div>
         <button class="action primary" id="cl-run">Cluster</button>
+        <button class="action" id="cl-names" hidden title="A language model proposes a short name for each topic; you choose which to keep">Suggest names</button>
         <div class="grow"></div>
         <div><label for="cl-runs">Shown run</label><select id="cl-runs" style="width:auto"></select></div>
         <button class="action" id="cl-delete" hidden>Delete run</button>
@@ -556,6 +566,48 @@
         <div><h3>Tags on the rise</h3><div id="trends-tags-up"></div></div>
         <div><h3>Tags fading</h3><div id="trends-tags-down"></div></div>
       </div>
+    </section>
+  </div>
+
+  <div id="view-ask" hidden>
+    <section class="card">
+      <h2>Ask about your bookmarks</h2>
+      <p class="help">A language model on your network reads the titles, summaries and tags of a set
+        of bookmarks and answers about them. Each number in square brackets in the answer is one
+        of the bookmarks: press it to open it. The model only sees what is in your collection, so
+        fuller summaries give better answers. Answers are kept below.</p>
+      <div class="note" id="ask-off" hidden>No language model is connected yet.
+        <button class="linkish" id="ask-connect">Connect one in Settings</button></div>
+      <div id="ask-form">
+        <div class="row">
+          <div><label for="ask-scope">About</label>
+            <select id="ask-scope" style="width:auto"></select></div>
+          <div id="ask-topic-box" hidden><label for="ask-topic">Topic</label>
+            <select id="ask-topic" style="width:auto"></select></div>
+        </div>
+        <div class="row" id="ask-kinds" style="margin-top:10px">
+          <button class="action" data-kind="common">What do they share?</button>
+          <button class="action" data-kind="briefing">Write a briefing</button>
+          <button class="action" data-kind="gaps">What is missing?</button>
+          <button class="action" data-kind="path">A reading order</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="grow"><label for="ask-question">Or your own question</label>
+            <input type="text" id="ask-question" maxlength="1000" placeholder="e.g. Which of these explain how to get started?"></div>
+          <button class="action primary" id="ask-go">Ask</button>
+        </div>
+      </div>
+      <div class="note muted" id="ask-note" role="status"></div>
+    </section>
+    <section class="card" id="ask-result" hidden>
+      <h2 id="ask-title"></h2>
+      <div id="ask-answer" class="answer"></div>
+      <details id="ask-sources"><summary></summary><ol class="plain" id="ask-list"></ol></details>
+      <div class="tagline" id="ask-by"></div>
+    </section>
+    <section class="card">
+      <h2>Earlier answers</h2>
+      <div id="ask-history"></div>
     </section>
   </div>
 
@@ -750,6 +802,33 @@
         <div class="where"><button class="linkish" data-go="trends">Open Trends</button></div>
       </div></details>
 
+      <details id="guide-models"><summary>A language model on your network (Settings, Ask, Grooming)</summary><div>
+        <p>Optional. Atlas can use a language model that runs on a machine of yours: a
+          <strong>LlmOnLan farm</strong>, which it finds by itself, or any server that speaks the OpenAI
+          API (Ollama, llama.cpp, vLLM, LM Studio). Connect it in <strong>Settings ▸ Language models</strong>:
+          Find farms (or type the machine's name), Test, Connect. A farm's password is asked once and
+          kept in this computer's keychain.</p>
+        <ul>
+          <li><strong>Place bookmarks by meaning</strong> (Settings): the model turns each bookmark into
+            a vector, and the map, topics, links and “similar bookmarks” compare meaning in place of
+            shared words. Compute the vectors, choose “meaning”, then run Clusters and redraw the Map.
+            A farm offers vectors when its operator has “Document search” on.</li>
+          <li><strong>Rewrite summaries and tags</strong> (Grooming): step 1 reads each page again,
+            step 2 has the model write a summary and pick tags. Nothing changes until you preview and
+            apply the two scripts, and any run can be undone.</li>
+          <li><strong>Ask</strong>: what a selection, the filter or a topic has in common, a briefing,
+            what is missing, a reading order, or your own question. Numbers in the answer open the
+            bookmarks. “The whole collection” first finds the bookmarks closest to your question.</li>
+          <li><strong>Suggest names</strong> (Clusters): a short name for each topic, to tick or edit.</li>
+          <li><strong>why?</strong> (side panel): one sentence on what ties two similar bookmarks.</li>
+        </ul>
+        <p><strong>What is sent:</strong> titles, summaries and tags for vectors, questions and names;
+          the text of a page for a summary. Only to the server you connected, and Settings says when
+          that address is not on your local network. <strong>What to expect:</strong> a model can be
+          wrong. It only sees what is in your collection; treat its answers as a reading aid and
+          check what matters on the pages. A farm serves a few people at a time: when it is full,
+          Atlas waits and tries again.</p>
+      </div></details>
       <details id="guide-views"><summary>Keeping and sharing (Views)</summary><div>
         <ul>
           <li><strong>A view</strong> remembers where you are: the tab, the search, the filter, the selection,
@@ -888,6 +967,29 @@
         <label class="check"><input type="checkbox" id="check-again"> check again those that were gone or unsure</label>
       </div>
       <div class="note muted" id="check-note"></div>
+    </section>
+    <section class="card" id="assist-card">
+      <h2>Rewrite summaries and tags with the language model</h2>
+      <p class="help">Two steps, then two scripts. <strong>Read the pages</strong> goes online and keeps
+        the readable text of each bookmarked page as it is today. <strong>Write summaries and tags</strong>
+        sends that text to the language model connected in Settings, which writes a short summary and
+        picks tags, preferring the ones you already use. Neither step changes a bookmark: the scripts
+        “Summaries written by the language model” and “Tags picked by the language model” above then
+        propose the changes, which you preview, apply and can undo.</p>
+      <div class="row">
+        <div><label for="assist-scope">Which bookmarks</label>
+          <select id="assist-scope" style="width:auto"></select></div>
+        <div><label for="assist-language">Write in</label>
+          <select id="assist-language" style="width:auto"><option value="page">the page's language</option><option value="en">English</option><option value="fr">French</option></select></div>
+        <label class="check"><input type="checkbox" id="assist-again"> do again those already done</label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="action primary" id="pages-go">1 · Read the pages</button>
+        <button class="action primary" id="notes-go">2 · Write summaries and tags</button>
+        <button class="action" id="assist-stop" hidden>Stop</button>
+      </div>
+      <div class="note muted" id="pages-note" role="status"></div>
+      <div class="note muted" id="notes-note" role="status"></div>
     </section>
     <section class="card">
       <h2>History</h2>
@@ -1028,6 +1130,55 @@
       <div class="note" id="csv-note"></div>
       <dl class="report" id="csv-report" hidden></dl>
     </section>
+    <section class="card" id="llm-card">
+      <h2>Language models</h2>
+      <p class="help">Optional. Connect a language model that runs on your own network, and Atlas can
+        place bookmarks by meaning, rewrite summaries and tags from the pages as they read today,
+        and answer questions about a set of bookmarks (the <strong>Ask</strong> tab). Atlas finds a
+        <strong>LlmOnLan farm</strong> by itself; any other server that speaks the OpenAI API
+        (Ollama, llama.cpp, vLLM, LM Studio) works with its address. Nothing is sent anywhere until
+        you connect one, and the password is kept in this computer's keychain, never in the database.</p>
+      <div class="row"><div class="note grow" id="llm-now"></div>
+        <button class="action" id="llm-forget" hidden>Disconnect</button></div>
+      <div class="row" style="margin-top:8px">
+        <button class="action" id="llm-find">Find farms on this network</button>
+        <div class="grow"><label for="llm-address">Or an address</label>
+          <input type="text" id="llm-address" placeholder="gpubox, 192.168.1.20, or http://localhost:11434/v1" autocomplete="off" spellcheck="false"></div>
+        <button class="action" id="llm-use">Use this address</button>
+      </div>
+      <div id="llm-farms"></div>
+      <div id="llm-form" hidden>
+        <div class="row" style="margin-top:10px">
+          <div class="grow"><label for="llm-base">Server</label><input type="text" id="llm-base" readonly></div>
+          <div><label for="llm-password">Password (if it has one)</label>
+            <input type="password" id="llm-password" autocomplete="off" style="width:200px"></div>
+          <button class="action" id="llm-test">Test</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div><label for="llm-model">Model for writing</label><select id="llm-model" style="width:auto"></select></div>
+          <div id="llm-embed-box"><label for="llm-embed">Model for vectors (optional)</label>
+            <input type="text" id="llm-embed" placeholder="e.g. nomic-embed-text" style="width:220px"></div>
+          <button class="action primary" id="llm-save" disabled>Connect</button>
+        </div>
+      </div>
+      <div class="note muted" id="llm-note" role="status"></div>
+      <div id="llm-vectors" hidden>
+        <h3>Place bookmarks by meaning</h3>
+        <p class="help">By default the map, the topics and “similar bookmarks” compare the words of
+          titles, summaries and tags. With vectors from the model they compare meaning: a French
+          and an English bookmark on the same subject meet, and so do two that share no word.
+          Vectors are computed once per bookmark and kept in this collection; only title, summary
+          and tags are sent. After switching, run <strong>Clusters</strong> again and redraw the
+          <strong>Map</strong>.</p>
+        <div class="row">
+          <button class="action" id="vec-go">Compute the vectors</button>
+          <button class="action" id="vec-stop" hidden>Stop</button>
+          <div><label for="vec-source">The map and topics use</label>
+            <select id="vec-source" style="width:auto"><option value="words">words (as before)</option><option value="model">meaning (the model's vectors)</option></select></div>
+        </div>
+        <div class="note muted" id="vec-note" role="status"></div>
+      </div>
+    </section>
   </div>
 </main>
 
@@ -1074,7 +1225,7 @@ let lastWorkView = "bookmarks";   // what "Save view" captures
 function showView(name) {
   currentView = name;
   if (["bookmarks", "map", "clusters", "grid", "tree", "links", "trends"].includes(name)) lastWorkView = name;
-  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "views", "workspaces", "grooming", "settings", "guide"]) {
+  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "ask", "views", "workspaces", "grooming", "settings", "guide"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -2889,7 +3040,7 @@ async function openPanel(id) {
     const found = (await api("GET", "/api/links/related?id=" + encodeURIComponent(id))).related;
     if (side.id !== id) return;
     related.replaceChildren(found.length ? el("ol", { className: "plain" }, found.map((other) => el("li", {}, [bookmarkLink(other),
-      el("div", { className: "tagline", textContent: Math.round(other.similarity * 100) + "% alike" + (other.shared_tags.length ? " · both tagged " + other.shared_tags.slice(0, 4).join(", ") : "") + (other.same_site ? " · same site" : "") })])))
+      el("div", { className: "tagline" }, [Math.round(other.similarity * 100) + "% alike" + (other.shared_tags.length ? " · both tagged " + other.shared_tags.slice(0, 4).join(", ") : "") + (other.same_site ? " · same site" : ""), whyButton(id, other)])])))
       : el("p", { className: "tagline", textContent: "Nothing close." }));
   } catch (error) { if (side.id === id) related.replaceChildren(el("p", { className: "tagline", textContent: "Similar bookmarks need NumPy, which this copy lacks." })); }
 }
@@ -3707,6 +3858,7 @@ $("check-go").onclick = async () => {
 };
 
 async function loadGrooming() {
+  loadAssist().catch(() => {});
   loadDates(); loadChecks();
   const data = await api("GET", "/api/groom/scripts");
   const holder = $("scripts");
@@ -3931,7 +4083,7 @@ let searchTimer = null;
 $("search").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadBookmarks(true).catch(() => {}), 200); };
 $("more").onclick = () => loadBookmarks(false);
 $("tab-bookmarks").onclick = () => { showView("bookmarks"); refreshState().catch(() => {}); loadBookmarks(true).catch(() => {}); };
-$("tab-settings").onclick = () => showView("settings");
+$("tab-settings").onclick = () => { showView("settings"); loadLlm().catch((e) => note("llm-note", e.message, "bad")); };
 // The guide: one section per tab, and "?" lands on the section for where you are.
 let helpFrom = "bookmarks";
 function openGuide(section) {
@@ -3999,6 +4151,297 @@ document.querySelector("main").prepend($("selbar"));
     $("list").replaceChildren(el("div", { className: "empty", textContent: error.message }));
   }
 })();
+
+/* ---- language models ---- */
+// The connection (Settings), vectors by meaning, reading pages and writing
+// notes (Grooming), questions (Ask), topic names (Clusters), "why alike" (side panel).
+const llm = { state: null, draft: null, tested: false };
+const llmOn = () => !!(llm.state && llm.state.connection.connected);
+
+async function loadLlm() {
+  llm.state = await api("GET", "/api/llm");
+  const c = llm.state.connection, v = llm.state.vectors;
+  note("llm-now", c.connected
+    ? "Connected to " + (c.name || c.base_url) + " · writing with " + c.chat_model + (c.has_password ? " · password kept" : "")
+      + (c.local ? "" : " · This address is not on your local network: what you send leaves it.")
+    : "Not connected.", c.connected ? (c.local ? "good" : "bad") : "muted");
+  $("llm-forget").hidden = !c.connected;
+  $("llm-vectors").hidden = !c.connected && !v.ready;
+  $("vec-source").value = v.source;
+  if (!vec.running) note("vec-note", describeVectors(v), "muted");
+  $("ask-off").hidden = c.connected; $("ask-form").hidden = !c.connected;
+  $("cl-names").hidden = !c.connected;
+}
+function describeVectors(v) {
+  if (!v.total) return "No bookmarks yet.";
+  const have = v.ready + " of " + v.total + " bookmarks have a vector" + (v.model ? " (" + v.model.split("/")[0] + ")" : "") + ". ";
+  if (v.source === "model" && v.in_use !== "model") return have + "Meaning is chosen, but " + v.missing + " are missing: words are used until they are computed.";
+  return have + "In use now: " + (v.in_use === "model" ? "meaning." : "words.");
+}
+function llmDraft(card) {
+  llm.draft = card; llm.tested = false;
+  $("llm-form").hidden = false; $("llm-base").value = card.base_url;
+  $("llm-embed-box").hidden = card.kind === "farm";
+  $("llm-model").replaceChildren(...(card.models || (card.chat_model ? [card.chat_model] : [])).map((id) => el("option", { value: id, textContent: id })));
+  if (card.chat_model) $("llm-model").value = card.chat_model;
+  $("llm-save").disabled = true;
+  note("llm-note", (card.kind === "farm" ? "“" + card.name + "” found" + (card.requires_password ? ": it asks for a password" : "") + (card.embeddings ? ", and offers vectors" : ", without vectors (its operator can turn “Document search” on)") + ". " : "")
+    + "Press Test to check it answers.", "muted");
+}
+function llmBody() {
+  const d = llm.draft || {};
+  return { kind: d.kind || "openai", name: d.name || "", base_url: $("llm-base").value, self_url: d.self_url || "",
+    chat_model: $("llm-model").value, embed_model: d.kind === "farm" ? "" : $("llm-embed").value.trim(),
+    password: $("llm-password").value || null, keep_password: !$("llm-password").value && !!(llm.state && llm.state.connection.has_password && llm.state.connection.base_url === $("llm-base").value) };
+}
+$("llm-find").onclick = () => busy($("llm-find"), async () => {
+  note("llm-note", "Listening for farms for a few seconds…", "muted"); $("llm-farms").replaceChildren();
+  try {
+    const farms = (await api("POST", "/api/llm/find", {})).farms;
+    if (!farms.length) { note("llm-note", "No farm announced itself. If one is running, type its machine name or address above: some networks block these announcements.", "muted"); return; }
+    $("llm-farms").replaceChildren(el("ul", { className: "plain" }, farms.map((card) => { const use = el("button", { className: "action", textContent: "Use" }); use.onclick = () => llmDraft(card);
+      return el("li", {}, [el("strong", { textContent: card.name }), " · " + card.base_url + " · " + (card.models.join(", ") || "no model listed") + (card.requires_password ? " · password" : "") + " ", use]); })));
+    note("llm-note", farms.length + (farms.length === 1 ? " farm found." : " farms found."), "good");
+    if (farms.length === 1) llmDraft(farms[0]);
+  } catch (error) { note("llm-note", error.message, "bad"); }
+});
+$("llm-use").onclick = () => busy($("llm-use"), async () => {
+  const typed = $("llm-address").value.trim();
+  if (!typed) { note("llm-note", "Type a machine name or an address first.", "bad"); return; }
+  // A bare name is tried as a farm first; a full address ending in /v1 is taken as it is.
+  if (!/\/v1\/?$/.test(typed)) {
+    try { llmDraft((await api("POST", "/api/llm/find", { host: typed })).farms[0]); return; } catch (error) { /* not a farm: an ordinary server */ }
+  }
+  llmDraft({ kind: "openai", name: "", base_url: /^https?:\/\//.test(typed) ? typed : "http://" + typed, models: [] });
+});
+$("llm-test").onclick = () => busy($("llm-test"), async () => {
+  note("llm-note", "Asking the server for one short reply…", "muted");
+  try {
+    const result = await api("POST", "/api/llm/test", llmBody());
+    const chosen = $("llm-model").value || result.chat_model;
+    $("llm-model").replaceChildren(...result.models.map((id) => el("option", { value: id, textContent: id })));
+    $("llm-model").value = result.models.includes(chosen) ? chosen : result.chat_model;
+    llm.tested = true; $("llm-save").disabled = false;
+    note("llm-note", "It answers: “" + result.reply + "” in " + result.seconds + " s with " + result.chat_model + ". "
+      + (result.vectors ? "Vectors: yes (" + result.vectors.model + ", " + result.vectors.dims + " numbers). " : "Vectors: no. " + (result.vectors_note || "") + " ")
+      + "Press Connect to keep it.", "good");
+  } catch (error) { llm.tested = false; $("llm-save").disabled = true; note("llm-note", error.message, "bad"); }
+});
+$("llm-save").onclick = () => busy($("llm-save"), async () => {
+  try { await api("POST", "/api/llm/connect", llmBody()); $("llm-password").value = ""; $("llm-form").hidden = true; $("llm-farms").replaceChildren(); await loadLlm(); note("llm-note", "Connected. See Ask, Grooming and “Place bookmarks by meaning” below.", "good"); }
+  catch (error) { note("llm-note", error.message, "bad"); }
+});
+$("llm-forget").onclick = () => busy($("llm-forget"), async () => {
+  try { await api("POST", "/api/llm/forget", {}); await loadLlm(); note("llm-note", "Disconnected. The address and the password were forgotten; vectors and notes already made stay in the collection.", "muted"); }
+  catch (error) { note("llm-note", error.message, "bad"); }
+});
+
+// A job done batch by batch, with a Stop button and a wait when the server is full.
+async function inBatches(job, step, show) {
+  if (job.running) return;
+  job.running = true; job.stop = false;
+  let problem = "";
+  try {
+    for (;;) {
+      const result = await step();
+      show(result, false);
+      if (result.busy) {
+        const wait = Math.min(result.retry_after || 60, 900);
+        for (let left = wait; left > 0 && !job.stop; left -= 1) { show(result, "The server is full (" + result.busy + ") Trying again in " + left + " s…"); await new Promise((r) => setTimeout(r, 1000)); }
+      }
+      if (job.stop || job.finished(result)) break;
+    }
+  } catch (error) { problem = error.message; }
+  job.running = false;
+  return problem;
+}
+const vec = { running: false, stop: false, finished: (r) => r.remaining === 0 || (!r.computed && !r.busy) };
+$("vec-stop").onclick = () => { vec.stop = true; };
+$("vec-go").onclick = async () => {
+  $("vec-go").disabled = true; $("vec-stop").hidden = false; let done = 0;
+  const problem = await inBatches(vec, () => api("POST", "/api/llm/vectors", { limit: 96 }),
+    (r, waiting) => { if (waiting === false) done += r.computed; note("vec-note", waiting || ("Computing… " + r.status.ready + " of " + r.status.total + "."), "muted"); });
+  $("vec-go").disabled = false; $("vec-stop").hidden = true;
+  await loadLlm().catch(() => {});
+  if (problem) note("vec-note", problem, "bad");
+  else note("vec-note", (vec.stop ? "Stopped. " : "Done. ") + done + " computed. " + describeVectors(llm.state.vectors), "good");
+};
+$("vec-source").onchange = async () => {
+  try { const v = await api("POST", "/api/llm/vectors", { source: $("vec-source").value }); llm.state.vectors = v;
+    note("vec-note", describeVectors(v) + (v.in_use === $("vec-source").value ? " Run Clusters again and redraw the Map to see the difference." : ""), v.in_use === $("vec-source").value ? "good" : "muted"); }
+  catch (error) { note("vec-note", error.message, "bad"); }
+};
+
+// Which bookmarks a job or a question is about.
+function scopeOptions(select, withAll, withTopic) {
+  const keep = select.value, options = [];
+  if (selection.size) options.push(["selection", "the selection (" + selection.size + ")"]);
+  if (typeof passing !== "undefined" && passing) options.push(["filter", "what passes the filter (" + passing.size + ")"]);
+  if (withTopic) options.push(["topic", "one topic"]);
+  if (withAll) options.push(["all", withAll]);
+  select.replaceChildren(...options.map(([value, text]) => el("option", { value, textContent: text })));
+  select.value = options.some(([value]) => value === keep) ? keep : options[0][0];
+}
+async function scopeIds(kind, topic) {
+  if (kind === "selection") return [...selection];
+  if (kind === "filter") return [...passing];
+  if (kind === "topic") { if (!topic) throw new Error("Choose a topic. Topics come from the Clusters tab."); return (await api("GET", "/api/bookmarks/ids?cluster=" + encodeURIComponent(topic))).ids; }
+  return null;
+}
+async function topicOptions(select) {
+  try {
+    const runs = (await api("GET", "/api/clusters/runs")).runs;
+    if (!runs.length) { select.replaceChildren(el("option", { value: "", textContent: "no topics yet: run Clusters" })); return; }
+    const run = (await api("GET", "/api/clusters/run?id=" + encodeURIComponent(runs[0].run_id))).run;
+    select.replaceChildren(...run.clusters.map((c) => el("option", { value: run.run_id + ":" + c.cluster, textContent: c.label + " (" + c.size + ")" })));
+  } catch (error) { select.replaceChildren(el("option", { value: "", textContent: "topics could not be read" })); }
+}
+
+/* reading pages, writing notes (Grooming) */
+const assist = { running: false, stop: false, finished: () => true };
+async function loadAssist() {
+  scopeOptions($("assist-scope"), "every bookmark");
+  if (assist.running) return;
+  try {
+    const p = await api("POST", "/api/pages", { status_only: true, ids: null }), n = await api("POST", "/api/notes", { status_only: true, ids: null });
+    note("pages-note", "Pages: " + p.ok + " read, " + p.none + " without text, " + p.error + " not reached, " + p.skipped + " left out, " + p.remaining + " not tried yet.", "muted");
+    note("notes-note", "Notes: " + n.written + " bookmarks have one; " + n.remaining + " pages read are waiting for theirs." + (llmOn() ? "" : " Connect a language model in Settings for step 2."), "muted");
+  } catch (error) { note("pages-note", error.message, "bad"); }
+}
+const assistIds = () => scopeIds($("assist-scope").value);
+function assistButtons(on) { $("pages-go").disabled = on; $("notes-go").disabled = on; $("assist-stop").hidden = !on; }
+$("assist-stop").onclick = () => { assist.stop = true; };
+$("pages-go").onclick = async () => {
+  let ids; try { ids = await assistIds(); } catch (error) { note("pages-note", error.message, "bad"); return; }
+  assistButtons(true); let first = true, read = 0, ok = 0;
+  assist.finished = (r) => r.status.remaining === 0 || r.read === 0;
+  const again = $("assist-again").checked && ids !== null;
+  const problem = await inBatches(assist, () => { const body = { ids, limit: 12, again: first && again, retry_failed: first && $("assist-again").checked && ids === null }; first = false; return api("POST", "/api/pages", body); },
+    (r) => { read += r.read; ok += r.ok; note("pages-note", "Reading… " + (r.status.total - r.status.remaining) + " of " + r.status.total + ".", "muted"); });
+  assistButtons(false);
+  note("pages-note", problem || ((assist.stop ? "Stopped. " : "Done. ") + read + " pages tried, " + ok + " with text. Now step 2."), problem ? "bad" : "good");
+};
+$("notes-go").onclick = async () => {
+  let ids; try { ids = await assistIds(); } catch (error) { note("notes-note", error.message, "bad"); return; }
+  assistButtons(true); let written = 0, empty = 0, failed = 0, since = null;
+  try { if ($("assist-again").checked) since = (await api("POST", "/api/notes", { status_only: true, ids })).now; }
+  catch (error) { assistButtons(false); note("notes-note", error.message, "bad"); return; }
+  assist.finished = (r) => r.remaining === 0 || (r.written + r.empty + r.failed === 0 && !r.busy);
+  const problem = await inBatches(assist, () => api("POST", "/api/notes", { ids, limit: 4, language: $("assist-language").value, since }),
+    (r, waiting) => { if (waiting === false) { written += r.written; empty += r.empty; failed += r.failed; } note("notes-note", waiting || ("Writing… " + written + " written, " + r.remaining + " to go."), "muted"); });
+  assistButtons(false);
+  note("notes-note", problem || ((assist.stop ? "Stopped. " : "Done. ") + written + " written" + (empty ? ", " + empty + " pages had nothing to describe" : "") + (failed ? ", " + failed + " answers could not be read" : "")
+    + ". Now preview “Summaries written by the language model” and “Tags picked by the language model” above."), problem ? "bad" : "good");
+};
+
+/* questions (Ask) */
+const ASK_TITLES = { common: "What they share", briefing: "Briefing", gaps: "What is missing", path: "A reading order" };
+// The model's text, with each [n] turned into a button that opens that bookmark.
+function answerNodes(text, bookmarks) {
+  return text.split(/\n+/).filter((line) => line.trim()).map((line) => {
+    const p = el("p", {}), dash = /^\s*[-•*]\s+/.test(line);
+    if (dash) { p.className = "dash"; line = line.replace(/^\s*[-•*]\s+/, ""); }
+    let at = 0;
+    for (const match of line.matchAll(/\[(\d+(?:\s*[,;]\s*\d+)*)\]/g)) {
+      p.append(line.slice(at, match.index)); at = match.index + match[0].length;
+      for (const digits of match[1].split(/\s*[,;]\s*/)) {
+        const item = bookmarks[Number(digits) - 1];
+        if (!item || !item.id) { p.append("[" + digits + "]"); continue; }
+        const cite = el("button", { className: "cite", textContent: digits, title: item.title });
+        cite.setAttribute("aria-label", "Bookmark " + digits + ": " + item.title);
+        cite.onclick = () => openPanel(item.id);
+        p.append(cite);
+      }
+    }
+    p.append(line.slice(at).replace(/\*\*/g, ""));
+    return p;
+  });
+}
+function showAnswer(title, result) {
+  $("ask-result").hidden = false; $("ask-title").textContent = title;
+  $("ask-answer").replaceChildren(...answerNodes(result.answer, result.bookmarks));
+  $("ask-sources").querySelector("summary").textContent = "The " + result.bookmarks.length + " bookmarks it read, by number";
+  $("ask-list").replaceChildren(...result.bookmarks.map((item) => { const open = el("button", { className: "linkish", textContent: item.title }); open.onclick = () => openPanel(item.id); return el("li", {}, [open]); }));
+  $("ask-by").textContent = "Written by a language model from your summaries and tags: check what matters against the pages."
+    + (result.read && result.asked_of > result.read ? " The set had " + result.asked_of + " bookmarks; it read the " + result.read + " nearest its middle." : "")
+    + (result.found_by ? " These bookmarks were found by " + (result.found_by === "meaning" ? "meaning." : "the words of the question (compute the vectors in Settings to find by meaning).") : "");
+}
+async function runAsk(kind, button) {
+  const question = $("ask-question").value.trim(), scope = $("ask-scope").value;
+  if (kind === "question" && !question) { note("ask-note", "Type a question, or press one of the four buttons.", "bad"); return; }
+  if (scope === "all" && kind !== "question") { note("ask-note", "For the whole collection, type a question: Atlas first finds the bookmarks closest to it. The four buttons work on a selection, the filter or a topic.", "bad"); return; }
+  await busy(button, async () => {
+    note("ask-note", "The model is reading… this can take a minute.", "muted");
+    try {
+      const body = scope === "all" ? { collection: true, question } : { ids: await scopeIds(scope, $("ask-topic").value), kind, question };
+      if (body.ids && !body.ids.length) throw new Error("There is no bookmark in that set.");
+      const result = await api("POST", "/api/ask", body);
+      showAnswer(kind === "question" ? question : ASK_TITLES[kind], result);
+      note("ask-note", "", "muted"); loadAnswers().catch(() => {});
+      $("ask-result").scrollIntoView({ block: "nearest" });
+    } catch (error) { note("ask-note", error.message, "bad"); }
+  });
+}
+for (const button of $("ask-kinds").querySelectorAll("button")) button.onclick = () => runAsk(button.dataset.kind, button);
+$("ask-go").onclick = () => runAsk("question", $("ask-go"));
+$("ask-question").onkeydown = (event) => { if (event.key === "Enter") runAsk("question", $("ask-go")); };
+$("ask-scope").onchange = () => { $("ask-topic-box").hidden = $("ask-scope").value !== "topic"; if ($("ask-scope").value === "topic") topicOptions($("ask-topic")); };
+$("ask-connect").onclick = () => { showView("settings"); $("llm-card").scrollIntoView(); };
+async function loadAnswers() {
+  const list = (await api("GET", "/api/answers")).answers;
+  $("ask-history").replaceChildren(...(list.length ? list.map((item) => {
+    const title = item.kind === "question" ? item.question : ASK_TITLES[item.kind] || item.kind;
+    const forget = el("button", { className: "linkish", textContent: "forget" });
+    forget.onclick = async () => { try { await api("POST", "/api/answers", { delete: item.id }); loadAnswers(); } catch (error) { note("ask-note", error.message, "bad"); } };
+    return el("details", {}, [el("summary", { textContent: item.created_at.slice(0, 10) + " · " + title + " · " + item.bookmarks.length + " bookmarks" }),
+      el("div", { className: "answer" }, answerNodes(item.answer, item.bookmarks)), el("div", { className: "tagline" }, [item.model + " · ", forget])]);
+  }) : [el("p", { className: "tagline", textContent: "None yet." })]));
+}
+async function loadAsk() {
+  await loadLlm();
+  scopeOptions($("ask-scope"), "the whole collection (a question)", true);
+  $("ask-scope").onchange();
+  await loadAnswers();
+}
+$("tab-ask").onclick = () => { showView("ask"); loadAsk().catch((e) => note("ask-note", e.message, "bad")); };
+
+/* topic names (Clusters) */
+$("cl-names").onclick = () => busy($("cl-names"), async () => {
+  const runId = $("cl-runs").value;
+  if (!runId) { note("cl-note", "Run Clusters first.", "bad"); return; }
+  note("cl-note", "The model is reading the topics…", "muted");
+  try {
+    const proposals = (await api("POST", "/api/llm/topic-names", { run_id: runId })).proposals;
+    if (!proposals.length) { note("cl-note", "The model proposed nothing usable.", "muted"); return; }
+    const rows = proposals.map((p) => { const tick = el("input", { type: "checkbox", checked: true }); tick.dataset.cluster = p.cluster; const name = el("input", { type: "text", value: p.name, maxLength: 60 }); name.setAttribute("aria-label", "New name for " + p.now);
+      return { p, tick, name, row: el("tr", {}, [el("td", {}, [tick]), el("td", { textContent: p.now + " (" + p.size + ")" }), el("td", {}, [name])]) }; });
+    const apply = el("button", { className: "action primary", textContent: "Use the ticked names" }), cancel = el("button", { className: "action", textContent: "Keep the current names" });
+    const box = el("section", { className: "card", id: "cl-proposals" }, [el("h2", { textContent: "Names proposed by the model" }),
+      el("p", { className: "help", textContent: "Untick or edit before applying. A name can be changed again at any time on its topic's card." }),
+      el("table", { className: "plainrows" }, [el("thead", {}, [el("tr", {}, [el("th", { textContent: "" }), el("th", { textContent: "Now" }), el("th", { textContent: "Proposed" })])]), el("tbody", {}, rows.map((r) => r.row))]),
+      el("div", { className: "row", style: "margin-top:10px" }, [apply, cancel])]);
+    const old = $("cl-proposals"); if (old) old.remove();
+    $("cl-grid").before(box); note("cl-note", "", "muted");
+    cancel.onclick = () => box.remove();
+    apply.onclick = () => busy(apply, async () => {
+      try { for (const r of rows) if (r.tick.checked && r.name.value.trim()) await api("POST", "/api/clusters/label", { run_id: runId, cluster: r.p.cluster, label: r.name.value.trim() });
+        box.remove(); await loadClusters(runId); note("cl-note", "Names applied.", "good"); }
+      catch (error) { note("cl-note", error.message, "bad"); }
+    });
+  } catch (error) { note("cl-note", error.message, "bad"); }
+});
+
+// In the side panel: why are these two alike?
+function whyButton(firstId, other) {
+  if (!llmOn()) return "";
+  const why = el("button", { className: "linkish", textContent: "why?" }), out = el("div", { className: "tagline" });
+  why.title = "Ask the model what ties the two together";
+  why.onclick = async () => { why.disabled = true; out.textContent = "Asking…";
+    try { out.textContent = (await api("POST", "/api/llm/explain", { a: firstId, b: other.id })).answer.replace(/\[1\]/g, "this one").replace(/\[2\]/g, "that one"); why.remove(); }
+    catch (error) { out.textContent = error.message; why.disabled = false; } };
+  return el("span", {}, [" · ", why, out]);
+}
+loadLlm().catch(() => {});
 </script>
 </body>
 </html>

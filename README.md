@@ -180,6 +180,28 @@ platforms and fix dates. Every script shows a preview first, makes a backup
 before writing, and can be undone. You can add your own scripts: see
 [docs/GROOMING.md](docs/GROOMING.md).
 
+### A language model on your network (optional)
+
+Atlas can use a model that runs on a machine of yours: a
+[LlmOnLan](https://github.com/b2renger/LlmOnLan) farm, found by itself on the
+local network, or any server that speaks the OpenAI API (Ollama, llama.cpp,
+vLLM, LM Studio). Connect it in **Settings ▸ Language models**. Then:
+
+- **Place bookmarks by meaning**: vectors from the model replace word counts
+  for the map, topics, links and "similar bookmarks" (French and English
+  bookmarks on one subject meet).
+- **Rewrite summaries and tags** (Grooming): pages are read again, the model
+  writes a summary and picks tags, and two scripts propose the changes to
+  preview, apply and undo.
+- **Ask**: what a selection, the filter or a topic shares; a briefing; what is
+  missing; a reading order; or your own question, with numbered sources that
+  open the bookmarks.
+- **Suggest names** for topics, and **why?** two bookmarks are alike.
+
+Only titles, summaries, tags and (for summaries) page text are sent, and only
+to the server you connected. The password is kept in the system keychain.
+Nothing a model writes changes a bookmark without a preview.
+
 ### Connect Notion
 
 In **Settings**:

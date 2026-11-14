@@ -4,6 +4,41 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-14: v0.19.0 published; phase 21, language models
+
+**Asked for:** LLMs reasoning over selections, refetching links, rewriting
+summaries and tags, through the user's LlmOnLan farm. Read first: LlmOnLan's
+README, `farm/src/beacon.js`, `seats.js`, `selfServer.js`, `embed.js`,
+`config.js`, the contract snapshot and schema (commit 09b3e3c, 2026-11-09).
+
+**Facts taken from that source:** chat at `http://<box>:4000/v1` behind a
+seat gate (429, `Retry-After`, code `lol_seats_full`); discovery on UDP
+239.255.43.10:41998 and `GET :41997/lol/self`; `requiresKey` and
+`GET /lol/plugin-keys` with the farm password as Bearer; vectors at
+`embed.url + /v1/embeddings`, contract `embeddinggemma-2/768/v1`, prefixes
+added by the client; thinking turned off with
+`chat_template_kwargs.enable_thinking=false` and `think=false`.
+
+**Works:** `llm.py` (Connection, discover, read_self, test), `assist.py`,
+migration 0006, two grooming scripts, 13 routes, the page (Settings card, Ask
+tab, Grooming card, Suggest names, why?).
+
+**Decisions:** the farm's address is the one that answered, not the one the
+farm believes it has. `response_format` is tried once and dropped for a server
+that refuses it. A farm's vector key is fetched when needed, never stored.
+Model vectors and word vectors never mix: the model's are used only when
+every live bookmark has one.
+
+**Verified:** 304 Python tests (22 new), 22 Node tests; a browser walk
+through every feature against the stand-in farm with a password, including a
+full farm.
+
+**Not verified:** a real farm and a real model: discovery on a real network,
+the quality of summaries, tags, names and answers, timings, and whether
+gemma4:12b honours the JSON instruction every time.
+
+**Next:** try it on the rig; then tag merges by the model and then-and-now.
+
 ## 2026-11-13: v0.18.0 published; phase 20, SQL dump import and scale
 
 **Asked for:** import an old database export. The file given was a phpMyAdmin
