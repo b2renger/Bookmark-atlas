@@ -83,6 +83,8 @@ def test_builtin_scripts_are_listed():
         "published-from-page",
         "clear-published-dates",
         "flag-dead-links",
+        "summary-from-model",
+        "tags-from-model",
     ]
     assert all(script.title and script.description for script in scripts.values())
 
@@ -255,7 +257,7 @@ def test_a_broken_user_script_is_reported_and_does_not_hide_the_others(conn, pat
 
     scripts, problems = groom.load_scripts(path)
 
-    assert len(scripts) == 11
+    assert len(scripts) == 13
     assert sorted(problem["file"] for problem in problems) == ["broken.py", "clash.py", "noname.py"]
 
 

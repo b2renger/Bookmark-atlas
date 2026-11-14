@@ -125,3 +125,41 @@ def mask(token: str | None) -> str | None:
     if not token:
         return None
     return token[:4] + "…" + token[-4:] if len(token) > 12 else "…"
+
+
+# ---- other secrets ------------------------------------------------------------
+# Kept the same way as the Notion token: the system keychain when there is one,
+# else the owner-only file. ``name`` is a short fixed label such as "llm-key".
+
+
+def get_secret(name: str) -> str | None:
+    keyring = _keyring()
+    if keyring:
+        stored = keyring.get_password(_KEYRING_SERVICE, name)
+        if stored:
+            return stored
+    return _read_file().get(name) or None
+
+
+def set_secret(name: str, value: str) -> str:
+    """Store a secret. Returns where it went: 'keychain' or 'file'."""
+    value = value.strip()
+    if not value:
+        raise ValueError("Nothing to store.")
+    keyring = _keyring()
+    if keyring:
+        keyring.set_password(_KEYRING_SERVICE, name, value)
+        return "keychain"
+    data = _read_file()
+    data[name] = value
+    _write_file(data)
+    return "file"
+
+
+def delete_secret(name: str) -> None:
+    keyring = _keyring()
+    if keyring and keyring.get_password(_KEYRING_SERVICE, name):
+        keyring.delete_password(_KEYRING_SERVICE, name)
+    data = _read_file()
+    if data.pop(name, None) is not None:
+        _write_file(data)

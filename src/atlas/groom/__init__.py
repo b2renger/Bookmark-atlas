@@ -43,6 +43,8 @@ BUILTIN = [
     "published_from_page",
     "clear_published_dates",
     "flag_dead_links",
+    "summary_from_model",
+    "tags_from_model",
 ]
 
 # Bookmark columns a script may change. Anything else is refused.

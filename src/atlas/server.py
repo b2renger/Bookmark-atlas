@@ -41,6 +41,7 @@ from atlas import (
     views,
     workspaces,
 )
+from atlas.db import now_iso
 from atlas.exporter import facet_options, matching_ids, search_clause, status
 from atlas.importer import (
     import_browser_bookmarks,
@@ -292,6 +293,177 @@ class App:
             }
         finally:
             conn.close()
+
+    # ---- language models ----
+
+    def _with(self, work, *, model: bool = False):
+        """Run ``work(conn[, connection])`` on the open collection."""
+        from atlas import llm
+
+        connection = llm.Connection() if model else None
+        conn = self._conn()
+        try:
+            return work(conn, connection) if model else work(conn)
+        finally:
+            conn.close()
+
+    def llm_state(self) -> dict:
+        from atlas import assist, llm
+
+        return {"connection": llm.describe(), "vectors": self._with(assist.vector_status)}
+
+    def llm_find(self, body: dict) -> dict:
+        from atlas import llm
+
+        if body.get("host"):
+            return {"farms": [llm.read_self(str(body["host"]))]}
+        return {"farms": llm.discover(seconds=min(float(body.get("seconds") or 6), 15))}
+
+    def _llm_config(self, body: dict) -> dict:
+        config = {
+            key: str(body.get(key) or "").strip()
+            for key in (
+                "kind",
+                "name",
+                "base_url",
+                "self_url",
+                "chat_model",
+                "embed_url",
+                "embed_model",
+            )
+        }
+        if not config["base_url"].startswith(("http://", "https://")):
+            raise ValueError("The address must start with http:// or https://")
+        config["base_url"] = config["base_url"].rstrip("/")
+        if not config["base_url"].endswith("/v1"):
+            config["base_url"] += "/v1"
+        return config
+
+    def llm_test(self, body: dict) -> dict:
+        from atlas import llm
+
+        password = body.get("password")
+        if password is None and body.get("keep_password"):
+            password = settings.get_secret(llm.SECRET)
+        return llm.test(self._llm_config(body), password)
+
+    def llm_connect(self, body: dict) -> dict:
+        from atlas import llm
+
+        config = self._llm_config(body)
+        if not config["chat_model"]:
+            raise ValueError("Choose a model.")
+        llm.save(config)
+        if body.get("password"):
+            settings.set_secret(llm.SECRET, str(body["password"]))
+        elif not body.get("keep_password"):
+            settings.delete_secret(llm.SECRET)
+        return self.llm_state()
+
+    def llm_forget(self) -> dict:
+        from atlas import llm
+
+        llm.forget()
+        return self.llm_state()
+
+    def llm_vectors(self, body: dict) -> dict:
+        from atlas import assist
+
+        if body.get("source"):
+            return self._with(lambda conn: assist.set_vector_source(conn, str(body["source"])))
+        return self._with(
+            lambda conn, connection: assist.compute_vectors(
+                conn, connection, limit=int(body.get("limit") or 96)
+            ),
+            model=True,
+        )
+
+    @staticmethod
+    def _ids(body: dict) -> list[str] | None:
+        ids = body.get("ids")
+        return None if ids is None else [str(item) for item in ids][:50_000]
+
+    def pages(self, body: dict | None = None) -> dict:
+        from atlas import assist
+
+        if body is None or body.get("status_only"):
+            ids = self._ids(body or {})
+            return self._with(lambda conn: assist.pages_status(conn, ids))
+        return self._with(
+            lambda conn: assist.read_pages(
+                conn,
+                ids=self._ids(body),
+                limit=int(body.get("limit") or 12),
+                retry_failed=bool(body.get("retry_failed")),
+                again=bool(body.get("again")),
+            )
+        )
+
+    def notes(self, body: dict | None = None) -> dict:
+        from atlas import assist
+
+        if body is None or body.get("status_only"):
+            ids = self._ids(body or {})
+            return self._with(lambda conn: {**assist.notes_status(conn, ids), "now": now_iso()})
+        return self._with(
+            lambda conn, connection: assist.write_notes(
+                conn,
+                connection,
+                ids=self._ids(body),
+                limit=int(body.get("limit") or 6),
+                language=str(body.get("language") or "page"),
+                since=str(body["since"]) if body.get("since") else None,
+            ),
+            model=True,
+        )
+
+    def ask(self, body: dict) -> dict:
+        from atlas import assist
+
+        if body.get("collection"):
+            return self._with(
+                lambda conn, connection: assist.ask_collection(
+                    conn, connection, str(body.get("question") or "")
+                ),
+                model=True,
+            )
+        return self._with(
+            lambda conn, connection: assist.ask(
+                conn,
+                connection,
+                self._ids(body) or [],
+                str(body.get("kind") or "question"),
+                str(body.get("question") or ""),
+            ),
+            model=True,
+        )
+
+    def answers(self, body: dict | None = None) -> dict:
+        from atlas import assist
+
+        if body and body.get("delete"):
+            self._with(lambda conn: assist.forget_answer(conn, str(body["delete"])))
+        return {"answers": self._with(assist.answers)}
+
+    def llm_explain(self, body: dict) -> dict:
+        from atlas import assist
+
+        return self._with(
+            lambda conn, connection: assist.explain_link(
+                conn, connection, str(body.get("a")), str(body.get("b"))
+            ),
+            model=True,
+        )
+
+    def llm_topic_names(self, body: dict) -> dict:
+        from atlas import assist
+
+        return self._with(
+            lambda conn, connection: assist.propose_topic_names(
+                conn, connection, str(body.get("run_id"))
+            ),
+            model=True,
+        )
 
     def facets(self) -> dict:
         conn = self._conn()
@@ -921,6 +1093,19 @@ def make_handler(app: App):
                 ("POST", "/api/workspaces/open"): lambda: app.workspace_open(self._body()),
                 ("POST", "/api/workspaces/delete"): lambda: app.workspace_delete(self._body()),
                 ("POST", "/api/workspaces/merge"): lambda: app.workspace_merge(self._body()),
+                ("GET", "/api/llm"): lambda: app.llm_state(),
+                ("POST", "/api/llm/find"): lambda: app.llm_find(self._body()),
+                ("POST", "/api/llm/test"): lambda: app.llm_test(self._body()),
+                ("POST", "/api/llm/connect"): lambda: app.llm_connect(self._body()),
+                ("POST", "/api/llm/forget"): lambda: app.llm_forget(),
+                ("POST", "/api/llm/vectors"): lambda: app.llm_vectors(self._body()),
+                ("POST", "/api/llm/explain"): lambda: app.llm_explain(self._body()),
+                ("POST", "/api/llm/topic-names"): lambda: app.llm_topic_names(self._body()),
+                ("POST", "/api/pages"): lambda: app.pages(self._body()),
+                ("POST", "/api/notes"): lambda: app.notes(self._body()),
+                ("POST", "/api/ask"): lambda: app.ask(self._body()),
+                ("GET", "/api/answers"): lambda: app.answers(),
+                ("POST", "/api/answers"): lambda: app.answers(self._body()),
                 ("GET", "/api/views"): lambda: app.views_list(),
                 ("GET", "/api/views/item"): lambda: app.view_get(parse_qs(url.query)),
                 ("POST", "/api/views"): lambda: app.view_save(self._body()),

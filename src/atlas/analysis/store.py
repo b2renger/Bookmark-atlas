@@ -83,6 +83,11 @@ def vectors_are_current(conn: sqlite3.Connection) -> bool:
 def load_vectors(conn: sqlite3.Connection, *, refresh: bool = True):
     """``(ids, matrix, model)`` for the live bookmarks, rebuilding if they are stale."""
     np = require_numpy()
+    from atlas import assist
+
+    chosen = assist.model_vectors(conn)
+    if chosen is not None:
+        return chosen
     if refresh and not vectors_are_current(conn):
         embed(conn)
     rows = conn.execute(
