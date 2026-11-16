@@ -502,3 +502,25 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   sent, and what to do when something fails; `?` on Ask opens it; new words
   in the glossary.
 - **Still tested against the stand-in farm only.**
+
+## Phase 23: import straight from the browsers on this computer
+
+- **Asked for:** import bookmarks from standard browsers. An exported
+  bookmarks file was already read; now the browsers' own stores are.
+- **`atlas.browsers`:** finds every profile with bookmarks and reads it,
+  read only. Chromium family (Chrome, Edge, Brave, Vivaldi, Opera, Chromium,
+  Arc): the `Bookmarks` JSON file of each profile, with the profile's shown
+  name from `Local State`. Firefox family (Firefox, LibreWolf, Waterfox,
+  Zen): `moz_bookmarks` in a copy of `places.sqlite`. Safari: the property
+  list `~/Library/Safari/Bookmarks.plist`, reading list included.
+- **What comes in:** folder names as tags (the browser's own top folders
+  left out), Firefox tags, the day added as the save date. The same page in
+  two folders is one bookmark. Non-web links (`javascript:`, `chrome://`,
+  `place:`) are skipped. Importing again adds only what is new.
+- **Where:** Settings ▸ Import from a browser on this computer (list, preview,
+  import), and `atlas import-browser`.
+- **Checked:** Chrome's folders and Firefox's table against Chromium's and
+  Mozilla's own documentation and source. The folders of Edge, Brave,
+  Vivaldi, Opera, Arc, the Firefox relatives, the snap and flatpak paths and
+  Safari's file layout are from general knowledge, not checked at source.
+- **Tested** on profiles built in each layout, not on real installed browsers.

@@ -31,6 +31,40 @@ def _cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_import_browser(args: argparse.Namespace) -> int:
+    from atlas import browsers
+    from atlas.importer import import_browser_items
+
+    listed = browsers.found()
+    if not listed:
+        print("No browser profile with bookmarks was found on this computer.")
+        return 0
+    if args.number is None:
+        for number, entry in enumerate(listed, start=1):
+            name = entry["browser"] + (f" ({entry['profile']})" if entry["profile"] else "")
+            try:
+                count = f"{browsers.summary(entry['id'])['bookmarks']} bookmarks"
+            except ValueError as error:
+                count = str(error)
+            print(f"  {number}. {name}: {count}")
+        print("Import one with: atlas import-browser NUMBER")
+        return 0
+    if not 1 <= args.number <= len(listed):
+        raise ValueError(f"Choose a number from 1 to {len(listed)}.")
+    entry = listed[args.number - 1]
+    conn = db.open_ready(args.db)
+    try:
+        report = import_browser_items(conn, browsers.read(entry["id"]), dry_run=args.dry_run)
+    finally:
+        conn.close()
+    print(("Dry run, nothing written: " if args.dry_run else "Imported ") + entry["browser"])
+    print(
+        f"  new {report.created}, already there {report.unchanged + report.linked}, "
+        f"skipped {len(report.skipped)}"
+    )
+    return 0
+
+
 def _cmd_import_sql(args: argparse.Namespace) -> int:
     from atlas import sqldump
 
@@ -588,6 +622,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="report what would happen without writing"
     )
     import_csv.set_defaults(func=_cmd_import_csv)
+
+    from_browser = commands.add_parser(
+        "import-browser",
+        help="list the browsers on this computer, or import one profile's bookmarks",
+    )
+    from_browser.add_argument(
+        "number", nargs="?", type=int, help="which one, as numbered in the list"
+    )
+    from_browser.add_argument("--dry-run", action="store_true", help="report without writing")
+    from_browser.set_defaults(func=_cmd_import_browser)
 
     import_sql = commands.add_parser(
         "import-sql",

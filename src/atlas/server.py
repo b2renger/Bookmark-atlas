@@ -233,6 +233,31 @@ class App:
         finally:
             conn.close()
 
+    def browsers(self, body: dict | None = None) -> dict:
+        """The browsers found on this computer; with ``id``, preview or import one."""
+        from atlas import browsers
+        from atlas.importer import import_browser_items
+
+        if not body or not body.get("id"):
+            listed = []
+            for entry in browsers.found():
+                try:
+                    counts = browsers.summary(entry["id"])
+                    listed.append({**entry, **counts, "problem": None})
+                except ValueError as error:
+                    listed.append({**entry, "bookmarks": None, "other": 0, "problem": str(error)})
+            return {"browsers": listed}
+        items = browsers.read(str(body["id"]))
+        dry_run = bool(body.get("dry_run"))
+        conn = self._conn()
+        try:
+            report = import_browser_items(conn, items, dry_run=dry_run)
+            data = asdict(report)
+            data["skipped"] = [{"id": str(key), "reason": why} for key, why in report.skipped]
+            return {"report": data, "status": status(conn)}
+        finally:
+            conn.close()
+
     def _import_sql(self, content: str, filename: str, dry_run: bool) -> dict:
         """A database dump goes into a workspace of its own, which is then opened."""
         name = Path(filename).stem.replace("_", " ").strip() or "Imported"
@@ -1142,6 +1167,8 @@ def make_handler(app: App):
                 ("POST", "/api/workspaces/open"): lambda: app.workspace_open(self._body()),
                 ("POST", "/api/workspaces/delete"): lambda: app.workspace_delete(self._body()),
                 ("POST", "/api/workspaces/merge"): lambda: app.workspace_merge(self._body()),
+                ("GET", "/api/browsers"): lambda: app.browsers(),
+                ("POST", "/api/browsers"): lambda: app.browsers(self._body()),
                 ("GET", "/api/llm"): lambda: app.llm_state(),
                 ("POST", "/api/llm/find"): lambda: app.llm_find(self._body()),
                 ("POST", "/api/llm/test"): lambda: app.llm_test(self._body()),

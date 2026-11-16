@@ -4,6 +4,29 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-16: v0.21.0 published; phase 23, browsers on this computer
+
+**Works:** `browsers.found(home, env, platform)`, `read`, `summary`,
+`read_chromium` / `read_firefox` / `read_safari`; `importer.import_browser_items`
+shared with the file import; `/api/browsers`; CLI `import-browser`; the
+Settings card.
+
+**Decisions:** `read` only takes an id that `found` lists, so the page cannot
+ask for an arbitrary file. Firefox's database is copied (with its -wal) before
+reading, because Firefox holds it open. A store that cannot be read is listed
+with the reason and the way round (export to a file).
+
+**Verified at source:** Chromium `docs/user_data_dir.md` for Chrome and
+Chromium folders on the three systems; Mozilla `nsPlacesTables.h` and
+`Bookmarks.jsm` for `moz_bookmarks` columns and the root identifiers.
+
+**Not verified:** every other browser's folder, Chromium's `date_added`
+epoch (1601, microseconds) and Safari's plist keys: from memory. Real
+installed browsers: none here.
+
+**Verified:** 315 Python tests (7 new) on made-up profiles; the Settings card
+in a browser, including a profile that cannot be read.
+
 ## 2026-11-14: v0.20.0 published; phase 22, the rest and the tutorial
 
 **Asked for:** build what was left, document, make the in-app tutorials,

@@ -439,15 +439,24 @@ def import_browser_bookmarks(
 ) -> ImportReport:
     """Import a browser's bookmarks file. Folder names become tags, and the day
     a bookmark was added in the browser becomes its save date."""
+    return import_browser_items(conn, read_browser_bookmarks(text), dry_run=dry_run)
+
+
+def import_browser_items(
+    conn: sqlite3.Connection, items: list[dict], *, dry_run: bool = False
+) -> ImportReport:
+    """Import bookmarks read from a browser, from its exported file or from its
+    own store: ``{url, title, folders, added}`` each, ``added`` in seconds."""
     from datetime import UTC, datetime
 
     report = ImportReport(dry_run=dry_run)
     try:
-        for number, item in enumerate(read_browser_bookmarks(text), start=1):
+        for number, item in enumerate(items, start=1):
             report.rows += 1
             saved_at = None
-            if item["added"].isdigit() and 0 < int(item["added"]) < 4_102_444_800:  # before 2100
-                moment = datetime.fromtimestamp(int(item["added"]), tz=UTC)
+            added = str(item.get("added") or "")
+            if added.isdigit() and 0 < int(added) < 4_102_444_800:  # before 2100
+                moment = datetime.fromtimestamp(int(added), tz=UTC)
                 saved_at = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
             try:
                 import_record(

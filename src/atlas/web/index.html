@@ -708,6 +708,17 @@
         <p>The sync never overwrites what you changed here. A row edited in Notion after its import is
           kept aside; “Review what changed in Notion” in Grooming lets you take it or keep yours. A
           bookmark you deleted here stays deleted.</p>
+        <h4>From a browser on this computer</h4>
+        <p>Settings ▸ <em>Import from a browser on this computer</em> ▸ <em>Look for browsers</em> lists
+          every profile of Chrome, Edge, Brave, Vivaldi, Opera, Chromium, Arc, Firefox (and LibreWolf,
+          Waterfox, Zen) and Safari that has bookmarks, with how many. <em>Preview</em> shows what
+          would come in; <em>Import</em> brings it in. Folder names become tags (a bookmark in
+          Design ▸ Colour gets both), Firefox tags stay tags, and the day a bookmark was added becomes
+          its save date. The browser is only read, never changed, and only its bookmarks: no history,
+          no passwords. Importing the same profile again later adds only what is new.</p>
+        <p>If a browser is not listed (a portable install, a profile kept elsewhere), or Safari
+          refuses (macOS asks for “Full Disk Access” for the app), export the bookmarks from the
+          browser to a file and use “Import a file”.</p>
         <h4>From a file</h4>
         <p>“Import a file” reads a CSV exported from Notion, a bundle exported from another Atlas, and
           the bookmarks file a browser exports (its folders become tags). Preview first, as with Notion.</p>
@@ -1213,6 +1224,19 @@
         hand it to someone else: to share bookmarks, use Export selection.</p>
     </section>
 
+    <section class="card" id="browsers-card">
+      <h2>Import from a browser on this computer</h2>
+      <p class="help">Atlas reads the bookmarks of Chrome, Edge, Brave, Vivaldi, Opera, Chromium, Arc,
+        Firefox (and LibreWolf, Waterfox, Zen) and Safari straight from where each browser keeps
+        them. Nothing is changed in the browser, and only bookmarks are read: no history, no
+        passwords. Folder names become tags; the day a bookmark was added becomes its save date.
+        Links already in the collection are not duplicated. They go into whatever is open: your
+        collection, or a workspace.</p>
+      <div class="row"><button class="action" id="browsers-find">Look for browsers</button></div>
+      <div id="browsers-list"></div>
+      <div class="note muted" id="browsers-note" role="status"></div>
+      <dl class="report" id="browsers-report" hidden></dl>
+    </section>
     <section class="card">
       <h2>Import a file</h2>
       <p class="help">Three kinds of file: a CSV export of your table from Notion (••• menu, Export,
@@ -1484,6 +1508,41 @@ function showCsvReport(report) {
   }
   list.hidden = false;
 }
+
+// Browsers on this computer: one line per profile, with Preview and Import.
+function browserReport(report) {
+  const list = $("browsers-report"); list.replaceChildren();
+  for (const [label, value] of [["Bookmarks read", report.rows], ["New", report.created], ["Already in the collection", report.unchanged + report.linked],
+    ["Changed since last time, waiting in Grooming", report.pending], ["Skipped (not web links)", report.skipped.length]]) {
+    if (value || label === "New") list.append(el("dt", { textContent: label }), el("dd", { textContent: value }));
+  }
+  list.hidden = false;
+}
+async function findBrowsers() {
+  note("browsers-note", "Looking…", "muted"); $("browsers-report").hidden = true;
+  const found = (await api("GET", "/api/browsers")).browsers;
+  if (!found.length) { $("browsers-list").replaceChildren(); note("browsers-note", "No browser profile with bookmarks was found. You can still export the bookmarks from the browser to a file and import that file below.", "muted"); return; }
+  $("browsers-list").replaceChildren(el("ul", { className: "plain" }, found.map((entry) => {
+    const name = entry.browser + (entry.profile ? " · " + entry.profile : "");
+    if (entry.problem) return el("li", {}, [el("strong", { textContent: name }), el("div", { className: "tagline", textContent: entry.problem })]);
+    const run = (dryRun, button) => busy(button, async () => {
+      note("browsers-note", dryRun ? "Reading " + name + "…" : "Importing " + name + "…", "muted");
+      try {
+        const result = await api("POST", "/api/browsers", { id: entry.id, dry_run: dryRun });
+        browserReport(result.report);
+        if (dryRun) { note("browsers-note", "Preview of " + name + ": nothing was written.", "muted"); return; }
+        note("browsers-note", result.report.created + " bookmarks added from " + name + ". Next: Grooming for duplicates and tags, then Clusters.", "good");
+        await refreshState(); await loadBookmarks(true);
+      } catch (error) { note("browsers-note", error.message, "bad"); }
+    });
+    const preview = el("button", { className: "action", textContent: "Preview" }), go = el("button", { className: "action primary", textContent: "Import" });
+    preview.onclick = () => run(true, preview); go.onclick = () => run(false, go);
+    return el("li", { className: "row" }, [el("div", { className: "grow" }, [el("strong", { textContent: name }),
+      el("div", { className: "tagline", textContent: entry.bookmarks + " bookmarks" + (entry.other ? " · " + entry.other + " that are not web links" : "") })]), preview, go]);
+  })));
+  note("browsers-note", found.length + (found.length === 1 ? " profile found." : " profiles found."), "muted");
+}
+$("browsers-find").onclick = () => busy($("browsers-find"), () => findBrowsers().catch((error) => note("browsers-note", error.message, "bad")));
 
 // A database dump: what was found in it, and what was done to it on the way in.
 async function showDumpReport(result, dryRun) {
