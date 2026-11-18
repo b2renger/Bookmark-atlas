@@ -33,7 +33,16 @@ def vector(text: str) -> list[float]:
 
 
 class FakeFarm:
-    def __init__(self, *, password=None, embeddings=True, busy=0, json_mode=True, port=0):
+    def __init__(
+        self, *, password=None, embeddings=True, busy=0, json_mode=True, port=0, provider=None,
+        limit="max_completion_tokens", listed=None,
+    ):  # fmt: skip
+        # provider: None for a farm; "anthropic" for Claude's own API; "openai" for a
+        # provider that refuses any parameter it does not know. `limit` is the one
+        # name that provider takes for the length of an answer.
+        self.provider = provider
+        self.limit = limit
+        self.listed = listed
         self.password = password
         self.embeddings = embeddings
         self.busy = busy  # how many chat requests to refuse first, as a full farm does
@@ -68,19 +77,60 @@ class FakeFarm:
                     if not self._authorised(farm.password):
                         return self._send(401, {"error": "unauthorized"})
                     return self._send(200, {"embed": "embed-key", "extract": None})
-                if self.path in ("/v1/models", "/models"):
-                    if not self._authorised(farm.password):
+                if self.path.split("?")[0] in ("/v1/models", "/models"):
+                    if farm.provider == "anthropic":
+                        if not self._claude_headers():
+                            return self._send(401, {"error": {"message": "invalid x-api-key"}})
+                    elif not self._authorised(farm.password):
                         return self._send(401, {"error": {"message": "bad key"}})
-                    return self._send(200, {"data": [{"id": farm.model}, {"id": "other:1b"}]})
+                    names = farm.listed or [farm.model, "other:1b"]
+                    return self._send(200, {"data": [{"id": name} for name in names]})
                 self._send(404, {"error": {"message": "This farm does not serve that route."}})
+
+            def _claude_headers(self):
+                return (
+                    self.headers.get("x-api-key") == farm.password
+                    and self.headers.get("anthropic-version") == "2023-06-01"
+                    and not self.headers.get("Authorization")
+                )
 
             def do_POST(self):  # noqa: N802
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
                 farm.calls.append({"path": self.path, "body": body})
+                if self.path == "/v1/messages" and farm.provider == "anthropic":
+                    if not self._claude_headers():
+                        return self._send(401, {"error": {"message": "invalid x-api-key"}})
+                    if farm.busy > 0:
+                        farm.busy -= 1
+                        return self._send(
+                            529, {"error": {"type": "overloaded_error", "message": "Overloaded"}}
+                        )
+                    wrong = set(body) - {"model", "max_tokens", "messages", "system"}
+                    roles = {m["role"] for m in body.get("messages", [])}
+                    if wrong or "system" in roles or not body.get("max_tokens"):
+                        return self._send(
+                            400,
+                            {
+                                "error": {
+                                    "message": f"invalid request: {sorted(wrong)} {sorted(roles)}"
+                                }
+                            },
+                        )
+                    messages = [
+                        {"role": "system", "content": body.get("system", "")},
+                        *body["messages"],
+                    ]
+                    parts = [
+                        {"type": "thinking", "thinking": "hmm"},
+                        {"type": "text", "text": farm.reply(messages)},
+                    ]
+                    return self._send(200, {"content": parts, "stop_reason": "end_turn"})
                 if self.path == "/v1/embeddings":
                     if not farm.embeddings:
                         return self._send(404, {"error": {"message": "no such route"}})
                     key = "embed-key" if farm.password else "open-embed-key"
+                    if farm.provider:
+                        key = farm.password
                     if not self._authorised(key):
                         return self._send(401, {"error": {"message": "bad key"}})
                     texts = body["input"] if isinstance(body["input"], list) else [body["input"]]
@@ -101,6 +151,13 @@ class FakeFarm:
                             },
                             {"Retry-After": str(farm.retry_after)},
                         )
+                    if farm.provider == "openai":
+                        other = {"max_tokens", "max_completion_tokens"} - {farm.limit}
+                        allowed = {"model", "messages", "stream", "response_format", farm.limit}
+                        for name in sorted(set(body) - allowed):
+                            hint = f" Use '{farm.limit}' instead." if name in other else ""
+                            message = f"Unsupported parameter: '{name}' is not supported with this model.{hint}"
+                            return self._send(400, {"error": {"message": message}})
                     if "response_format" in body and not farm.json_mode:
                         return self._send(400, {"error": {"message": "response_format unknown"}})
                     text = farm.reply(body["messages"])

@@ -860,6 +860,27 @@
             <em>Clusters</em> again and redraw the <em>Map</em>.</li>
         </ol>
 
+        <h4>With an API key instead: Claude, OpenAI, Gemini, Mistral</h4>
+        <p>No machine of your own? In Settings ▸ Language models, under <em>Where the model runs</em>,
+          choose a provider, paste your API key, press <em>Test</em>, pick a model, then
+          <em>Connect</em>. Everything below works the same.</p>
+        <ul>
+          <li><strong>Where to get a key:</strong> Claude at console.anthropic.com, OpenAI at
+            platform.openai.com, Gemini at aistudio.google.com, Mistral at console.mistral.ai. The
+            key is kept in this computer's keychain, never in the database, a snapshot or an export.</li>
+          <li><strong>What changes:</strong> what Atlas sends (titles, summaries, tags, and the text of
+            pages for summaries) leaves your computer and goes to that company under its terms.</li>
+          <li><strong>It costs money.</strong> Each request is billed to your key. A question costs
+            little; summaries for thousands of bookmarks do not. Start with a selection, and choose
+            a small model (the list puts one first).</li>
+          <li><strong>Vectors:</strong> OpenAI, Gemini and Mistral offer them (choose the model under
+            “Model for vectors”). Claude does not: with Claude, the map and topics keep comparing
+            words, and everything else works.</li>
+          <li><strong>One connection at a time.</strong> Connecting a provider replaces the farm, and
+            the other way round. Vectors already computed stay in the collection; vectors from two
+            different models are never mixed, so changing the vector model computes them again.</li>
+        </ul>
+
         <h4>What each thing does</h4>
         <ul>
           <li><strong>Place bookmarks by meaning</strong> (Settings). The model turns the title, summary
@@ -917,8 +938,11 @@
           <li><strong>No farm found.</strong> Some networks (guest Wi-Fi, VPN) block the announcements.
             Type the machine's name or address. On Windows, allow the app on private networks if the
             firewall asks.</li>
-          <li><strong>“The server did not accept the password.”</strong> It is the farm's shared
-            password, the one its operator set, not a personal one.</li>
+          <li><strong>“The server did not accept the password or API key.”</strong> For a farm it is
+            the shared password its operator set, not a personal one. For a provider, check the key
+            was pasted whole, is still active, and that the account has credit.</li>
+          <li><strong>“The server is full” with a provider.</strong> You reached its rate limit;
+            Atlas waits and continues. Small batches are sent on purpose.</li>
           <li><strong>“The server is full… trying again in N s.”</strong> A farm serves a few people at
             a time. Atlas waits and continues by itself; or press Stop and come back later.</li>
           <li><strong>“This farm does not offer text vectors.”</strong> Ask its operator to turn
@@ -1266,11 +1290,18 @@
         place bookmarks by meaning, rewrite summaries and tags from the pages as they read today,
         and answer questions about a set of bookmarks (the <strong>Ask</strong> tab). Atlas finds a
         <strong>LlmOnLan farm</strong> by itself; any other server that speaks the OpenAI API
-        (Ollama, llama.cpp, vLLM, LM Studio) works with its address. Nothing is sent anywhere until
-        you connect one, and the password is kept in this computer's keychain, never in the database.</p>
+        (Ollama, llama.cpp, vLLM, LM Studio) works with its address; or use
+        <strong>Claude, OpenAI, Gemini or Mistral</strong> with an API key. Nothing is sent anywhere
+        until you connect one, and the password or key is kept in this computer's keychain, never in
+        the database.</p>
       <div class="row"><div class="note grow" id="llm-now"></div>
         <button class="action" id="llm-forget" hidden>Disconnect</button></div>
       <div class="row" style="margin-top:8px">
+        <div><label for="llm-where">Where the model runs</label>
+          <select id="llm-where" style="width:auto"><option value="lan">On my network (a farm, or a server of mine)</option></select></div>
+      </div>
+      <div class="note" id="llm-cloud" hidden></div>
+      <div class="row" style="margin-top:8px" id="llm-lan">
         <button class="action" id="llm-find">Find farms on this network</button>
         <div class="grow"><label for="llm-address">Or an address</label>
           <input type="text" id="llm-address" placeholder="gpubox, 192.168.1.20, or http://localhost:11434/v1" autocomplete="off" spellcheck="false"></div>
@@ -1280,7 +1311,7 @@
       <div id="llm-form" hidden>
         <div class="row" style="margin-top:10px">
           <div class="grow"><label for="llm-base">Server</label><input type="text" id="llm-base" readonly></div>
-          <div><label for="llm-password">Password (if it has one)</label>
+          <div><label for="llm-password" id="llm-password-label">Password (if it has one)</label>
             <input type="password" id="llm-password" autocomplete="off" style="width:200px"></div>
           <button class="action" id="llm-test">Test</button>
         </div>
@@ -1288,6 +1319,8 @@
           <div><label for="llm-model">Model for writing</label><select id="llm-model" style="width:auto"></select></div>
           <div id="llm-embed-box"><label for="llm-embed">Model for vectors (optional)</label>
             <input type="text" id="llm-embed" placeholder="e.g. nomic-embed-text" style="width:220px"></div>
+          <div id="llm-embed-pick-box" hidden><label for="llm-embed-pick">Model for vectors</label>
+            <select id="llm-embed-pick" style="width:auto"></select></div>
           <button class="action primary" id="llm-save" disabled>Connect</button>
         </div>
       </div>
@@ -4354,10 +4387,11 @@ async function loadLlm() {
   llm.state = await api("GET", "/api/llm");
   const c = llm.state.connection, v = llm.state.vectors;
   note("llm-now", c.connected
-    ? "Connected to " + (c.name || c.base_url) + " · writing with " + c.chat_model + (c.has_password ? " · password kept" : "")
-      + (c.local ? "" : " · This address is not on your local network: what you send leaves it.")
+    ? "Connected to " + (c.name || c.base_url) + " · writing with " + c.chat_model + (c.has_password ? (c.provider ? " · key kept" : " · password kept") : "")
+      + (c.provider ? " · on the internet: what you send goes to this provider and is billed to your key" : c.local ? "" : " · This address is not on your local network: what you send leaves it.")
     : "Not connected.", c.connected ? (c.local ? "good" : "bad") : "muted");
   $("llm-forget").hidden = !c.connected;
+  if ($("llm-where").options.length === 1) for (const p of llm.state.providers) $("llm-where").append(el("option", { value: p.kind, textContent: p.name + " (API key)" }));
   $("llm-vectors").hidden = !c.connected && !v.ready;
   $("vec-source").value = v.source;
   if (!vec.running) note("vec-note", describeVectors(v), "muted");
@@ -4373,7 +4407,9 @@ function describeVectors(v) {
 function llmDraft(card) {
   llm.draft = card; llm.tested = false;
   $("llm-form").hidden = false; $("llm-base").value = card.base_url;
-  $("llm-embed-box").hidden = card.kind === "farm";
+  $("llm-embed-box").hidden = card.kind === "farm" || !!card.provider; $("llm-embed-pick-box").hidden = true;
+  $("llm-password-label").textContent = card.provider ? "API key" : "Password (if it has one)";
+  $("llm-password").placeholder = card.provider && llm.state && llm.state.connection.kind === card.kind && llm.state.connection.has_password ? "kept: leave empty to reuse" : "";
   $("llm-model").replaceChildren(...(card.models || (card.chat_model ? [card.chat_model] : [])).map((id) => el("option", { value: id, textContent: id })));
   if (card.chat_model) $("llm-model").value = card.chat_model;
   $("llm-save").disabled = true;
@@ -4382,10 +4418,22 @@ function llmDraft(card) {
 }
 function llmBody() {
   const d = llm.draft || {};
-  return { kind: d.kind || "openai", name: d.name || "", base_url: $("llm-base").value, self_url: d.self_url || "",
-    chat_model: $("llm-model").value, embed_model: d.kind === "farm" ? "" : $("llm-embed").value.trim(),
+  return { kind: d.kind || "server", name: d.name || "", base_url: $("llm-base").value, self_url: d.self_url || "",
+    chat_model: $("llm-model").value, embed_model: d.kind === "farm" ? "" : d.provider ? $("llm-embed-pick").value : $("llm-embed").value.trim(),
     password: $("llm-password").value || null, keep_password: !$("llm-password").value && !!(llm.state && llm.state.connection.has_password && llm.state.connection.base_url === $("llm-base").value) };
 }
+// A provider on the internet, reached with an API key: say plainly what that means.
+$("llm-where").onchange = () => {
+  const kind = $("llm-where").value, provider = llm.state && llm.state.providers.find((p) => p.kind === kind);
+  $("llm-lan").hidden = !!provider; $("llm-farms").replaceChildren(); $("llm-cloud").hidden = !provider;
+  if (!provider) { $("llm-form").hidden = true; note("llm-note", "", "muted"); return; }
+  $("llm-cloud").replaceChildren(el("strong", { textContent: provider.name + " runs on the internet. " }),
+    "What Atlas sends for a job (titles, summaries, tags, and page text for summaries) leaves your computer and goes to that company, under its terms, and each request is billed to your key: a few thousand summaries can cost real money, so start with a selection. "
+    + "Get a key at " + provider.keys + ". It is kept in this computer's keychain, never in the database or an export."
+    + (provider.vectors ? "" : " Claude writes text but offers no vectors: “Place bookmarks by meaning” stays on words."));
+  llmDraft({ kind, provider: true, name: provider.name, base_url: provider.base_url, models: [] });
+  note("llm-note", "Paste your API key, then press Test.", "muted");
+};
 $("llm-find").onclick = () => busy($("llm-find"), async () => {
   note("llm-note", "Listening for farms for a few seconds…", "muted"); $("llm-farms").replaceChildren();
   try {
@@ -4404,7 +4452,7 @@ $("llm-use").onclick = () => busy($("llm-use"), async () => {
   if (!/\/v1\/?$/.test(typed)) {
     try { llmDraft((await api("POST", "/api/llm/find", { host: typed })).farms[0]); return; } catch (error) { /* not a farm: an ordinary server */ }
   }
-  llmDraft({ kind: "openai", name: "", base_url: /^https?:\/\//.test(typed) ? typed : "http://" + typed, models: [] });
+  llmDraft({ kind: "server", name: "", base_url: /^https?:\/\//.test(typed) ? typed : "http://" + typed, models: [] });
 });
 $("llm-test").onclick = () => busy($("llm-test"), async () => {
   note("llm-note", "Asking the server for one short reply…", "muted");
@@ -4413,6 +4461,10 @@ $("llm-test").onclick = () => busy($("llm-test"), async () => {
     const chosen = $("llm-model").value || result.chat_model;
     $("llm-model").replaceChildren(...result.models.map((id) => el("option", { value: id, textContent: id })));
     $("llm-model").value = result.models.includes(chosen) ? chosen : result.chat_model;
+    if (llm.draft && llm.draft.provider) {
+      $("llm-embed-pick").replaceChildren(el("option", { value: "", textContent: "none (keep comparing words)" }), ...result.vector_models.map((id) => el("option", { value: id, textContent: id })));
+      $("llm-embed-pick").value = result.embed_model || ""; $("llm-embed-pick-box").hidden = !result.vector_models.length;
+    }
     llm.tested = true; $("llm-save").disabled = false;
     note("llm-note", "It answers: “" + result.reply + "” in " + result.seconds + " s with " + result.chat_model + ". "
       + (result.vectors ? "Vectors: yes (" + result.vectors.model + ", " + result.vectors.dims + " numbers). " : "Vectors: no. " + (result.vectors_note || "") + " ")

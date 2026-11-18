@@ -4,6 +4,26 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-18: v0.22.0 published; phase 24, providers with an API key
+
+**Works:** `llm.PROVIDERS`, `Connection.api` ("local", "openai",
+"anthropic"), `_auth`, `all_models` / `models` / `vector_models`, the
+length-limit fallback, 529 as Busy, `_settled` for old saved kinds,
+`providers()`; server pins a provider's address; Settings gets
+`#llm-where`, `#llm-cloud`, `#llm-embed-pick`.
+
+**Decisions:** Claude through its native API, not its compatibility layer.
+No model name is written in the program: the list comes from the provider at
+Test, ordered so a small model leads. Sampling temperature is not sent to
+providers (some of their models refuse it). One connection at a time.
+
+**Verified:** 323 Python tests (8 new) against stand-ins that refuse unknown
+parameters and wrong headers; a browser walk connecting Claude, then an
+OpenAI-style provider with vectors.
+
+**Not verified:** the real providers (no key here), Mistral's address, the
+Gemini endpoint's handling of batches of texts for vectors.
+
 ## 2026-11-16: v0.21.0 published; phase 23, browsers on this computer
 
 **Works:** `browsers.found(home, env, platform)`, `read`, `summary`,

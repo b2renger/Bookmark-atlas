@@ -336,7 +336,11 @@ class App:
     def llm_state(self) -> dict:
         from atlas import assist, llm
 
-        return {"connection": llm.describe(), "vectors": self._with(assist.vector_status)}
+        return {
+            "connection": llm.describe(),
+            "vectors": self._with(assist.vector_status),
+            "providers": llm.providers(),
+        }
 
     def llm_find(self, body: dict) -> dict:
         from atlas import llm
@@ -358,6 +362,15 @@ class App:
                 "embed_model",
             )
         }
+        from atlas import llm
+
+        provider = llm.PROVIDERS.get(config["kind"])
+        if provider:
+            # A provider's address is its own: a key is never sent to one typed in.
+            config["base_url"] = provider["base_url"]
+            config["name"] = provider["name"]
+            config["self_url"] = config["embed_url"] = ""
+            return config
         if not config["base_url"].startswith(("http://", "https://")):
             raise ValueError("The address must start with http:// or https://")
         config["base_url"] = config["base_url"].rstrip("/")

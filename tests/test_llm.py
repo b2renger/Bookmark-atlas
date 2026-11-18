@@ -171,3 +171,103 @@ def test_which_addresses_stay_on_the_network():
         assert llm.is_local(local), local
     for away in ("https://api.openai.com/v1", "http://8.8.8.8", "http://172.40.0.1", ""):
         assert not llm.is_local(away), away
+
+
+# ---- providers reached with an API key ----
+
+
+def provider(monkeypatch, kind, fake):
+    """Point one provider at the stand-in, as the real one would be reached."""
+    monkeypatch.setitem(llm.PROVIDERS, kind, {**llm.PROVIDERS[kind], "base_url": f"{fake.url}/v1"})
+    return {"kind": kind, "base_url": f"{fake.url}/v1"}
+
+
+def test_claude_is_spoken_to_in_its_own_api(monkeypatch):
+    names = ["claude-opus-9", "claude-haiku-9", "claude-sonnet-9"]
+    fake = FakeFarm(provider="anthropic", password="sk-ant-test", listed=names)
+    try:
+        config = provider(monkeypatch, "anthropic", fake)
+        with pytest.raises(llm.LlmError, match="password or API key"):
+            llm.test(config, "wrong")
+        result = llm.test(config, "sk-ant-test")
+        # Sonnet first, then Haiku: the likeliest choice leads the list.
+        assert result["models"] == ["claude-sonnet-9", "claude-haiku-9", "claude-opus-9"]
+        assert result["chat_model"] == "claude-sonnet-9" and result["reply"] == "ready"
+        assert result["vectors"] is None and "does not make text vectors" in result["vectors_note"]
+        connection = llm.Connection(
+            {**config, "chat_model": "claude-haiku-9"}, password="sk-ant-test"
+        )
+        messages = [
+            {"role": "system", "content": "You name the topics"},
+            {"role": "user", "content": "Topic 0 (3 bookmarks)\n  tags: maps, data"},
+        ]
+        assert connection.ask_json(messages) == {"names": {"0": "About maps"}}
+        sent = fake.calls[-1]
+        assert sent["path"] == "/v1/messages" and sent["body"]["system"] == "You name the topics"
+        assert sent["body"]["messages"] == [messages[1]] and sent["body"]["max_tokens"] == 900
+        assert set(sent["body"]) == {"model", "max_tokens", "messages", "system"}
+        fake.busy, fake.retry_after = 9, 1  # "overloaded" is a wait, not a failure
+        with pytest.raises(llm.Busy):
+            connection.chat(messages, waits=0)
+    finally:
+        fake.close()
+
+
+@pytest.mark.parametrize(("kind", "limit"), [("openai", "max_completion_tokens"), ("gemini", "max_tokens"),
+                                             ("openai", "max_tokens"), ("mistral", "max_completion_tokens")])  # fmt: skip
+def test_a_provider_gets_only_parameters_it_knows(monkeypatch, kind, limit):
+    names = ["models/tts-1", "models/big-pro", "models/text-embedding-3-small", "models/gpt-mini",
+             "models/gemini-flash", "models/gemini-embedding-001", "models/mistral-small",
+             "models/mistral-embed", "models/dall-e-9"]  # fmt: skip
+    fake = FakeFarm(provider="openai", password="sk-test", limit=limit, listed=names)
+    try:
+        config = provider(monkeypatch, kind, fake)
+        result = llm.test(config, "sk-test")
+        assert result["reply"] == "ready"
+        assert "tts-1" not in result["models"] and "dall-e-9" not in result["models"]
+        assert not any("embed" in name for name in result["models"])
+        first = {"openai": "gpt-mini", "gemini": "gemini-flash", "mistral": "mistral-small"}[kind]
+        assert result["models"][0] == first == result["chat_model"]
+        best = {"openai": "text-embedding-3-small", "gemini": "gemini-embedding-001",
+                "mistral": "mistral-embed"}[kind]  # fmt: skip
+        assert result["vector_models"][0] == best == result["embed_model"]
+        assert result["vectors"] == {"model": best, "dims": 48}
+        connection = llm.Connection(
+            {**config, "chat_model": first, "embed_model": best}, password="sk-test"
+        )
+        assert connection.ask_json(
+            [
+                {"role": "system", "content": "You name the topics"},
+                {"role": "user", "content": "Topic 0 (1 bookmarks)\n  tags: maps"},
+            ]
+        )
+        body = fake.calls[-1]["body"]
+        # No temperature, no farm-only switches, and room for a model that thinks first.
+        assert set(body) == {"model", "messages", "stream", "response_format", limit}
+        assert body[limit] == 900 * 4 + 1000
+        where = connection.embedding()
+        assert where["url"] == f"{fake.url}/v1/embeddings" and where["contract"] == f"{best}/v1"
+        assert llm.document_text(where["contract"], "T", "body") == "T\nbody"
+    finally:
+        fake.close()
+
+
+def test_providers_are_described_without_secrets_and_are_not_local():
+    listed = {p["kind"]: p for p in llm.providers()}
+    assert set(listed) == {"anthropic", "openai", "gemini", "mistral"}
+    assert listed["anthropic"]["vectors"] is False and listed["openai"]["vectors"] is True
+    for entry in listed.values():
+        assert entry["base_url"].startswith("https://") and not llm.is_local(entry["base_url"])
+
+
+def test_a_server_saved_before_providers_existed_stays_a_plain_server(farm):
+    # 0.20 to 0.22 saved a server reached by its address under the kind "openai".
+    llm.save({"kind": "openai", "base_url": f"{farm.url}/v1", "chat_model": "gemma4:12b"})
+    assert llm.load()["kind"] == "server" and llm.describe()["provider"] is None
+    connection = llm.Connection()
+    assert connection.api == "local"
+    connection.ask_json([{"role": "system", "content": "You name the topics"},
+                         {"role": "user", "content": "Topic 0 (1 bookmarks)\n  tags: maps"}])  # fmt: skip
+    assert farm.calls[-1]["body"]["think"] is False  # still spoken to as a local server
+    real = {"kind": "openai", "base_url": "https://api.openai.com/v1", "chat_model": "x"}
+    assert llm.Connection(real, password="k").api == "openai"

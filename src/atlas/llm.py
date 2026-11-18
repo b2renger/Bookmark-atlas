@@ -42,6 +42,54 @@ CONTRACTS = {
 }
 
 
+# Providers reached over the internet with an API key. ``api`` is the shape of
+# their chat endpoint; ``limit`` the name their newest models take for the
+# length of an answer (the other spelling is tried when one is refused).
+PROVIDERS = {
+    "anthropic": {
+        "name": "Claude (Anthropic)",
+        "base_url": "https://api.anthropic.com/v1",
+        "api": "anthropic",
+        "keys": "console.anthropic.com ▸ API keys",
+        "prefer": ("sonnet", "haiku"),
+        "vectors": (),
+    },
+    "openai": {
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "api": "openai",
+        "limit": "max_completion_tokens",
+        "keys": "platform.openai.com ▸ API keys",
+        "prefer": ("-mini", "gpt"),
+        "vectors": ("text-embedding-3-small", "embedding"),
+    },
+    "gemini": {
+        "name": "Gemini (Google)",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "api": "openai",
+        "limit": "max_tokens",
+        "keys": "aistudio.google.com ▸ Get API key",
+        "prefer": ("flash", "gemini"),
+        "vectors": ("gemini-embedding", "embedding"),
+    },
+    "mistral": {
+        "name": "Mistral",
+        "base_url": "https://api.mistral.ai/v1",
+        "api": "openai",
+        "limit": "max_tokens",
+        "keys": "console.mistral.ai ▸ API keys",
+        "prefer": ("small", "mistral"),
+        "vectors": ("mistral-embed", "embed"),
+    },
+}
+ANTHROPIC_VERSION = "2023-06-01"
+# Listed by a provider beside its chat models, and of no use for writing text.
+_NOT_FOR_CHAT = (
+    "embed", "tts", "whisper", "audio", "image", "imagen", "dall-e", "moderation", "realtime",
+    "transcribe", "sora", "veo", "rerank", "ocr", "aqa", "learnlm", "computer-use", "robotics",
+)  # fmt: skip
+
+
 class LlmError(RuntimeError):
     """Something the person can act on: no server, wrong password, a refusal."""
 
@@ -67,7 +115,17 @@ def load() -> dict:
         data = json.loads(_path().read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
-    return data if isinstance(data, dict) else {}
+    return _settled(data) if isinstance(data, dict) else {}
+
+
+def _settled(config: dict) -> dict:
+    """A provider's name on a connection only counts with that provider's own
+    address. (Before providers existed, a server reached by its address was
+    saved under the kind "openai": it is a plain server.)"""
+    provider = PROVIDERS.get(config.get("kind") or "")
+    if provider and (config.get("base_url") or "").rstrip("/") != provider["base_url"]:
+        return {**config, "kind": "server"}
+    return config
 
 
 def save(config: dict) -> dict:
@@ -108,6 +166,7 @@ def describe() -> dict:
         "embed_model": config.get("embed_model"),
         "has_password": bool(settings.get_secret(SECRET)),
         "local": is_local(config.get("base_url") or ""),
+        "provider": PROVIDERS.get(config.get("kind") or "", {}).get("name"),
     }
 
 
@@ -131,15 +190,27 @@ def is_local(url: str) -> bool:
 # ---- HTTP ---------------------------------------------------------------------
 
 
-def request(method: str, url: str, *, key: str | None = None, body=None, timeout: int = TIMEOUT):
+def request(
+    method: str,
+    url: str,
+    *,
+    key: str | None = None,
+    body=None,
+    timeout: int = TIMEOUT,
+    headers: dict | None = None,
+):
     """One JSON request. Returns the decoded answer; raises ``Busy`` or ``LlmError``
-    with the server's own words when it refuses."""
+    with the server's own words when it refuses. ``headers`` replace the usual
+    ``Authorization: Bearer`` for a provider that names its key otherwise."""
+    extra = headers
     headers = {"Accept": "application/json", "User-Agent": "BookmarkAtlas"}
     data = None
     if body is not None:
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
-    if key:
+    if extra is not None:
+        headers.update(extra)
+    elif key:
         headers["Authorization"] = f"Bearer {key}"
     call = urllib.request.Request(url, data=data, headers=headers, method=method)  # noqa: S310
     try:
@@ -152,14 +223,14 @@ def request(method: str, url: str, *, key: str | None = None, body=None, timeout
             message = detail.get("message") if isinstance(detail, dict) else str(detail or text)
         except (ValueError, AttributeError):
             message = text.strip()[:300]
-        if error.code in (429, 503):
+        if error.code in (429, 503, 529):  # 529: Anthropic's "overloaded"
             try:
                 wait = int(error.headers.get("Retry-After") or 60)
             except ValueError:
                 wait = 60
             raise Busy(message or "The server is busy.", wait) from None
         if error.code in (401, 403):
-            raise LlmError("The server did not accept the password.") from None
+            raise LlmError("The server did not accept the password or API key.") from None
         raise LlmError(f"The server answered {error.code}: {message or 'no detail'}") from None
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as error:
         reason = getattr(error, "reason", error)
@@ -254,7 +325,7 @@ class Connection:
     """The saved connection, resolved: where chat and vectors are asked for."""
 
     def __init__(self, config: dict | None = None, password: str | None = None):
-        config = load() if config is None else config
+        config = load() if config is None else _settled(config)
         if not config.get("base_url"):
             raise LlmError(
                 "No language model is connected. Connect one in Settings ▸ Language models."
@@ -263,14 +334,45 @@ class Connection:
         self.base = config["base_url"].rstrip("/")
         self.password = settings.get_secret(SECRET) if password is None else (password or None)
         self.chat_model = config.get("chat_model")
+        self.provider = PROVIDERS.get(config.get("kind") or "")
+        self.api = self.provider["api"] if self.provider else "local"
+        self._limit = self.provider.get("limit", "max_tokens") if self.provider else "max_tokens"
         self._embed = None
         self._json_mode = True
 
+    def _auth(self) -> dict | None:
+        """The headers a provider wants in place of ``Authorization: Bearer``."""
+        if self.api != "anthropic":
+            return None
+        return {"x-api-key": self.password or "", "anthropic-version": ANTHROPIC_VERSION}
+
     # -- chat --
 
+    def all_models(self) -> list[str]:
+        """Every model the server lists, as the names it takes."""
+        url = f"{self.base}/models" + ("?limit=1000" if self.api == "anthropic" else "")
+        answer = request("GET", url, key=self.password, timeout=20, headers=self._auth())
+        names = [m.get("id") for m in (answer or {}).get("data") or [] if m.get("id")]
+        return [name.removeprefix("models/") for name in names]
+
     def models(self) -> list[str]:
-        answer = request("GET", f"{self.base}/models", key=self.password, timeout=15)
-        return [m.get("id") for m in (answer or {}).get("data") or [] if m.get("id")]
+        """The models that write text, the likeliest choice first for a provider."""
+        names = self.all_models()
+        if not self.provider:
+            return names
+        names = [n for n in names if not any(word in n.lower() for word in _NOT_FOR_CHAT)]
+        prefer = self.provider["prefer"]
+        rank = lambda n: next((i for i, w in enumerate(prefer) if w in n.lower()), len(prefer))  # noqa: E731
+        return sorted(names, key=lambda n: (rank(n), n))
+
+    def vector_models(self) -> list[str]:
+        """The provider's models that turn text into vectors, likeliest first."""
+        if not self.provider or not self.provider["vectors"]:
+            return []
+        prefer = self.provider["vectors"]
+        names = [n for n in self.all_models() if "embed" in n.lower()]
+        rank = lambda n: next((i for i, w in enumerate(prefer) if w in n.lower()), len(prefer))  # noqa: E731
+        return sorted(names, key=lambda n: (rank(n), n))
 
     def chat(
         self,
@@ -285,32 +387,66 @@ class Connection:
         ``Busy`` is raised so a long job can stop and say when to come back."""
         if not self.chat_model:
             raise LlmError("No model is chosen. Pick one in Settings ▸ Language models.")
-        body = {
-            "model": self.chat_model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": False,
-        }
-        if want_json:
-            # Short structured answers do not need the model to think aloud first
-            # (the farm passes both spellings through to whichever engine serves).
-            body["chat_template_kwargs"] = {"enable_thinking": False}
-            body["think"] = False
-            if self._json_mode:
+        url = f"{self.base}/chat/completions"
+        if self.api == "anthropic":
+            # Claude's own API: the instructions apart from the conversation.
+            url = f"{self.base}/messages"
+            system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+            body = {
+                "model": self.chat_model,
+                "max_tokens": max_tokens,
+                "messages": [m for m in messages if m["role"] != "system"],
+            }
+            if system:
+                body["system"] = system
+        elif self.api == "openai":
+            # A provider refuses parameters it does not know, and its newest
+            # models think before they answer: that thinking is counted in the
+            # length allowed, so more room is given than the answer needs.
+            body = {"model": self.chat_model, "messages": messages, "stream": False}
+            body[self._limit] = max_tokens * 4 + 1000
+            if want_json and self._json_mode:
                 body["response_format"] = {"type": "json_object"}
-        for attempt in range(waits + 1):
+        else:
+            body = {
+                "model": self.chat_model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": False,
+            }
+            if want_json:
+                # Short structured answers do not need the model to think aloud first
+                # (the farm passes both spellings through to whichever engine serves).
+                body["chat_template_kwargs"] = {"enable_thinking": False}
+                body["think"] = False
+                if self._json_mode:
+                    body["response_format"] = {"type": "json_object"}
+        for attempt in range(waits + 3):
             try:
-                answer = request(
-                    "POST", f"{self.base}/chat/completions", key=self.password, body=body
-                )
+                answer = request("POST", url, key=self.password, body=body, headers=self._auth())
                 break
             except Busy as busy:
-                if attempt == waits or busy.retry_after > 20:
+                if attempt >= waits or busy.retry_after > 20:
                     raise
                 time.sleep(busy.retry_after)
             except LlmError as error:
-                if "response_format" in body and re.search(r" 4(00|22):", str(error)):
+                refused = re.search(r" 4(00|22):", str(error))
+                other = (
+                    "max_tokens"
+                    if self._limit == "max_completion_tokens"
+                    else "max_completion_tokens"
+                )
+                if (
+                    refused
+                    and self.api == "openai"
+                    and self._limit in body
+                    and self._limit in str(error)
+                ):
+                    body[other] = body.pop(self._limit)  # this model wants the other spelling
+                    self._limit = other
+                    continue
+                if refused and "response_format" in body:
                     self._json_mode = False  # this server does not take it: ask in words only
                     del body["response_format"]
                     continue
@@ -318,10 +454,13 @@ class Connection:
         else:
             raise LlmError("The server kept refusing the request.")
         try:
-            message = answer["choices"][0]["message"]
-        except (KeyError, IndexError, TypeError):
+            if self.api == "anthropic":
+                parts = answer["content"]
+                text = "".join(p.get("text", "") for p in parts if p.get("type") == "text")
+            else:
+                text = answer["choices"][0]["message"].get("content") or ""
+        except (KeyError, IndexError, TypeError, AttributeError):
             raise LlmError("The model's answer had an unexpected shape.") from None
-        text = message.get("content") or ""
         if isinstance(text, list):  # some servers answer in parts
             text = "".join(part.get("text", "") for part in text if isinstance(part, dict))
         return strip_thinking(text)
@@ -365,6 +504,12 @@ class Connection:
                 "contract": embed["contract"],
                 "dims": contract["dims"],
             }
+        elif self.api == "anthropic":
+            raise LlmError(
+                "Claude writes text but does not make text vectors. The map and topics keep "
+                "comparing words; everything else works. For “meaning”, connect a provider or "
+                "a server that offers vectors."
+            )
         elif config.get("embed_model"):
             base = (config.get("embed_url") or self.base).rstrip("/")
             model = config["embed_model"]
@@ -459,11 +604,16 @@ def test(config: dict, password: str | None) -> dict:
         [{"role": "user", "content": "Answer with the single word: ready"}], max_tokens=200
     )
     seconds = round(time.monotonic() - started, 1)
+    vector_models = connection.vector_models()
+    if vector_models and not config.get("embed_model"):
+        connection.config = {**connection.config, "embed_model": vector_models[0]}
     result = {
         "models": models,
         "chat_model": connection.chat_model,
         "reply": reply[:80],
         "seconds": seconds,
+        "vector_models": vector_models,
+        "embed_model": connection.config.get("embed_model"),
         "vectors": None,
         "vectors_note": None,
     }
@@ -474,3 +624,17 @@ def test(config: dict, password: str | None) -> dict:
     except LlmError as error:
         result["vectors_note"] = str(error)
     return result
+
+
+def providers() -> list[dict]:
+    """The providers the page offers, without anything secret."""
+    return [
+        {
+            "kind": kind,
+            "name": p["name"],
+            "base_url": p["base_url"],
+            "keys": p["keys"],
+            "vectors": bool(p["vectors"]),
+        }
+        for kind, p in PROVIDERS.items()
+    ]

@@ -524,3 +524,30 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   Vivaldi, Opera, Arc, the Firefox relatives, the snap and flatpak paths and
   Safari's file layout are from general knowledge, not checked at source.
 - **Tested** on profiles built in each layout, not on real installed browsers.
+
+## Phase 24: providers reached with an API key
+
+- **Asked for:** connect to Claude, OpenAI, Gemini and the like with a key.
+- **Four providers** in Settings ▸ Language models ▸ "Where the model runs":
+  Claude (Anthropic), OpenAI, Gemini (Google), Mistral. Paste the key, Test,
+  pick a model, Connect. The key goes to the keychain like the farm password.
+- **Each is spoken to as it expects.** Claude through its own Messages API
+  (`x-api-key`, `anthropic-version`, instructions apart from the
+  conversation). The others through their OpenAI-compatible endpoints with
+  only the parameters they know: no temperature, no farm switches, and four
+  times the room for an answer, because their newest models think first and
+  that thinking is counted. When a model refuses one spelling of the length
+  limit, the other is tried and remembered.
+- **Vectors** from OpenAI, Gemini and Mistral (the model is chosen from their
+  list); none from Claude, and the page says so.
+- **Safety:** a provider's address is fixed in the program, so a key is never
+  sent to an address that came from the page. The card says plainly that the
+  data leaves the computer and that each request is billed.
+- **Kept working:** a server saved earlier under the kind "openai" with its
+  own address is read as a plain server.
+- **Checked at the providers' documentation (search extracts only; the full
+  pages could not be opened in this session):** Claude's endpoint and headers,
+  Gemini's compatible base address and Bearer key, OpenAI's
+  `max_completion_tokens`. Mistral's address and all model names are not
+  checked: models are read from each provider's own list at Test.
+- **Tested against stand-ins, not the real providers.**

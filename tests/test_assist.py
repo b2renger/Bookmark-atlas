@@ -530,3 +530,33 @@ def test_the_new_jobs_through_the_api_and_the_tour_progress(path, farm):  # noqa
     item = app.bookmark_item({"id": [ids["map0"]]})["item"]
     assert item["model"] == {"page": None, "proposed_summary": None, "then_now": None}
     app.llm_forget()
+
+
+def test_a_provider_is_connected_by_its_kind_and_its_address_cannot_be_changed(path, monkeypatch):  # noqa: F811
+    fake = FakeFarm(provider="anthropic", password="sk-ant-test", listed=["claude-sonnet-9"])
+    try:
+        monkeypatch.setitem(
+            llm.PROVIDERS, "anthropic", {**llm.PROVIDERS["anthropic"], "base_url": f"{fake.url}/v1"}
+        )
+        conn = db.open_ready(path)
+        ids = fill(conn)
+        conn.close()
+        app = App(path)
+        assert [p["kind"] for p in app.llm_state()["providers"]][:2] == ["anthropic", "openai"]
+        # Whatever address comes with the request, the key only goes to the provider's own.
+        body = {
+            "kind": "anthropic",
+            "base_url": "http://evil.example/v1",
+            "password": "sk-ant-test",
+        }
+        assert app.llm_test(body)["reply"] == "ready"
+        state = app.llm_connect({**body, "chat_model": "claude-sonnet-9"})["connection"]
+        assert state["base_url"] == f"{fake.url}/v1" and state["provider"] == "Claude (Anthropic)"
+        assert state["kind"] == "anthropic" and state["has_password"]
+        answer = app.ask({"ids": [ids["map0"], ids["map1"]], "kind": "common"})
+        assert "[1] [2]" in answer["answer"] and fake.calls[-1]["path"] == "/v1/messages"
+        with pytest.raises(RuntimeError, match="does not make text vectors"):
+            app.llm_vectors({"limit": 5})
+        app.llm_forget()
+    finally:
+        fake.close()

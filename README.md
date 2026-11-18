@@ -210,6 +210,11 @@ The app teaches this itself: a four-step tour on the Bookmarks tab, and the
 Guide section "A language model on your network" (first-time steps, what each
 thing does, what is sent, what to do when something fails).
 
+No machine of your own? Choose **Claude, OpenAI, Gemini or Mistral** in the
+same place and paste an API key. Then what is sent leaves your computer and
+each request is billed to your key; Claude offers no vectors, the other three
+do.
+
 Only titles, summaries, tags and (for summaries) page text are sent, and only
 to the server you connected. The password is kept in the system keychain.
 Nothing a model writes changes a bookmark without a preview.
