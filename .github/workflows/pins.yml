@@ -21,14 +21,22 @@ jobs:
       - name: Hash the downloads
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: node desktop/scripts/print-pins.mjs | tee pins.txt
       - name: Write the npm lockfile
         working-directory: desktop
-        run: npm install --package-lock-only --no-audit --no-fund && node -e "const l=require('./package-lock.json'); console.log('lockfile packages:', Object.keys(l.packages).length)"
+        if: always()
+        run: |
+          npm install --package-lock-only --no-audit --no-fund
+          node -e "const l=require('./package-lock.json'); console.log('lockfile packages:', Object.keys(l.packages).length)"
+          # In the log too: an artifact cannot always be fetched from where the pins are set.
+          echo LOCK-BEGIN; gzip -9 -c package-lock.json | base64 -w 160; echo LOCK-END; sha256sum package-lock.json
       - name: Versions pip would install today
+        if: always()
         run: |
           python3 -m venv v && v/bin/pip install --quiet tzdata numpy keyring && v/bin/pip freeze | tee pip-freeze.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: pins
           path: |

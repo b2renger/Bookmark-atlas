@@ -778,6 +778,8 @@ def overview(conn: sqlite3.Connection, connection, notebook_id: str, kind: str) 
     if kind not in assist.KINDS:
         raise ValueError("Unknown reading.")
     ids = [s["id"] for s in _sources(conn, notebook_id) if s["used"]]
+    if not ids:
+        raise ValueError("This notebook has no source that is ticked.")
     told = assist.ask(conn, connection, ids, kind)
     conn.execute("DELETE FROM llm_answers WHERE id = ?", (told["id"],))  # kept here instead
     titles = {"common": "What do these sources share?", "briefing": "Write a briefing on these sources.",

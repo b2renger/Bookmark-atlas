@@ -44,14 +44,21 @@ for (const [platform, triple] of Object.entries(TRIPLES)) {
 // The three writing models: which commit "main" is today, and the file's hash.
 const engine = fs.readFileSync(new URL('../../src/atlas/engine.py', import.meta.url), 'utf8');
 for (const url of engine.match(/https:\/\/huggingface\.co\/[^"\s]+\/resolve\/main\/[^"\s]+\.gguf/g) || []) {
-    const head = await fetch(url, { method: 'HEAD', redirect: 'manual', headers: { 'user-agent': headers['user-agent'] } });
-    out.models[url] = {
-        commit: head.headers.get('x-repo-commit'),
-        linked_etag: head.headers.get('x-linked-etag'),
-        linked_size: head.headers.get('x-linked-size'),
-        ...(await hashOf(url)),
-    };
-    console.error(`hashed ${url}`);
+    try {
+        const head = await fetch(url, { method: 'HEAD', redirect: 'manual', headers: { 'user-agent': headers['user-agent'] } });
+        out.models[url] = {
+            commit: head.headers.get('x-repo-commit'),
+            linked_etag: head.headers.get('x-linked-etag'),
+            linked_size: head.headers.get('x-linked-size'),
+            ...(await hashOf(url)),
+        };
+        console.error(`hashed ${url}`);
+    } catch (error) {
+        // A file that is not there is a finding, not a reason to lose the rest.
+        out.models[url] = { error: String(error.message || error) };
+        console.error(`FAILED ${url}: ${error.message}`);
+        process.exitCode = 1;
+    }
 }
 
 console.log('PINS-BEGIN');
