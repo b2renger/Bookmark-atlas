@@ -23,6 +23,24 @@ from atlas.db import now_iso
 SUFFIX = ".atlas-snapshot.sqlite"
 
 
+def _cut_tree(data: bytes, kept: set[str]) -> bytes:
+    """The tree with only the branches that hold one of the kept bookmarks."""
+    tree = json.loads(bytes(data).decode("utf-8"))
+
+    def cut(node: dict) -> int:
+        if "children" in node:
+            node["children"] = [child for child in node["children"] if cut(child)]
+        if "ids" in node:
+            node["ids"] = [b for b in node["ids"] if b in kept]
+            node["size"] = len(node["ids"])
+        else:
+            node["size"] = sum(child["size"] for child in node.get("children", []))
+        return node["size"]
+
+    cut(tree)
+    return json.dumps(tree, ensure_ascii=False).encode("utf-8")
+
+
 def export_snapshot(
     conn: sqlite3.Connection,
     target: Path | str,
@@ -30,8 +48,14 @@ def export_snapshot(
     ids: list[str] | None = None,
     name: str | None = None,
     note: str | None = None,
+    own: bool = False,
 ) -> dict:
-    """Write a snapshot of the live bookmarks (all, or those in ``ids``)."""
+    """Write a snapshot of the live bookmarks (all, or those in ``ids``).
+
+    A part of a collection is made to be handed over, so it carries nothing
+    about the rest: no saved view, no note or name given to a topic that none
+    of its bookmarks belongs to, no tree of the whole collection. ``own`` is
+    for a copy that stays with its owner (a workspace): everything comes."""
     target = Path(target)
     if target.exists():
         raise ValueError(f"{target} already exists.")
@@ -91,17 +115,37 @@ def export_snapshot(
             [r for r in conn.execute("SELECT * FROM run_items") if r["bookmark_id"] in kept],
             ["run_id", "bookmark_id", "cluster", "x", "y"],
         )
+        whole = wanted is None or own
+        present = {
+            (r["run_id"], r["cluster"])
+            for r in conn.execute("SELECT run_id, bookmark_id, cluster FROM run_items")
+            if r["bookmark_id"] in kept
+        }
         copy(
-            "run_artifacts", conn.execute("SELECT * FROM run_artifacts"), ["run_id", "name", "data"]
+            "run_artifacts",
+            [
+                # Numbers (centres, grid weights) come as they are. The tree names
+                # every branch of the collection: only the branches that hold one
+                # of these bookmarks come.
+                r
+                if whole or r["name"] != "tree"
+                else {**dict(r), "data": _cut_tree(r["data"], kept)}
+                for r in conn.execute("SELECT * FROM run_artifacts")
+            ],
+            ["run_id", "name", "data"],
         )
         copy(
             "cluster_edits",
-            conn.execute("SELECT * FROM cluster_edits"),
+            [
+                r
+                for r in conn.execute("SELECT * FROM cluster_edits")
+                if whole or (r["run_id"], r["cluster"]) in present
+            ],
             ["run_id", "cluster", "label", "note", "merged_into"],
         )
         views = copy(
             "views",
-            conn.execute("SELECT * FROM views"),
+            conn.execute("SELECT * FROM views").fetchall() if whole else [],
             ["id", "name", "note", "created_at", "state"],
         )
         copy(
@@ -109,7 +153,8 @@ def export_snapshot(
             [
                 r
                 for r in conn.execute("SELECT * FROM annotations")
-                if r["bookmark_id"] is None or r["bookmark_id"] in kept
+                if (whole or r["view_id"] is None)
+                and ((r["bookmark_id"] is None and whole) or r["bookmark_id"] in kept)
             ],
             ["id", "view_id", "bookmark_id", "body", "created_at"],
         )

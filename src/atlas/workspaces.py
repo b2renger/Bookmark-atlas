@@ -114,7 +114,7 @@ def create(
             conn = db.connect(target, create=True)
             db.migrate(conn)
         else:
-            snapshot.export_snapshot(source, target, ids=ids, name=name)
+            snapshot.export_snapshot(source, target, ids=ids, name=name, own=True)
             conn = db.open_ready(target)
             conn.execute("DELETE FROM meta WHERE key = 'snapshot'")
         described = {"name": name, "created_at": now_iso(), "started_from": started_from[:200]}

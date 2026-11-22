@@ -18,9 +18,11 @@ Only the declared date is used. Nothing is guessed from the text.
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import re
+import socket
 import sqlite3
 import urllib.error
 import urllib.request
@@ -203,19 +205,42 @@ def is_youtube(url: str) -> bool:
     return host in ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be")
 
 
+PRIVATE = "an address on a private network"
+_PRIVATE_NAMES = (
+    ".localhost", ".local", ".internal", ".lan", ".home", ".corp",
+    ".intranet", ".localdomain", ".home.arpa", ".test", ".invalid",
+)  # fmt: skip
+
+
+def _as_address(host: str):
+    """The address a host is when it is one, in any of the spellings a system
+    accepts: 127.0.0.1, but also 127.1, 0x7f.0.0.1 and 2130706433."""
+    try:
+        return ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        pass
+    if re.fullmatch(r"[0-9a-fx.]+", host, flags=re.IGNORECASE) and not re.search(r"[g-wyz]", host):
+        try:
+            return ipaddress.ip_address(socket.inet_aton(host))
+        except (OSError, ValueError):
+            return None
+    return None
+
+
 def refused(url: str) -> str | None:
     """Why a link is not fetched, or None when it may be."""
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https"):
         return "not a web link"
-    host = (parts.hostname or "").lower()
-    if not host or "." not in host or host.endswith((".local", ".internal", ".lan")):
-        return "an address on a private network"
     try:
-        if not ipaddress.ip_address(host).is_global:
-            return "an address on a private network"
+        host = (parts.hostname or "").lower().rstrip(".")
     except ValueError:
-        pass
+        return "not a web link"
+    if not host or "." not in host and ":" not in host or host.endswith(_PRIVATE_NAMES):
+        return PRIVATE
+    address = _as_address(host)
+    if address is not None and not address.is_global:
+        return PRIVATE
     if x_status_id(url):
         return "an X post: its date comes from the post ID script"
     return None
@@ -225,11 +250,75 @@ class Limited(Exception):
     """The site asked us to slow down."""
 
 
+# ---- only the public web ---------------------------------------------------------
+# A link in an imported file must not make this program fetch a page inside the
+# user's own network (a router, a printer, a company intranet) and hand its
+# text to a language model. Three doors are shut: an address written oddly, a
+# redirect, and a public name that points inside.
+
+
+class _Redirects(urllib.request.HTTPRedirectHandler):
+    """Every hop is held to the same rule as the first address."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        why = refused(newurl)
+        if why and not why.startswith("an X post"):
+            raise urllib.error.URLError(f"sent on to {why}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _proxied() -> bool:
+    """Through a proxy the machine reached is the proxy: it resolves the names,
+    and the address check below cannot be made here."""
+    return bool(urllib.request.getproxies())
+
+
+def _check_peer(sock) -> None:
+    if _proxied():
+        return
+    address = _as_address(sock.getpeername()[0].split("%")[0])
+    if address is not None and not _public(address):
+        sock.close()
+        raise urllib.error.URLError(PRIVATE)
+
+
+def _public(address) -> bool:
+    mapped = getattr(address, "ipv4_mapped", None)
+    return (mapped or address).is_global
+
+
+class _Plain(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        _check_peer(self.sock)
+
+
+class _Secure(http.client.HTTPSConnection):
+    def connect(self):
+        super().connect()
+        _check_peer(self.sock)
+
+
+class _PlainHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_Plain, req)
+
+
+class _SecureHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_Secure, req, context=self._context)
+
+
+def _opener():
+    return urllib.request.build_opener(_Redirects, _PlainHandler, _SecureHandler)
+
+
 def http_get(url: str, accept: str = "text/html,application/xhtml+xml") -> tuple[int, str]:
-    """Status and the start of the body. Follows redirects; reads at most MAX_BYTES."""
+    """Status and the start of the body, from the public web only. Follows
+    redirects that stay on it; reads at most MAX_BYTES."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # noqa: S310
+        with _opener().open(request, timeout=TIMEOUT) as response:
             raw = response.read(MAX_BYTES)
             charset = response.headers.get_content_charset() or "utf-8"
             try:

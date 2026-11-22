@@ -145,7 +145,7 @@ def test_a_download_can_fail_or_be_cancelled_and_says_so(monkeypatch):
     failed = wait_for("light", "failed")
     assert "continues where it stopped" in failed["error"]
     engine.download("light", lambda request, timeout=0: Reply(b"y" * 100))  # far too short
-    assert "stopped early" in wait_for("light", "failed")["error"]
+    assert "not the expected one" in wait_for("light", "failed")["error"]
     engine.remove("light")
 
     class Slow(Reply):
@@ -278,3 +278,195 @@ def test_through_the_api_download_use_ask_remove(tmp_path, path):  # noqa: F811
     with pytest.raises(ValueError, match="Unknown action"):
         app.engine({"action": "explode"})
     assert os.environ.get("LLAMA_LOG_PROMPTS") == "1"
+
+
+def test_a_download_cut_short_is_not_installed(monkeypatch):
+    """A connection that ends at 60% of what the server announced once passed
+    for a finished download: the engine then failed to load the file."""
+    monkeypatch.setitem(engine.CATALOGUE, "light", {**engine.CATALOGUE["light"], "bytes": 1000})
+    data = b"m" * 1000
+    part = engine.model_path("light").with_name(engine.CATALOGUE["light"]["file"] + ".part")
+
+    class Cut(Reply):
+        def __init__(self, data, announced, status=200):
+            super().__init__(data, status)
+            self.headers = {"Content-Length": str(announced)}
+
+    def cut(request, timeout=0):
+        start = int(request.headers["Range"][6:-1]) if request.headers.get("Range") else 0
+        return Cut(data[start : start + 600], len(data) - start, status=206 if start else 200)
+
+    for kept in (600, 1000):  # the second press continues, and the third finishes
+        engine.download("light", cut)
+        state = wait_for("light", "done", "failed")
+        if kept < 1000:
+            assert state["status"] == "failed" and "stopped early" in state["error"]
+            assert not engine.model_path("light").exists() and part.stat().st_size == kept
+    assert state["status"] == "done" and engine.model_path("light").read_bytes() == data
+    # More than announced is not the file either.
+    engine.remove("light")
+    engine.download("light", lambda request, timeout=0: Cut(data + b"extra", len(data)))
+    assert "not the expected one" in wait_for("light", "failed")["error"] and not part.exists()
+
+
+def test_a_download_that_breaks_in_any_way_can_be_tried_again(monkeypatch):
+    import http.client
+    import urllib.error
+
+    monkeypatch.setitem(engine.CATALOGUE, "light", {**engine.CATALOGUE["light"], "bytes": 1000})
+    data = b"m" * 1000
+
+    class Breaks(Reply):
+        def read(self, size):
+            raise http.client.IncompleteRead(b"", 400)
+
+    engine.download("light", lambda request, timeout=0: Breaks(data))
+    failed = wait_for("light", "failed")  # not left on "downloading" for ever
+    assert "continues where it stopped" in failed["error"]
+    # A whole part and a server with nothing left to send (416): it is the file.
+    part = engine.model_path("light").with_name(engine.CATALOGUE["light"]["file"] + ".part")
+    part.write_bytes(data)
+
+    def nothing_left(request, timeout=0):
+        raise urllib.error.HTTPError(request.full_url, 416, "Range Not Satisfiable", {}, None)
+
+    monkeypatch.setitem(
+        engine.CATALOGUE,
+        "light",
+        {**engine.CATALOGUE["light"], "sha256": hashlib.sha256(data).hexdigest()},
+    )
+    engine.download("light", nothing_left)
+    assert wait_for("light", "done", "failed")["status"] == "done"
+    assert engine.model_path("light").read_bytes() == data
+
+
+def test_the_engine_ends_when_the_program_that_started_it_is_killed(tmp_path):
+    """The shell ends the backend without warning, and leaving through atexit
+    alone left the model server running, holding gigabytes of memory."""
+    import signal
+    import subprocess
+    import sys
+    import textwrap
+
+    parent = textwrap.dedent(
+        """
+        import subprocess, sys, time
+        from atlas import engine
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+        guard = engine._guard(child)
+        print(child.pid, guard.pid, flush=True)
+        time.sleep(120)
+        """
+    )
+    where = str(Path(engine.__file__).parents[1])
+    started = subprocess.Popen(
+        [sys.executable, "-c", parent],
+        stdout=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "PYTHONPATH": where},
+    )
+    child, guard = (int(n) for n in started.stdout.readline().split())
+
+    def gone(pid):
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return True
+        try:  # ended but not collected by anyone yet
+            with open(f"/proc/{pid}/stat") as handle:
+                return handle.read().rsplit(")", 1)[1].split()[0] == "Z"
+        except OSError:
+            return False
+
+    assert not gone(child)
+    started.send_signal(signal.SIGKILL)  # no goodbye, no atexit
+    started.wait()
+    end = time.time() + 10
+    while time.time() < end and not (gone(child) and gone(guard)):
+        time.sleep(0.1)
+    assert gone(child) and gone(guard)
+
+
+def test_two_callers_at_once_both_get_an_engine_that_answers(tmp_path, monkeypatch):
+    import threading
+
+    install_engine(tmp_path)
+    have("light")
+    healthy = threading.Event()
+    spawned = []
+
+    class Process:
+        pid = 1
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            pass
+
+        def wait(self, timeout=None):
+            return 0
+
+    class Health:
+        status = 200
+
+        def __enter__(self):
+            if not healthy.is_set():
+                raise OSError("not listening yet")
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(engine.urllib.request, "urlopen", lambda url, timeout=0: Health())
+    spawn = lambda *a, **k: spawned.append(a) or Process()  # noqa: E731
+    got = []
+    callers = [
+        threading.Thread(target=lambda: got.append(engine.ensure("light", spawn=spawn, wait=5)))
+        for _ in range(2)
+    ]
+    for caller in callers:
+        caller.start()
+    time.sleep(0.6)
+    assert got == [] and len(spawned) == 1  # one engine, and nobody served before it answers
+    healthy.set()
+    for caller in callers:
+        caller.join(5)
+    assert len(got) == 2 and got[0] is got[1] and got[0]["ready"]
+    engine.stop()
+
+
+def test_a_wait_that_gives_up_does_not_disturb_a_newer_engine(tmp_path, monkeypatch):
+    install_engine(tmp_path)
+    have("light")
+    have("medium")
+    ended = []
+
+    class Process:
+        def __init__(self, name):
+            self.name, self.pid, self.over = name, 1, None
+
+        def poll(self):
+            return self.over
+
+        def terminate(self):
+            ended.append(self.name)
+            self.over = 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    def never(url, timeout=0):
+        raise OSError("not listening")
+
+    monkeypatch.setattr(engine.urllib.request, "urlopen", never)
+    first = engine._begin("light", "writer", lambda *a, **k: Process("light"))
+    with engine._lock:
+        second = engine._begin("medium", "writer", lambda *a, **k: Process("medium"))
+    assert ended == ["light"]  # choosing another size stops the first
+    first["process"].over = None  # as if it were still going down
+    with pytest.raises(engine.EngineError, match="too long"):
+        engine._until_ready(first, "writer", 0.5, True)
+    assert engine._servers["writer"] is second and "medium" not in ended
+    engine.stop()
+    assert "medium" in ended

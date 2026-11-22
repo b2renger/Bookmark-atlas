@@ -1,0 +1,37 @@
+# Prints the hashes of what the build and the app download (llama.cpp, the
+# standalone Python, the three writing models) and writes an npm lockfile, so
+# they can be pinned in the repository. Started by hand; changes nothing.
+name: pins
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Hash the downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node desktop/scripts/print-pins.mjs | tee pins.txt
+      - name: Write the npm lockfile
+        working-directory: desktop
+        run: npm install --package-lock-only --no-audit --no-fund && node -e "const l=require('./package-lock.json'); console.log('lockfile packages:', Object.keys(l.packages).length)"
+      - name: Versions pip would install today
+        run: |
+          python3 -m venv v && v/bin/pip install --quiet tzdata numpy keyring && v/bin/pip freeze | tee pip-freeze.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pins
+          path: |
+            pins.txt
+            pip-freeze.txt
+            desktop/package-lock.json

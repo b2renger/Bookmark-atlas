@@ -33,7 +33,10 @@ FIRST = datetime(2010, 11, 5, tzinfo=UTC)
 
 def published_at(status_id: str) -> datetime | None:
     """Creation time encoded in a post ID. None for IDs older than the scheme."""
-    moment = datetime.fromtimestamp(((int(status_id) >> 22) + X_EPOCH_MS) / 1000, tz=UTC)
+    try:
+        moment = datetime.fromtimestamp(((int(status_id) >> 22) + X_EPOCH_MS) / 1000, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None  # a number too long to be a post ID
     if moment < FIRST or moment > datetime.now(UTC) + timedelta(days=1):
         return None
     return moment

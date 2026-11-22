@@ -147,7 +147,11 @@ _lock = threading.Lock()
 
 
 def _fetch(key: str, opener=None) -> None:
-    """Download one model file, resuming a part already there, then check it."""
+    """Download one model file, resuming a part already there, then check it.
+
+    A file is installed only when it is whole: every byte the server announced
+    (or the size pinned in the catalogue) and, when the catalogue pins one, the
+    right hash. A connection that ends early is not a finished download."""
     entry = CATALOGUE[key]
     state = _downloads[key]
     target = model_path(key)
@@ -159,22 +163,43 @@ def _fetch(key: str, opener=None) -> None:
         if have:
             headers["Range"] = f"bytes={have}-"
         request = urllib.request.Request(entry["url"], headers=headers)  # noqa: S310
-        with (opener or urllib.request.urlopen)(request, timeout=60) as response:  # noqa: S310
-            if have and response.status != 206:
-                have = 0  # the server sent the whole file again
-            length = response.headers.get("Content-Length")
-            state["total"] = have + int(length) if length else entry["bytes"]
-            with part.open("ab" if have else "wb") as out:
-                state["bytes"] = have
-                while not state["cancel"]:
-                    block = response.read(1 << 20)
-                    if not block:
-                        break
-                    out.write(block)
-                    state["bytes"] += len(block)
+        announced = None
+        try:
+            response = (opener or urllib.request.urlopen)(request, timeout=60)  # noqa: S310
+        except urllib.error.HTTPError as error:
+            if error.code != 416 or not have:
+                raise
+            response = None  # nothing left to send: the part is the whole file
+        if response is not None:
+            with response:
+                if have and response.status != 206:
+                    have = 0  # the server sent the whole file again
+                length = response.headers.get("Content-Length")
+                if length and str(length).isdigit():
+                    announced = have + int(length)
+                state["total"] = announced or entry["bytes"]
+                with part.open("ab" if have else "wb") as out:
+                    state["bytes"] = have
+                    while not state["cancel"]:
+                        block = response.read(1 << 20)
+                        if not block:
+                            break
+                        out.write(block)
+                        state["bytes"] += len(block)
         if state["cancel"]:
             state.update(status="cancelled")
             return
+        size = part.stat().st_size
+        expected = entry["bytes"] if entry.get("sha256") else announced
+        if expected and size < expected:
+            raise EngineError(
+                f"The download stopped early ({size / 1e6:.0f} of {expected / 1e6:.0f} MB). "
+                "Press Download again: it continues where it stopped."
+            )
+        # Whole, but is it this model? Without a pinned hash, at least its size.
+        if (expected and size > expected) or size < entry["bytes"] * 0.9:
+            part.unlink(missing_ok=True)
+            raise EngineError("The file that arrived is not the expected one. Try again.")
         if entry.get("sha256"):
             state["status"] = "checking"
             digest = hashlib.sha256()
@@ -184,14 +209,12 @@ def _fetch(key: str, opener=None) -> None:
             if digest.hexdigest() != entry["sha256"]:
                 part.unlink(missing_ok=True)
                 raise EngineError("The file that arrived is not the expected one. Try again.")
-        elif part.stat().st_size < entry["bytes"] * 0.5:
-            raise EngineError("The download stopped early. Press Download again to continue.")
         part.replace(target)
         state.update(status="done")
     except EngineError as error:
         state.update(status="failed", error=str(error))
-    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as error:
-        reason = getattr(error, "reason", error)
+    except Exception as error:  # noqa: BLE001 - whatever stops it, the page must be told
+        reason = getattr(error, "reason", None) or error or type(error).__name__
         state.update(
             status="failed",
             error=f"The download stopped ({reason}). Press Download again: it continues "
@@ -288,47 +311,69 @@ def ensure(key: str, spawn=subprocess.Popen, wait: float = START_WAIT) -> dict:
     with _lock:
         server = _servers.get(role)
         if _alive(server) and server["model"] == key:
-            return server
-        if not model_path(key).is_file():
-            raise EngineError(
-                f"The {CATALOGUE[key]['label'].lower()} model is not downloaded yet: "
-                "Settings ▸ Language models ▸ On this computer."
-            )
-        _stop(role)
-        port, secret = _free_port(), secrets.token_urlsafe(24)
-        # Only this computer's own variables, never a LLAMA_* one: those set the
-        # server's flags (one of them would write every prompt to disk).
-        env = {  # nothing of ours that the engine has no use for
-            k: v
-            for k, v in os.environ.items()
-            if not k.upper().startswith("LLAMA_") and k != settings.ENV_TOKEN
-        }
-        env["LLAMA_API_KEY"] = secret
-        log = (models_dir() / f"{role}.log").open("ab")
-        try:
-            process = spawn(
-                command(key, port),
-                env=env,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-            )  # noqa: S603
-        except OSError as error:
-            raise EngineError(f"The built-in engine could not start ({error}).") from None
-        server = {
-            "process": process,
-            "model": key,
-            "url": f"http://127.0.0.1:{port}/v1",
-            "health": f"http://127.0.0.1:{port}/health",
-            "key": secret,
-            "name": CATALOGUE[key]["name"],
-            "started": time.time(),
-        }
-        _servers[role] = server
-    end = time.monotonic() + wait
+            mine = False
+        else:
+            mine = True
+            server = _begin(key, role, spawn)
+    # Whoever asked first started it; everyone waits until it answers. (A second
+    # caller once got the server back before it was ready, and its request failed.)
+    return _until_ready(server, role, wait, mine)
+
+
+def _begin(key: str, role: str, spawn) -> dict:
+    """Start the server for this model. Called with the lock held."""
+    if not model_path(key).is_file():
+        raise EngineError(
+            f"The {CATALOGUE[key]['label'].lower()} model is not downloaded yet: "
+            "Settings ▸ Language models ▸ On this computer."
+        )
+    _stop(role)
+    port, secret = _free_port(), secrets.token_urlsafe(24)
+    # Only this computer's own variables, never a LLAMA_* one: those set the
+    # server's flags (one of them would write every prompt to disk).
+    env = {  # nothing of ours that the engine has no use for
+        k: v
+        for k, v in os.environ.items()
+        if not k.upper().startswith("LLAMA_") and k != settings.ENV_TOKEN
+    }
+    env["LLAMA_API_KEY"] = secret
+    log = (models_dir() / f"{role}.log").open("ab")
+    try:
+        process = spawn(
+            command(key, port),
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+        )  # noqa: S603
+    except OSError as error:
+        raise EngineError(f"The built-in engine could not start ({error}).") from None
+    finally:
+        log.close()  # the engine holds its own
+    server = {
+        "process": process,
+        "guard": _guard(process) if spawn is subprocess.Popen else None,
+        "model": key,
+        "url": f"http://127.0.0.1:{port}/v1",
+        "health": f"http://127.0.0.1:{port}/health",
+        "key": secret,
+        "name": CATALOGUE[key]["name"],
+        "started": time.time(),
+        "ready": False,
+    }
+    _servers[role] = server
+    return server
+
+
+def _until_ready(server: dict, role: str, wait: float, mine: bool) -> dict:
+    end = time.monotonic() + (wait if mine else max(wait, server["started"] + wait - time.time()))
     while time.monotonic() < end:
+        if server["ready"]:
+            return server
         if server["process"].poll() is not None:
-            _servers.pop(role, None)
+            with _lock:
+                if _servers.get(role) is server:  # never a newer one's place
+                    _servers.pop(role, None)
             raise EngineError(
                 "The built-in engine stopped while loading the model. There may not be enough "
                 "free memory: close other programs, or choose a lighter model."
@@ -336,22 +381,59 @@ def ensure(key: str, spawn=subprocess.Popen, wait: float = START_WAIT) -> dict:
         try:
             with urllib.request.urlopen(server["health"], timeout=2) as response:  # noqa: S310
                 if response.status == 200:
+                    server["ready"] = True
                     return server
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
             pass
         time.sleep(0.4)
-    stop(role)
+    with _lock:
+        if _servers.get(role) is server:
+            _servers.pop(role, None)
+    _end(server)  # this one, not whichever holds the place now
     raise EngineError("The model took too long to load. Try a lighter one.")
 
 
-def _stop(role: str) -> None:
-    server = _servers.pop(role, None)
+# Ends the engine when this program is gone, however it went (closed, crashed,
+# killed): it waits on a pipe only this program holds, and the pipe closing is
+# the signal. Leaving through ``atexit`` alone left engines running whenever
+# the app was closed, since the shell ends this program without warning.
+_GUARD = (
+    "import os, signal, sys\n"
+    "sys.stdin.buffer.read()\n"
+    "try:\n    os.kill(int(sys.argv[1]), signal.SIGTERM)\nexcept OSError:\n    pass\n"
+)
+
+
+def _guard(process):
+    try:
+        return subprocess.Popen(  # noqa: S603
+            [sys.executable, "-I", "-c", _GUARD, str(process.pid)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return None  # no guard: atexit remains
+
+
+def _end(server: dict | None) -> None:
+    guard = server.get("guard") if server else None
+    if guard:
+        try:
+            guard.stdin.close()  # the guard ends the engine and leaves
+            guard.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            guard.kill()
     if _alive(server):
         server["process"].terminate()
         try:
             server["process"].wait(timeout=8)
         except subprocess.TimeoutExpired:
             server["process"].kill()
+
+
+def _stop(role: str) -> None:
+    _end(_servers.pop(role, None))
 
 
 def stop(role: str | None = None) -> None:

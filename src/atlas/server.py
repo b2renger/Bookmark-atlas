@@ -81,6 +81,11 @@ class App:
         self.db_path = Path(db_path)
         self.home_path = Path(db_path)  # the main collection; db_path moves to a workspace
         self.session_token = secrets.token_urlsafe(24)
+        # The page itself is only given to whoever was told its address, key
+        # included: the window of the app, or the person who started
+        # ``atlas ui``. Another program on this computer could otherwise fetch
+        # the page, read the session token in it and use everything.
+        self.door = secrets.token_urlsafe(24)
         self.client_factory = client_factory or _default_client
         self.token_checker = token_checker or (lambda token: NotionClient(token).me())
 
@@ -498,6 +503,7 @@ class App:
                 limit=int(body.get("limit") or 6),
                 language=str(body.get("language") or "page"),
                 since=str(body["since"]) if body.get("since") else None,
+                skip=[str(i) for i in body.get("skip") or []][:20000],
             ),
             model=True,
         )
@@ -571,6 +577,7 @@ class App:
                 ids=self._ids(body),
                 limit=int(body.get("limit") or 6),
                 since=str(body["since"]) if body.get("since") else None,
+                skip=[str(i) for i in body.get("skip") or []][:20000],
             ),
             model=True,
         )
@@ -1125,7 +1132,14 @@ def _progress(conn) -> dict:
     hidden = conn.execute("SELECT value FROM meta WHERE key = 'tutorial_hidden'").fetchone()
     return {
         "bookmarks": count("SELECT COUNT(*) FROM bookmarks WHERE deleted_at IS NULL") > 0,
-        "groomed": count("SELECT COUNT(*) FROM script_runs") > 0,
+        # A grooming script applied, not an edit made by hand on a selection
+        # or the merge of a workspace, which the same history also records.
+        "groomed": count(
+            "SELECT COUNT(*) FROM script_runs WHERE status = 'applied' "
+            "AND script NOT IN ('edit-tags', 'delete-selection') "
+            "AND script NOT LIKE 'merge workspace%'"
+        )
+        > 0,
         "clustered": "cluster" in kinds,
         "mapped": "projection" in kinds,
         "tree": "tree" in kinds,
@@ -1217,6 +1231,8 @@ def make_handler(app: App):
 
         def _body(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
+            if length < 0:
+                raise ValueError("Request not understood.")
             if length > MAX_BODY:
                 raise ValueError("Request too large.")
             if not length:
@@ -1231,6 +1247,14 @@ def make_handler(app: App):
                 return self._json(403, {"error": "This address is not allowed."})
             url = urlsplit(self.path)
             if method == "GET" and url.path in ("/", "/index.html"):
+                key = (parse_qs(url.query).get("k") or [""])[0]
+                if not secrets.compare_digest(key, app.door):
+                    return self._send(
+                        403,
+                        b"Open Bookmark Atlas from its own window, or with the full address "
+                        b"it printed when it started.",
+                        "text/plain; charset=utf-8",
+                    )
                 return self._send(200, _page(app), "text/html; charset=utf-8")
             if not url.path.startswith("/api/"):
                 return self._json(404, {"error": "Not found."})
@@ -1347,6 +1371,7 @@ def make_server(app: App, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
     """Bind to this computer only. Port 0 picks a free one."""
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app))
     server.daemon_threads = True
+    server.door = app.door  # for whoever starts the server and opens the page
     return server
 
 
@@ -1369,7 +1394,7 @@ def serve(
         if port != DEFAULT_PORT:
             raise
         server = make_server(app, 0)  # the usual port is taken: use any free one
-    address = f"http://127.0.0.1:{server.server_address[1]}/"
+    address = f"http://127.0.0.1:{server.server_address[1]}/?k={app.door}"
     if announce:
         print("ATLAS_READY " + json.dumps({"url": address}), flush=True)
     else:

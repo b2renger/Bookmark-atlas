@@ -101,7 +101,9 @@ def fit(
     x = np.ascontiguousarray(x, dtype=np.float32)
     n = len(x)
     if not 2 <= k <= n:
-        raise ValueError(f"The number of clusters must be between 2 and {n}.")
+        if n < 2:
+            raise ValueError("Finding topics needs at least two bookmarks.")
+        raise ValueError(f"The number of topics must be between 2 and {n}.")
 
     started = time.perf_counter()
     extra = {}

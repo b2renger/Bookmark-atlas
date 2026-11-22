@@ -40,6 +40,7 @@ PASSAGE_MOST = 1000
 PER_BOOKMARK = 40  # passages kept of one long page
 SHORTLIST = 60  # sources looked into for one question, when the notebook has many
 PASSAGES_SHOWN = 8  # passages given to the model
+PER_SOURCE = 3  # of them, at most this many from one source
 HISTORY = 6  # earlier turns the model is reminded of
 _WORD = re.compile(r"[\w][\w'’-]*", re.UNICODE)
 # Words too common to tell passages apart, in the languages most collections mix.
@@ -237,7 +238,7 @@ def find(conn: sqlite3.Connection, connection, ids: list[str], question: str, mo
         except llm.LlmError:
             how = "words"
     top_words = max(words) or 1.0
-    top_meaning = max(meaning) or 1.0
+    top_meaning = max(max(meaning), 1e-9)  # never negative: it would turn the order round
     scored = []
     for i in range(len(passages)):
         score = words[i] / top_words + (1.5 * meaning[i] / top_meaning if how != "words" else 0)
@@ -247,7 +248,7 @@ def find(conn: sqlite3.Connection, connection, ids: list[str], question: str, mo
     chosen, per_source = [], Counter()
     for _score, i in scored:
         passage = passages[i]
-        if per_source[passage["bookmark_id"]] >= 3:  # one long page must not crowd the others out
+        if per_source[passage["bookmark_id"]] >= PER_SOURCE:  # one long page must not crowd out
             continue
         per_source[passage["bookmark_id"]] += 1
         chosen.append(passage)
@@ -260,10 +261,17 @@ def find(conn: sqlite3.Connection, connection, ids: list[str], question: str, mo
 
 # A question about numbers, dates or the make-up of the set is better answered
 # from figures the program counted than from eight passages.
+# Phrases, not single words: "when", "recent" or "count" appear in questions about
+# what the pages say, and each false alarm costs the eighth passage its place.
 _ABOUT_THE_SET = re.compile(
-    r"\b(how many|number of|count|when|which years?|per year|oldest|newest|earliest|latest|recent|"
-    r"most (common|frequent|used)|topics?|themes?|tags?|sites?|sources? (are|come)|"
-    r"combien|nombre|quand|quelles? années?|par an|ancien|récent|sujets?|thèmes?|étiquettes?)\b",
+    r"\b(how many (sources|bookmarks|links|pages|of (these|them))|number of (sources|bookmarks)|"
+    r"(per|each|by|which) years?|over (the )?(years|time)|timeline|"
+    r"(oldest|newest|earliest|latest|most recent) (source|bookmark|link|one)s?|"
+    r"(which|what|main|most (common|frequent|used)) (topics?|themes?|tags?|sites?|domains?)|"
+    r"(which|what) (sites?|domains?) (do|are)|where do (these|the sources) come from|"
+    r"combien (de |d')?(sources|liens|signets|marque-pages)|(par|chaque|quelles?) années?|"
+    r"au fil (du temps|des ans)|(quels?|principaux) (sujets?|thèmes?|sites?)|"
+    r"(quelles?|principales) (étiquettes?|thématiques?))\b",
     re.IGNORECASE,
 )
 
@@ -282,13 +290,17 @@ def glance(conn: sqlite3.Connection, ids: list[str]) -> dict:
         return out
     marks = ",".join("?" * len(ids))
     rows = conn.execute(
-        f"SELECT id, domain, COALESCE(published_at, saved_at, '') AS day FROM bookmarks "  # noqa: S608
+        # The same date as the filter bar and the timeline: saved, else published.
+        f"SELECT id, domain, COALESCE(saved_at, published_at, '') AS day FROM bookmarks "  # noqa: S608
         f"WHERE deleted_at IS NULL AND id IN ({marks})",
         ids,
     ).fetchall()
     live = [row["id"] for row in rows]
     out["sources"] = len(rows)
-    days = sorted(row["day"][:10] for row in rows if row["day"])
+    # Only what reads as a real day counts as dated: a file from elsewhere may hold anything.
+    days = sorted(
+        row["day"][:10] for row in rows if re.match(r"(?!0000)\d{4}-\d{2}-\d{2}", row["day"] or "")
+    )
     out["undated"] = len(rows) - len(days)
     if days:
         out["first_day"], out["last_day"] = days[0], days[-1]
@@ -396,29 +408,72 @@ ANSWER_SHAPE = {
 }
 
 
-def _flat(text: str) -> str:
-    """Text for comparison: lower case, plain quotes, single spaces, no edge punctuation."""
-    text = text.lower().replace("’", "'").replace("“", '"').replace("”", '"').replace("…", "...")
-    return " ".join(re.sub(r"[^\w' ]+", " ", text, flags=re.UNICODE).split())
+# A word, with what holds it together: "non-toxic", "1.5", "don't", "3,000" are one
+# word each, so "toxic" is not found in "non-toxic" nor "5 million" in "1.5 million".
+_WORD = re.compile(r"[^\W_]+(?:[-'’.,/:][^\W_]+)*")
+_ELLIPSIS = re.compile(r"\[\s*(?:…|\.{3})\s*\]|…|\.{3,}")
+_SENTENCE_END = re.compile(r"[.!?]")
+QUOTE_WORDS = 4  # fewer prove nothing
+QUOTE_GAP = 12  # words a quote may skip in the middle, inside one sentence
+
+
+def _words(text: str) -> list[tuple[str, bool]]:
+    """The words of a text, each with "a sentence ended just before it"."""
+    out, last = [], 0
+    for found in _WORD.finditer(text):
+        ended = bool(out) and bool(_SENTENCE_END.search(text[last : found.start()]))
+        out.append((found.group(0).casefold().replace("’", "'"), ended))
+        last = found.end()
+    return out
+
+
+def _at(words: list, part: list, start: int = 0, stop: int | None = None) -> list[int]:
+    """Where ``part`` stands in ``words``, word for word. The first word of the
+    part may open a sentence or not; inside it, sentence ends must agree."""
+    if not part:
+        return []
+    stop = len(words) - len(part) if stop is None else min(stop, len(words) - len(part))
+    head, tail = part[0][0], part[1:]
+    return [
+        i
+        for i in range(start, stop + 1)
+        if words[i][0] == head and words[i + 1 : i + len(part)] == tail
+    ]
+
+
+def _with_gap(words: list, first: list, second: list) -> bool:
+    """Both parts, in order, at most QUOTE_GAP words apart and in one sentence."""
+    for i in _at(words, first):
+        after = i + len(first)
+        for j in _at(words, second, after + 1, after + QUOTE_GAP):
+            if not any(ended for _, ended in words[after : j + 1]):
+                return True
+    return False
 
 
 def supported(quote: str, passage: str) -> bool:
-    """Are the quoted words really in the passage? Exact once case, spacing and
-    punctuation are set aside; a quote the model shortened in the middle is
-    accepted when both halves are there in order."""
-    quote, passage = _flat(quote), _flat(passage)
-    if len(quote.split()) < 3:
+    """Are the quoted words really in the passage?
+
+    Whole words, in order, case and punctuation set aside. A quote may skip a
+    few words in the middle, marked with "…" or not, but only inside one
+    sentence: two sentences are not joined into a claim neither makes. At
+    least four words, two of which carry meaning."""
+    parts = [_words(part) for part in _ELLIPSIS.split(quote or "")]
+    parts = [part for part in parts if part]
+    said = [word for part in parts for word, _ in part]
+    weighty = [word for word in said if len(word) >= 4 or any(c.isdigit() for c in word)]
+    if len(said) < QUOTE_WORDS or len(weighty) < 2 or len(parts) > 2:
         return False
-    if quote in passage:
+    words = _words(passage or "")
+    if len(parts) == 2:
+        return _with_gap(words, parts[0], parts[1])
+    whole = parts[0]
+    if _at(words, whole):
         return True
-    words = quote.split()
-    # One gap: the longest opening that is in the passage, then the rest after it.
-    for cut_at in range(len(words) - 3, 2, -1):
-        first, second = " ".join(words[:cut_at]), " ".join(words[cut_at:])
-        at = passage.find(first)
-        if at >= 0:
-            return passage.find(second, at + len(first)) >= 0
-    return False
+    # Shortened in the middle without saying so: the longest opening, then the rest.
+    return any(
+        _with_gap(words, whole[:cut_at], whole[cut_at:]) for cut_at in range(len(whole) - 3, 2, -1)
+    )
 
 
 def _listing(passages: list[dict]) -> str:
@@ -523,8 +578,8 @@ def answer(conn: sqlite3.Connection, connection, ids: list[str], question: str, 
         text = assist.clean_summary(item.get("text"))
         quote = " ".join(str(item.get("quote") or "").split())
         try:
-            number = int(item.get("passage"))
-        except (TypeError, ValueError):
+            number = int(float(item.get("passage")))
+        except (TypeError, ValueError, OverflowError):
             number = 0
         if not text or not 1 <= number <= len(passages):
             result["dropped"] += 1

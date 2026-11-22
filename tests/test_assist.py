@@ -560,3 +560,102 @@ def test_a_provider_is_connected_by_its_kind_and_its_address_cannot_be_changed(p
         app.llm_forget()
     finally:
         fake.close()
+
+
+class Refusing:
+    """A connection whose every request fails, as with a wrong password."""
+
+    chat_model = "m"
+
+    def __init__(self, ok_for=()):
+        self.ok_for, self.asked = ok_for, 0
+
+    def ask_json(self, messages, **kwargs):
+        self.asked += 1
+        text = messages[-1]["content"]
+        if any(word in text for word in self.ok_for):
+            return {
+                "summary": "A page about bread and ovens, read in full.",
+                "tags": [],
+                "verdict": "same",
+            }
+        raise llm.LlmError("The server did not accept the password or API key.")
+
+
+@pytest.fixture
+def read(conn):
+    """Twelve bookmarks whose pages have been read."""
+    ids = fill(conn)
+    text = "<html><body><article><p>%s</p></article></body></html>"
+    by_url = {
+        f"https://example.org/{name}": text
+        % (f"All about {name}: " + "bread ovens rivers maps " * 30)
+        for name in ids
+    }
+    while assist.read_pages(conn, limit=40, get=pages(by_url))["status"]["remaining"]:
+        pass
+    return ids
+
+
+def test_a_request_that_fails_is_not_recorded_as_done(conn, read, farm):
+    """Failed requests were stored as empty notes: "8 failed, 0 remaining", and
+    no later run ever tried them again."""
+    waiting = assist.notes_status(conn)["remaining"]
+    assert waiting == 12
+    told = assist.write_notes(conn, Refusing(), limit=4)
+    assert told["failed"] == 4 and told["written"] == 0 and told["stuck"]
+    assert "did not accept the password" in told["error"] and len(told["failed_ids"]) == 4
+    assert conn.execute("SELECT COUNT(*) FROM llm_notes").fetchone()[0] == 0
+    assert assist.notes_status(conn)["remaining"] == waiting  # all still to do
+    # Within one job the failed ones are left out, so the job ends...
+    again = assist.write_notes(conn, Refusing(), limit=4, skip=told["failed_ids"])
+    assert not set(again["failed_ids"]) & set(told["failed_ids"])
+    assert again["remaining"] == waiting - 8
+    # ...and the next job, with a model that answers, writes them.
+    connection = llm.Connection(farm.config(), password="")
+    done = assist.write_notes(conn, connection, limit=20)
+    assert done["written"] + done["empty"] == 12 and not done["stuck"] and done["remaining"] == 0
+
+
+def test_a_batch_that_partly_fails_goes_on(conn, read):
+    partly = Refusing(ok_for=("cook0", "cook1"))
+    told = assist.write_notes(conn, partly, limit=20)
+    assert told["written"] == 2 and told["failed"] == 10 and not told["stuck"]
+    assert conn.execute("SELECT COUNT(*) FROM llm_notes WHERE kind = 'summary'").fetchone()[0] == 2
+    assert told["remaining"] == 0 and assist.notes_status(conn)["remaining"] == 10
+    # Then and now: the same rule.
+    compared = assist.compare_pages(conn, Refusing(), limit=20)
+    assert compared["stuck"] and compared["compared"] == 0 and compared["refused"] >= 1
+    assert not conn.execute("SELECT 1 FROM llm_notes WHERE kind = 'then_now'").fetchone()
+
+
+def test_a_lot_of_tags_whose_request_fails_is_kept_for_later(conn, read):
+    with pytest.raises(llm.LlmError):
+        assist.find_tag_groups(conn, Refusing(), start=True)
+    assert assist.tag_groups_status(conn)["lots_left"] >= 1
+
+
+@pytest.mark.parametrize(
+    "before",
+    [
+        "<select><option>One<option>Two</select>",
+        "<nav><ul><li>Home<li>About</ul></nav>",
+        "<header><p>Site name</header>",
+        "<nav>a<wbr>b</nav>",
+        "<footer><p>one<p>two<li>three</footer>",
+        "<nav><ul><li><a href='/'>Home</a></nav>",  # the list never closed at all
+        "</div></span>",  # closing tags that close nothing
+    ],
+)
+def test_a_page_with_tags_left_open_is_still_read(before):
+    """Counting opening against closing tags lost the whole page after one
+    unclosed <li> or <option> inside a menu: real pages are full of them."""
+    words = "Rivers are drawn from hydrography datasets and simplified for each scale. " * 30
+    html = f"<html><body>{before}<article><p>{words}</p></article></body></html>"
+    page = assist.read_page(html)
+    assert len(page["text"]) > 1500 and page["text"].startswith("Rivers are drawn")
+    for menu in ("Home", "About", "Site name", "One", "three"):
+        assert menu not in page["text"]
+    # And without an <article>, the text after the menu is still the page's text.
+    plain = assist.read_page(f"<html><body>{before}<div><p>{words}</p></div></body></html>")
+    assert len(plain["text"]) > 1500 and "Home" not in plain["text"]

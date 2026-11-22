@@ -1607,7 +1607,23 @@ async function api(method, path, body) {
   let data = {};
   try { data = await response.json(); } catch (error) { /* empty or non-JSON answer */ }
   if (!response.ok) throw new Error(data.error || "The request failed (" + response.status + ").");
+  // Anything that changes the collection may move a stage forward (topics found, a map
+  // drawn, a view saved): the stages are read again shortly after, whoever made the change.
+  if (method !== "GET") stagesSoon();
   return data;
+}
+let stagesTimer = null;
+function stagesSoon() {
+  if (stagesTimer) return;
+  stagesTimer = setTimeout(async () => {
+    stagesTimer = null;
+    try {
+      const fresh = await api("GET", "/api/state");
+      if (!state) return;
+      state.progress = fresh.progress; state.status = fresh.status;
+      renderStart(); renderModelTour(); renderStages();
+    } catch (error) { /* the next change will ask again */ }
+  }, 900);
 }
 
 function note(id, text, kind) {
@@ -1688,7 +1704,7 @@ function renderStages() {
   if (!p) return;
   const count = state.status.bookmarks;
   $("st-collect").textContent = count ? count + " bookmarks" : "nothing yet";
-  $("st-clean").textContent = !count ? "" : p.groomed ? "done once" : "not yet";
+  $("st-clean").textContent = !count ? "" : p.groomed ? "a script applied" : "not yet";
   $("st-explore").textContent = !count ? "" : p.clustered ? (p.mapped ? "topics and map" : "topics, no map") : "no topics yet";
   $("st-study").textContent = !count ? "" : p.notebooks ? p.notebooks + (p.notebooks === 1 ? " notebook" : " notebooks") : (p.model && p.model.connected ? "no notebook yet" : "needs a model");
   $("st-keep").textContent = !count ? "" : p.saved_view ? "a view saved" : "";
@@ -4944,15 +4960,16 @@ function assistButtons(on) { for (const id of ["pages-go", "notes-go", "compare-
 $("assist-help").onclick = () => openGuide("models");
 $("compare-go").onclick = async () => {
   let ids; try { ids = await assistIds(); } catch (error) { note("compare-note", error.message, "bad"); return; }
-  assistButtons(true); let compared = 0, failed = 0, since = null, last = null;
+  assistButtons(true); let compared = 0, failed = 0, refused = 0, since = null, last = null, why = ""; const skip = [];
   try { if ($("assist-again").checked) since = (await api("POST", "/api/compare", { status_only: true, ids })).now; }
   catch (error) { assistButtons(false); note("compare-note", error.message, "bad"); return; }
-  assist.finished = (r) => r.remaining === 0 || (r.compared + r.failed === 0 && !r.busy);
-  const problem = await inBatches(assist, () => api("POST", "/api/compare", { ids, limit: 4, since }),
-    (r, waiting) => { last = r; if (waiting === false) { compared += r.compared; failed += r.failed; } note("compare-note", waiting || ("Comparing… " + compared + " done, " + r.remaining + " to go."), "muted"); });
+  assist.finished = (r) => r.stuck || r.remaining === 0 || (r.compared + r.failed + r.refused === 0 && !r.busy);
+  const problem = await inBatches(assist, () => api("POST", "/api/compare", { ids, limit: 4, since, skip }),
+    (r, waiting) => { last = r; if (waiting === false) { compared += r.compared; failed += r.failed; refused += r.refused; skip.push(...(r.failed_ids || [])); why = why || r.error || ""; } note("compare-note", waiting || ("Comparing… " + compared + " done, " + r.remaining + " to go."), "muted"); });
   assistButtons(false);
-  note("compare-note", problem || ((assist.stop ? "Stopped. " : "Done. ") + compared + " compared" + (failed ? ", " + failed + " answers could not be read" : "") + ". "
-    + (last ? describeCompare(last.status) : "") + (compared ? " Now preview “Flag pages that changed since they were saved” above." : " Nothing to compare: it needs pages read (step 1) and bookmarks that already have a summary.")), problem ? "bad" : "good");
+  note("compare-note", problem || ((assist.stop ? "Stopped. " : last && last.stuck ? "Stopped: the model refused. " : "Done. ") + compared + " compared" + (failed ? ", " + failed + " answers could not be read" : "") + ". "
+    + (refused ? refused + (refused === 1 ? " request" : " requests") + " failed (" + why + "): nothing was recorded, press the button again to retry. " : "")
+    + (last ? describeCompare(last.status) : "") + (compared ? " Now preview “Flag pages that changed since they were saved” above." : refused ? "" : " Nothing to compare: it needs pages read (step 1) and bookmarks that already have a summary.")), problem || refused ? "bad" : "good");
 };
 function describeCompare(s) { return "Still the same: " + s.same + ". Moved on: " + s.changed + ". Now something else: " + s.replaced + "."; }
 $("taggroups-go").onclick = async () => {
@@ -4978,15 +4995,20 @@ $("pages-go").onclick = async () => {
 };
 $("notes-go").onclick = async () => {
   let ids; try { ids = await assistIds(); } catch (error) { note("notes-note", error.message, "bad"); return; }
-  assistButtons(true); let written = 0, empty = 0, failed = 0, since = null;
+  assistButtons(true); let written = 0, empty = 0, failed = 0, since = null, why = ""; const skip = [];
   try { if ($("assist-again").checked) since = (await api("POST", "/api/notes", { status_only: true, ids })).now; }
   catch (error) { assistButtons(false); note("notes-note", error.message, "bad"); return; }
-  assist.finished = (r) => r.remaining === 0 || (r.written + r.empty + r.failed === 0 && !r.busy);
-  const problem = await inBatches(assist, () => api("POST", "/api/notes", { ids, limit: 4, language: $("assist-language").value, since }),
-    (r, waiting) => { if (waiting === false) { written += r.written; empty += r.empty; failed += r.failed; } note("notes-note", waiting || ("Writing… " + written + " written, " + r.remaining + " to go."), "muted"); });
+  // A request that fails writes nothing: its bookmark is left out for the rest of this job and
+  // tried again by the next. A batch where every request fails stops the job: the reason is shown.
+  assist.finished = (r) => r.stuck || r.remaining === 0 || (r.written + r.empty + r.failed === 0 && !r.busy);
+  let stuck = false;
+  const problem = await inBatches(assist, () => api("POST", "/api/notes", { ids, limit: 4, language: $("assist-language").value, since, skip }),
+    (r, waiting) => { if (waiting === false) { written += r.written; empty += r.empty; failed += r.failed; skip.push(...(r.failed_ids || [])); why = why || r.error || ""; stuck = Boolean(r.stuck); } note("notes-note", waiting || ("Writing… " + written + " written, " + r.remaining + " to go."), "muted"); });
   assistButtons(false);
-  note("notes-note", problem || ((assist.stop ? "Stopped. " : "Done. ") + written + " written" + (empty ? ", " + empty + " pages had nothing to describe" : "") + (failed ? ", " + failed + " answers could not be read" : "")
-    + ". Now preview “Summaries written by the language model” and “Tags picked by the language model” above."), problem ? "bad" : "good");
+  const left = failed ? " " + failed + (failed === 1 ? " request" : " requests") + " failed (" + why + "): nothing was recorded for " + (failed === 1 ? "it" : "them") + ", press the button again to retry." : "";
+  note("notes-note", problem || (stuck && !written ? "Stopped: the model refused every request. " + why
+    : (assist.stop ? "Stopped. " : stuck ? "Stopped early. " : "Done. ") + written + " written" + (empty ? ", " + empty + " pages had nothing to describe" : "") + "." + left
+    + (written ? " Now preview “Summaries written by the language model” and “Tags picked by the language model” above." : "")), problem || failed ? "bad" : "good");
 };
 
 /* questions (Ask) */

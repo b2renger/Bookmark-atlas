@@ -89,8 +89,11 @@ def parse_date(text: str | None) -> ParsedDate | None:
     return _from_moment(moment)
 
 
-def _from_moment(moment: datetime) -> ParsedDate:
-    utc = moment.astimezone(UTC)
+def _from_moment(moment: datetime) -> ParsedDate | None:
+    try:
+        utc = moment.astimezone(UTC)
+    except (OverflowError, ValueError):
+        return None  # a date at the very edge of the calendar, pushed over by its time zone
     if (utc.hour, utc.minute, utc.second) == (0, 0, 0):
         return ParsedDate(utc.date().isoformat(), True)
     return ParsedDate(_format(utc), False)

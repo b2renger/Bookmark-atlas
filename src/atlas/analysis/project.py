@@ -18,7 +18,10 @@ TRUST_SAMPLE = 3000
 def pca(np, x, dims: int = 2):
     centred = x - x.mean(axis=0, keepdims=True)
     u, s, _ = np.linalg.svd(centred, full_matrices=False)
-    return u[:, :dims] * s[:dims]
+    out = u[:, :dims] * s[:dims]
+    if out.shape[1] < dims:  # vectors with a single dimension: a line is still a map
+        out = np.hstack([out, np.zeros((out.shape[0], dims - out.shape[1]), dtype=out.dtype)])
+    return out
 
 
 def _affinities(np, x, perplexity: float):

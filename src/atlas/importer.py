@@ -334,8 +334,13 @@ def import_csv_stream(
 ) -> ImportReport:
     """Import CSV text from an open stream, under the same rules as a file."""
     report = ImportReport(dry_run=dry_run)
+    csv.field_size_limit(50_000_000)  # a cell may hold a whole article
     reader = csv.DictReader(handle)
-    if not reader.fieldnames:
+    try:
+        names = reader.fieldnames
+    except csv.Error as error:
+        raise ValueError(f"{name} could not be read as CSV ({error}).") from None
+    if not names:
         raise ValueError(f"{name} has no header row.")
     mapping = resolve_columns(list(reader.fieldnames), columns)
     try:
@@ -360,6 +365,9 @@ def import_csv_stream(
                 )
             except ValueError as error:
                 report.skipped.append((number, str(error)))
+    except csv.Error as error:
+        conn.rollback()
+        raise ValueError(f"{name} could not be read as CSV ({error}).") from None
     except BaseException:
         conn.rollback()
         raise

@@ -33,24 +33,47 @@ from .urls import normalize_url
 TRUNCATED_TAG = "link cut short"
 SOURCE = "sqldump"
 
-_INSERT = re.compile(r"INSERT INTO `?([A-Za-z0-9_]+)`? \(([^)]*)\) VALUES\s*")
+# With its list of columns, or without (what mysqldump writes by default: the
+# columns are then those of the CREATE TABLE, in order).
+_INSERT = re.compile(r"INSERT INTO `?([A-Za-z0-9_]+)`?\s*(?:\(([^)]*)\)\s*)?VALUES\s*")
+_COLUMN = re.compile(r"^\s*`([A-Za-z0-9_]+)`\s+\w", re.M)
+_SQL_START = re.compile(
+    r"(?:\s|--[^\n]*\n|#[^\n]*\n|/\*.*?\*/;?)*"
+    r"(?:CREATE|INSERT|SET|DROP|LOCK|BEGIN|START|PRAGMA|USE|ALTER|DELIMITER)\b",
+    re.S | re.I,
+)
 _CREATE = re.compile(r"CREATE TABLE (?:IF NOT EXISTS )?`?([A-Za-z0-9_]+)`? \((.*?)\n\)", re.S)
 _WIDTH = re.compile(r"^\s*`([A-Za-z0-9_]+)`\s+(?:var)?char\((\d+)\)", re.M | re.I)
 _ESCAPES = {"n": "\n", "r": "\r", "t": "\t", "0": "", "Z": "", "b": ""}
 
 
 def looks_like_sql_dump(text: str) -> bool:
+    """A dump begins with SQL. A CSV or a bundle whose text merely mentions
+    CREATE TABLE and INSERT INTO (a bookmark about databases) is not one."""
     head = text[:200_000]
-    return "INSERT INTO" in head and "CREATE TABLE" in head
+    return "INSERT INTO" in head and "CREATE TABLE" in head and bool(_SQL_START.match(head))
 
 
 def read_tables(text: str) -> dict[str, list[dict]]:
     """Every row of every ``INSERT`` of the dump, by table. Values are text,
     whole numbers or ``None``."""
+    try:
+        return _read_tables(text)
+    except IndexError:
+        raise ValueError(
+            "The file ends in the middle of a row: it looks cut short. Export it again."
+        ) from None
+
+
+def _read_tables(text: str) -> dict[str, list[dict]]:
     tables: dict[str, list[dict]] = {}
     size = len(text)
+    declared = {m.group(1): _COLUMN.findall(m.group(2)) for m in _CREATE.finditer(text)}
     for match in _INSERT.finditer(text):
-        columns = [name.strip(" `") for name in match.group(2).split(",")]
+        if match.group(2) is None:
+            columns = declared.get(match.group(1)) or []
+        else:
+            columns = [name.strip(" `") for name in match.group(2).split(",")]
         rows = tables.setdefault(match.group(1), [])
         at = match.end()
         while at < size:

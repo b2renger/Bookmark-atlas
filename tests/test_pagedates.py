@@ -1,4 +1,5 @@
 import json
+import urllib.error
 
 import pytest
 
@@ -275,3 +276,105 @@ def test_http_get_reads_a_real_page_and_reports_failures():
         assert pagedates.read_one(base + "/page")["status"] == "skipped"
     finally:
         server.shutdown()
+
+
+# ---- only the public web ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/admin",
+        "http://127.1/admin",  # the same machine, written short
+        "http://0x7f.0.0.1/",
+        "http://2130706433/",
+        "http://017700000001/",
+        "http://[::1]/",
+        "http://[::ffff:127.0.0.1]/",
+        "http://10.0.0.8/",
+        "http://192.168.1.1/",
+        "http://169.254.169.254/latest/meta-data",
+        "http://localhost:8080/",
+        "http://printer/",
+        "http://router.home/",
+        "http://intranet.corp/wiki",
+        "http://nas.lan./",
+        "ftp://example.org/file",
+        "file:///etc/passwd",
+    ],
+)
+def test_addresses_that_are_not_the_public_web_are_refused(url):
+    assert pagedates.refused(url) in (pagedates.PRIVATE, "not a web link")
+
+
+def test_public_addresses_are_not_refused():
+    for url in (
+        "https://example.org/a",
+        "http://93.184.216.34/",
+        "https://cafe.de/",
+        "https://face.fr",
+    ):
+        assert pagedates.refused(url) is None
+
+
+class _Site:
+    """A page server on this computer, which is a private address."""
+
+    def __init__(self, handler):
+        import threading
+        from http.server import ThreadingHTTPServer
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+
+def test_the_machine_really_reached_must_be_public_and_so_must_every_hop(monkeypatch):
+    from http.server import BaseHTTPRequestHandler
+
+    served = []
+
+    class Inside(BaseHTTPRequestHandler):
+        def do_GET(self):
+            served.append(self.path)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"<html><title>Router admin</title></html>")
+
+        def log_message(self, *args):
+            pass
+
+    inside = _Site(Inside)
+
+    class Hop(Inside):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://localhost:{inside.port}/secret")
+            self.end_headers()
+
+    hop = _Site(Hop)
+    monkeypatch.setattr(pagedates.urllib.request, "getproxies", lambda: {})
+    try:
+        # 1. A public name that points inside: the name passes, the machine reached does not.
+        real = pagedates.refused
+        monkeypatch.setattr(pagedates, "refused", lambda url: None)
+        with pytest.raises(urllib.error.URLError, match="private network"):
+            pagedates.http_get(f"http://127.0.0.1:{inside.port}/page")
+        assert served == []  # connected, saw where it was, asked for nothing
+        # 2. A first hop that is allowed and sends on to a private address.
+        monkeypatch.setattr(pagedates, "refused", real)
+        monkeypatch.setattr(
+            pagedates, "_check_peer", lambda sock: None
+        )  # let the first hop through
+        with pytest.raises(urllib.error.URLError, match="sent on to an address on a private"):
+            pagedates.http_get(f"http://127.0.0.1:{hop.port}/start")
+        assert served == []
+        # The callers record it as a link left alone, nothing more.
+        from atlas import assist
+
+        assert assist.fetch_page(f"http://127.1:{inside.port}/x")["status"] == "skipped"
+        assert pagedates.check_one(f"http://0x7f.0.0.1:{inside.port}/x")["result"] == "skipped"
+        assert served == []
+    finally:
+        inside.server.shutdown()
+        hop.server.shutdown()

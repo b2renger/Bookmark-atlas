@@ -1,6 +1,7 @@
 """Notebooks: answers that rest on the words of the sources."""
 
 import json
+from collections import Counter
 
 import pytest
 
@@ -125,6 +126,68 @@ def test_quoted_words_must_really_be_in_the_passage():
     )
     assert not notebook.supported("the Danube", passage)  # two words prove nothing
     assert not notebook.supported("", passage)
+    assert notebook.supported("crosses ten countries […] reaches the Black Sea", passage)
+    assert not notebook.supported("reaches the Black Sea … crosses ten countries", passage)
+
+
+@pytest.mark.parametrize(
+    ("quote", "passage"),
+    [
+        # A piece of a word is not the word: these once passed and say the opposite.
+        ("likely to cause harm", "The compound is unlikely to cause harm at this dose."),
+        ("toxic to humans", "The dye is non-toxic to humans and pets."),
+        ("5 million people", "About 1.5 million people live there."),
+        ("he is not at all", "She is nothing like that; he is notable at all times."),
+        # Two sentences are not one claim.
+        (
+            "is safe and effective",
+            "Nobody claims this is safe. And effective regulation is missing.",
+        ),
+        (
+            "The treatment was effective in all patients tested",
+            "The treatment was effective in mice. Later it failed in all patients tested.",
+        ),
+        (
+            "The treatment was effective … in all patients tested",
+            "The treatment was effective in mice. Later it failed in all patients tested.",
+        ),
+        # Words everyone uses prove nothing.
+        ("it is a", "It is a long way to the sea."),
+        ("it is in the", "It is in the valley."),
+        # Too far apart, or shortened twice.
+        (
+            "The survey covered farms were abandoned",
+            "The survey covered "
+            + "many very different " * 5
+            + "regions where farms were abandoned",
+        ),
+        ("one two … five six … nine ten", "one two three four five six seven eight nine ten"),
+    ],
+)
+def test_what_the_quote_check_refuses(quote, passage):
+    assert not notebook.supported(quote, passage)
+
+
+def test_what_the_quote_check_accepts():
+    assert notebook.supported(
+        "is safe. And effective regulation", "This is safe. And effective regulation is missing."
+    )
+    assert notebook.supported(
+        "Non-Toxic to humans and pets", "The dye is non-toxic to humans and pets."
+    )
+    assert notebook.supported(
+        "about 1.5 million people live", "About 1.5 million people live there."
+    )
+    assert notebook.supported(
+        "l’été dernier à Paris", "C'était l'été dernier à Paris, sous la pluie."
+    )
+    assert notebook.supported(
+        "This set holds 12 sources.",
+        "This set holds 12 sources.\nTheir dates run from 2024 to 2025.",
+    )
+    assert notebook.supported(
+        "Sources per year: 2024: 12", "This set holds 12 sources.\nSources per year: 2024: 12."
+    )
 
 
 def test_an_answer_keeps_only_what_the_sources_bear_out(conn, read, farm):
@@ -379,3 +442,76 @@ def test_a_connection_file_from_before_is_still_read(tmp_path):
     assert settings.get_secret(llm.SECRET) is None
     assert settings.get_secret(llm.secret_name("lan")) == "old-password"
     assert llm.Connection().password == "old-password"
+
+
+@pytest.mark.parametrize(
+    ("question", "about_the_set"),
+    [
+        ("How many sources per year, and which tags?", True),
+        ("Which topics do these cover?", True),
+        ("What are the most common tags?", True),
+        ("How did this change over the years?", True),
+        ("Combien de sources par année ?", True),
+        ("Quels sujets reviennent ?", True),
+        # About what the pages say: the figures would only take a passage's place.
+        ("When did the author write this?", False),
+        ("What does recent work on diffusion say?", False),
+        ("Does Count Dracula appear?", False),
+        ("How do I count words in Python?", False),
+        ("What are the main themes of the essay?", True),  # borderline: costs one passage
+        ("Why is sourdough sour?", False),
+    ],
+)
+def test_which_questions_get_the_figures(question, about_the_set):
+    assert bool(notebook._ABOUT_THE_SET.search(question)) is about_the_set
+
+
+def test_the_figures_survive_dates_that_are_not_dates(conn, read):
+    ids = list(read.values())
+    conn.execute(
+        "UPDATE bookmarks SET saved_at = '12/03/2021', published_at = NULL WHERE id = ?", (ids[0],)
+    )
+    conn.execute("UPDATE bookmarks SET saved_at = '0000-00-00T00:00:00Z' WHERE id = ?", (ids[1],))
+    conn.execute("UPDATE bookmarks SET saved_at = '', published_at = NULL WHERE id = ?", (ids[2],))
+    conn.execute(
+        "UPDATE bookmarks SET saved_at = NULL, published_at = '2019-05-01' WHERE id = ?", (ids[3],)
+    )
+    conn.execute("UPDATE bookmarks SET deleted_at = 'x' WHERE id = ?", (ids[4],))
+    seen = notebook.glance(conn, ids)
+    assert seen["sources"] == 11 and seen["undated"] == 3  # the deleted one is not counted at all
+    assert seen["first_day"] == "2019-05-01"  # saved, else published: the app's usual date
+    assert seen["per_year"][0] == [2019, 1] and sum(n for _, n in seen["per_year"]) == 8
+    assert "3 sources have no date." in notebook.figures(seen)
+
+
+def test_an_answer_with_an_absurd_passage_number_is_set_aside(conn, read):
+    class Odd:
+        chat_model = "m"
+
+        def embedding(self):
+            raise llm.LlmError("no vectors")
+
+        def ask_json(self, messages, **kwargs):
+            return {
+                "statements": [
+                    {"text": "A claim resting on nothing.", "passage": 1e999, "quote": "x"},
+                    {"text": "Another.", "passage": "many", "quote": "x"},
+                    {"text": "And another.", "passage": None, "quote": "x"},
+                ]
+            }
+
+    told = notebook.answer(conn, Odd(), list(read.values()), "cartography rivers maps?")
+    assert told["statements"] == [] and told["dropped"] == 3
+
+
+def test_no_more_than_three_passages_come_from_one_source(conn, read):
+    """The cap had no test of its own: removing it passed the whole suite."""
+    ids = list(read.values())
+    long_page = "Cartography of rivers and maps of hydrography. " * 400
+    conn.execute("UPDATE page_texts SET text = ? WHERE bookmark_id = ?", (long_page, ids[0]))
+    conn.execute("DELETE FROM passages WHERE bookmark_id = ?", (ids[0],))
+    conn.commit()
+    found, _ = notebook.find(conn, None, ids, "cartography rivers hydrography maps")
+    per_source = Counter(p["bookmark_id"] for p in found)
+    assert per_source[ids[0]] == notebook.PER_SOURCE == 3 and len(found) <= notebook.PASSAGES_SHOWN
+    assert len(per_source) >= 2  # the others still get their say

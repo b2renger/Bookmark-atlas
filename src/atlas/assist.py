@@ -217,6 +217,7 @@ _SKIP |= {"header", "iframe", "button", "select", "figure"}
 _BLOCK = {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "section", "article"}
 _BLOCK |= {"blockquote", "pre", "td"}
 _VOID = {"br", "img", "meta", "link", "input", "hr", "source", "area", "base", "col", "embed"}
+_VOID |= {"wbr", "track", "param"}
 
 
 class _Reader(HTMLParser):
@@ -226,8 +227,12 @@ class _Reader(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.title, self.description, self.site_title = [], "", ""
         self.all, self.main = [], []
-        self._skip = 0
-        self._main = 0
+        # The elements open now. Pages leave many unclosed (<li>, <p>, <option>):
+        # what closes is found in this list and everything above it goes too.
+        # Counting opens against closes lost the whole page after one such tag.
+        self._open: list[str] = []
+        self._skip = 0  # how many of them hide their content
+        self._main = 0  # how many of them are the article
         self._in_title = False
 
     def handle_starttag(self, tag, attrs):
@@ -242,30 +247,40 @@ class _Reader(HTMLParser):
                 self.site_title = content
             return
         if tag in _VOID:
-            if tag == "br":
+            if tag == "br" and not self._skip:
                 self._add("\n")
             return
         if tag == "title":
             self._in_title = True
-        if tag in _SKIP or self._skip:
+        self._open.append(tag)
+        if tag in _SKIP:
             self._skip += 1
-            return
-        if tag in ("article", "main") or (self._main and tag not in _VOID):
+        elif tag in ("article", "main"):
             self._main += 1
-        if tag in _BLOCK:
+        if tag in _BLOCK and not self._skip:
             self._add("\n")
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in _VOID and tag != "meta":
+            self.handle_endtag(tag)
 
     def handle_endtag(self, tag):
         if tag in _VOID:
             return
         if tag == "title":
             self._in_title = False
-        if self._skip:
-            self._skip -= 1
-            return
-        if self._main:
-            self._main -= 1
-        if tag in _BLOCK:
+        if tag not in self._open:
+            return  # a stray closing tag closes nothing
+        while self._open:
+            gone = self._open.pop()
+            if gone in _SKIP:
+                self._skip -= 1
+            elif gone in ("article", "main"):
+                self._main -= 1
+            if gone == tag:
+                break
+        if tag in _BLOCK and not self._skip:
             self._add("\n")
 
     def _add(self, piece):
@@ -510,17 +525,24 @@ def write_notes(
     limit: int = 6,
     language: str = "page",
     since: str | None = None,
+    skip: list[str] | None = None,
 ) -> dict:
     """Have the model write a summary and tags for one batch of pages already
     read. ``since`` (a moment, as ``now_iso`` gives it) asks for the notes
     older than it to be written again: the caller passes the moment its job
-    began, on every batch."""
+    began, on every batch.
+
+    A request that fails writes nothing: the bookmark stays to be done. The
+    caller gets its id in ``failed_ids`` and passes those back as ``skip`` for
+    the rest of its job, so the job ends; the next job tries them again."""
     if language not in LANGUAGES:
         raise ValueError("Unknown language.")
-    batch = _note_candidates(conn, ids, since)[: max(1, min(int(limit), 20))]
+    skipped = set(skip or [])
+    waiting = [pair for pair in _note_candidates(conn, ids, since) if pair[0]["id"] not in skipped]
+    batch = waiting[: max(1, min(int(limit), 20))]
     vocabulary = _vocabulary(conn)
     done = {"written": 0, "empty": 0, "failed": 0}
-    busy = None
+    busy, failed_ids, why = None, [], None
 
     def work(pair):
         bookmark, page = pair
@@ -541,11 +563,12 @@ def write_notes(
             continue
         if not isinstance(answer, dict):
             done["failed"] += 1
-            summary, tags = "", []
-        else:
-            summary = clean_summary(answer.get("summary"))
-            tags = clean_tags(answer.get("tags"), vocabulary)
-            done["written" if summary else "empty"] += 1
+            failed_ids.append(bookmark["id"])
+            why = why or str(answer)
+            continue  # nothing is recorded: an empty note would say "done"
+        summary = clean_summary(answer.get("summary"))
+        tags = clean_tags(answer.get("tags"), vocabulary)
+        done["written" if summary else "empty"] += 1
         for kind, value in (("summary", summary), ("tags", json.dumps(tags, ensure_ascii=False))):
             conn.execute(
                 "INSERT INTO llm_notes (bookmark_id, kind, value, model, based_on, created_at) "
@@ -562,9 +585,14 @@ def write_notes(
                 ),
             )
     conn.commit()
+    left = _note_candidates(conn, ids, since)
     return {
         **done,
-        "remaining": len(_note_candidates(conn, ids, since)),
+        "failed_ids": failed_ids,
+        "error": why,
+        # Every request of the batch refused: going on would only repeat it.
+        "stuck": bool(batch) and done["failed"] == len(batch),
+        "remaining": sum(1 for b, _ in left if b["id"] not in skipped | set(failed_ids)),
         "busy": str(busy) if busy else None,
         "retry_after": busy.retry_after if busy else None,
         "status": notes_status(conn, ids),
@@ -662,7 +690,10 @@ def find_tag_groups(conn: sqlite3.Connection, connection, *, start: bool = False
         except llm.Busy as error:
             busy, answer = error, None
         except llm.LlmError:
-            answer = {}
+            # Not read: the lot goes to the back of the queue, it is not dropped.
+            _set_meta(conn, "tag_chunks", json.dumps([*pending[1:], names], ensure_ascii=False))
+            conn.commit()
+            raise
         if busy is None:
             groups = answer.get("groups") if isinstance(answer, dict) else None
             for group in groups if isinstance(groups, list) else []:
@@ -775,12 +806,15 @@ def compare_pages(
     ids: list[str] | None = None,
     limit: int = 6,
     since: str | None = None,
+    skip: list[str] | None = None,
 ) -> dict:
     """Have the model say, for one batch, whether each page still is what its
-    summary describes."""
-    batch = _compare_candidates(conn, ids, since)[: max(1, min(int(limit), 20))]
-    done = {"compared": 0, "failed": 0}
-    busy = None
+    summary describes. A request that fails records nothing (see ``write_notes``)."""
+    skipped = set(skip or [])
+    waiting = [p for p in _compare_candidates(conn, ids, since) if p[0]["id"] not in skipped]
+    batch = waiting[: max(1, min(int(limit), 20))]
+    done = {"compared": 0, "failed": 0, "refused": 0}
+    busy, failed_ids, why = None, [], None
 
     def work(pair):
         try:
@@ -796,7 +830,12 @@ def compare_pages(
         if isinstance(answer, llm.Busy):
             busy = answer
             continue
-        verdict = answer.get("verdict") if isinstance(answer, dict) else None
+        if not isinstance(answer, dict):  # the request itself failed: not a verdict
+            done["refused"] += 1
+            failed_ids.append(bookmark["id"])
+            why = why or str(answer)
+            continue
+        verdict = answer.get("verdict")
         if verdict not in VERDICTS:
             done["failed"] += 1
             value = {"verdict": "unknown", "note": ""}
@@ -816,9 +855,13 @@ def compare_pages(
             ),
         )
     conn.commit()
+    left = _compare_candidates(conn, ids, since)
     return {
         **done,
-        "remaining": len(_compare_candidates(conn, ids, since)),
+        "failed_ids": failed_ids,
+        "error": why,
+        "stuck": bool(batch) and done["refused"] == len(batch),
+        "remaining": sum(1 for b, _ in left if b["id"] not in skipped | set(failed_ids)),
         "busy": str(busy) if busy else None,
         "retry_after": busy.retry_after if busy else None,
         "status": compare_status(conn, ids),
@@ -1044,12 +1087,19 @@ def find_for_question(conn: sqlite3.Connection, connection, question: str, most:
     if stored and status["ready"] >= 0.9 * max(status["total"], 1):
         np = require_numpy()
         ids, matrix = stored
-        vector = np.asarray(
-            connection.embed([llm.query_text(status["model"], question)])[0], dtype=np.float32
-        )
-        vector /= max(float(np.linalg.norm(vector)), 1e-9)
-        order = np.argsort(-(matrix @ vector), kind="stable")[:most]
-        return [ids[i] for i in order], "meaning"
+        try:
+            # Only when the question can be turned into a vector by the very model
+            # that made the stored ones: two models' vectors do not compare.
+            same = connection.embedding()["contract"] == status["model"]
+            vector = same and np.asarray(
+                connection.embed([llm.query_text(status["model"], question)])[0], dtype=np.float32
+            )
+        except llm.LlmError:
+            same = False
+        if same and vector.shape == (matrix.shape[1],):
+            vector /= max(float(np.linalg.norm(vector)), 1e-9)
+            order = np.argsort(-(matrix @ vector), kind="stable")[:most]
+            return [ids[i] for i in order], "meaning"
     words = [w for w in re.findall(r"\w{4,}", question.lower())][:8]
     scores: dict[str, int] = {}
     for word in words:

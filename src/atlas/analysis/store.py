@@ -108,7 +108,9 @@ def candidate_ks(n: int) -> list[int]:
     """Numbers of clusters worth trying for a collection of ``n`` bookmarks:
     from broad themes to fine topics, small enough to browse."""
     upper = max(4, min(64, n // 8))
-    return [k for k in (4, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64) if k <= upper] or [2]
+    return [k for k in (4, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64) if k <= min(upper, n)] or [
+        min(2, n)
+    ]
 
 
 def suggest_k(conn: sqlite3.Connection, seed: int = 0) -> dict:
@@ -255,7 +257,11 @@ def describe_run(conn: sqlite3.Connection, run_id: str, samples: int = 5) -> dic
     nearest: dict[int, list[str]] = {}
     if centroid_blob is not None:
         try:
-            ids, matrix, _ = load_vectors(conn, refresh=False)
+            ids, matrix, now = load_vectors(conn, refresh=False)
+            if params.get("vectors") not in (None, now):
+                # The topics were found on other vectors (words, or another model)
+                # than those in use now: distances between the two mean nothing.
+                raise ValueError("other vectors")
             matrix = leading(matrix, params.get("dims_used", CLUSTER_DIMS))
             centroids = np.frombuffer(centroid_blob[0], dtype="<f4").reshape(-1, matrix.shape[1])
             position = {bookmark_id: i for i, bookmark_id in enumerate(ids)}

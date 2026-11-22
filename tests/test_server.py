@@ -62,6 +62,7 @@ def site(tmp_path, monkeypatch, fake):
         port = server.server_address[1]
         base = f"http://127.0.0.1:{port}"
         token = app.session_token
+        door = app.door
         db_path = path
 
         def call(self, method, route, body=None, *, token="default", host=None):
@@ -95,7 +96,7 @@ def site(tmp_path, monkeypatch, fake):
 
 
 def test_page_is_served_with_its_session_token(site):
-    code, html = site.call("GET", "/", token=None)
+    code, html = site.call("GET", f"/?k={site.door}", token=None)
     assert code == 200
     assert "Bookmark Atlas" in html
     assert site.token in html and "__ATLAS_SESSION_TOKEN__" not in html
@@ -110,7 +111,17 @@ def test_api_refuses_calls_without_the_session_token(site):
 def test_requests_addressed_to_another_host_are_refused(site):
     code, _ = site.call("GET", "/api/state", host="evil.example:80")
     assert code == 403
-    assert site.call("GET", "/", token=None, host="evil.example")[0] == 403
+    assert site.call("GET", f"/?k={site.door}", token=None, host="evil.example")[0] == 403
+
+
+def test_the_page_is_only_given_with_the_key_in_its_address(site):
+    """Any program on this computer could fetch the page and read the session
+    token in it. The address the app itself opens carries a key."""
+    for route in ("/", "/index.html", "/?k=", "/?k=guess", f"/?x={site.door}"):
+        code, text = site.call("GET", route, token=None)
+        assert code == 403 and site.token not in str(text)
+    assert site.call("GET", f"/index.html?k={site.door}", token=None)[0] == 200
+    assert site.call("POST", "/api/state", token=site.token)[0] in (404, 405)
     assert site.call("GET", "/api/state", host=f"localhost:{site.port}")[0] == 200
 
 
@@ -437,6 +448,19 @@ def test_progress_follows_what_has_been_done(tmp_path):
     conn.commit()
     now = app.state()["progress"]
     assert now["bookmarks"] and now["clustered"] and not now["mapped"]
+    # An edit made by hand on a selection is in the same history, but is not "cleaning".
+    app.batch_edit({"ids": ["b1"], "add_tags": ["kept"]})
+    assert conn.execute("SELECT COUNT(*) FROM script_runs").fetchone()[0] == 1
+    assert not app.state()["progress"]["groomed"]
+    conn.execute(
+        "INSERT INTO script_runs (id, script, script_version, params, started_at, status) "
+        "VALUES ('s', 'normalize-tags', '1', '{}', '2026-01-01', 'previewed')"
+    )
+    conn.commit()
+    assert not app.state()["progress"]["groomed"]  # previewed is not done
+    conn.execute("UPDATE script_runs SET status = 'applied' WHERE id = 's'")
+    conn.commit()
+    assert app.state()["progress"]["groomed"]
     assert app.tutorial({"hidden": True})["progress"]["hidden"] is True
     assert app.state()["progress"]["hidden"] is True
     assert app.tutorial({})["progress"]["hidden"] is False

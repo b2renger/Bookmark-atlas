@@ -337,3 +337,51 @@ def test_compare_with_a_snapshot_and_bring_in_what_is_missing(tmp_path):
     for bad in ({}, {"content_b64": "###"}, {"content_b64": base64.b64encode(b"hello").decode()}):
         with pytest.raises(ValueError):
             app.snapshot_compare(bad)
+
+
+def test_a_part_of_a_collection_says_nothing_about_the_rest(conn, tmp_path):
+    """Sharing 24 bookmarks once also shared every saved view, every topic
+    name and note, and the tree of the whole collection."""
+    from atlas import views
+
+    run = store.cluster_run(conn, 3)
+    store.project_run(conn)
+    store.tree_run(conn)
+    chosen = [r[0] for r in conn.execute("SELECT id FROM bookmarks WHERE url LIKE '%/splats/%'")]
+    marks = ",".join("?" * len(chosen))
+    theirs = {
+        r[0]
+        for r in conn.execute(
+            f"SELECT DISTINCT cluster FROM run_items WHERE run_id = ? AND bookmark_id IN ({marks})",  # noqa: S608
+            [run["run_id"], *chosen],
+        )
+    }
+    others = {0, 1, 2} - theirs
+    for number in (0, 1, 2):
+        conn.execute(
+            "INSERT OR REPLACE INTO cluster_edits (run_id, cluster, label, note) VALUES (?, ?, ?, ?)",
+            (run["run_id"], number, f"PRIVATE-NAME-{number}", f"private note {number}"),
+        )
+    views.save_view(conn, "PRIVATE-VIEW of everything", {"view": "map"}, note="for my eyes")
+    conn.commit()
+
+    target = tmp_path / ("part2" + snapshot.SUFFIX)
+    info = snapshot.export_snapshot(conn, target, ids=chosen)
+    raw = target.read_bytes()
+    assert info["views"] == 0 and b"PRIVATE-VIEW" not in raw and b"for my eyes" not in raw
+    for number in others:
+        assert f"PRIVATE-NAME-{number}".encode() not in raw
+    for number in theirs:
+        assert f"PRIVATE-NAME-{number}".encode() in raw  # the names of their own topics come
+    other = db.open_ready(target)
+    shared = store.tree_data(other)["tree"]  # the tree comes, cut down to its own branches
+    assert shared["size"] == 24 and all(child["size"] for child in shared["children"])
+    whole_tree = store.tree_data(conn)["tree"]
+    assert len(json.dumps(shared)) < len(json.dumps(whole_tree))
+    assert other.execute("PRAGMA foreign_key_check").fetchall() == []
+    other.close()
+    # A whole snapshot, and a workspace (which stays with its owner), keep everything.
+    whole = tmp_path / ("whole2" + snapshot.SUFFIX)
+    assert snapshot.export_snapshot(conn, whole)["views"] == 1
+    kept = tmp_path / ("own" + snapshot.SUFFIX)
+    assert snapshot.export_snapshot(conn, kept, ids=chosen, own=True)["views"] == 1

@@ -23,9 +23,9 @@ on:
         required: false
         default: ''
 
-# Needed to create the release and upload to it.
+# Read-only by default. Only the two jobs that publish get to write, below.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -48,6 +48,8 @@ jobs:
       - run: node --test desktop/datafolder.test.js desktop/weblayout.test.js
 
   windows:
+    permissions:
+      contents: write  # creates the release and uploads to it
     needs: test
     runs-on: windows-latest
     steps:
@@ -60,8 +62,12 @@ jobs:
       - name: Decide the version
         id: version
         shell: bash
+        # Through the environment, never pasted into the script: what is typed
+        # in the form must not be able to become a command.
+        env:
+          ASKED: ${{ github.event.inputs.version }}
         run: |
-          asked="${{ github.event.inputs.version }}"
+          asked="$ASKED"
           asked="${asked#v}"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
@@ -271,6 +277,8 @@ jobs:
   # Windows release back. Each starts the packaged app for real before
   # anything is uploaded.
   others:
+    permissions:
+      contents: write  # creates the release and uploads to it
     needs: windows
     strategy:
       fail-fast: false
@@ -293,8 +301,12 @@ jobs:
       - name: Decide the version
         id: version
         shell: bash
+        # Through the environment, never pasted into the script: what is typed
+        # in the form must not be able to become a command.
+        env:
+          ASKED: ${{ github.event.inputs.version }}
         run: |
-          asked="${{ github.event.inputs.version }}"
+          asked="$ASKED"
           asked="${asked#v}"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
@@ -302,6 +314,10 @@ jobs:
             version="$asked"
           fi
           if [[ -n "$version" ]]; then
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Version '$version' is not of the form X.Y.Z" >&2
+              exit 1
+            fi
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "tag=v$version" >> "$GITHUB_OUTPUT"
           else

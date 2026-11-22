@@ -139,7 +139,10 @@ def test_grid_and_tree_through_the_api_and_in_a_snapshot(path, tmp_path):  # noq
     assert views.save_view(conn, "Grid", {"tab": "grid"})["state"]["tab"] == "grid"
 
     # A snapshot of a few bookmarks keeps the grid and the tree, cut down to them.
-    keep = [b for cell in cells for b in cell["ids"]][:10]
+    # (Among them some of the renamed topic: a branch holding none of them does not come.)
+    renamed = tree.find(store.tree_data(conn)["tree"], topic["id"])[0]
+    own = [b for part in renamed.get("children") or [renamed] for b in part.get("ids", [])][:4]
+    keep = (own + [b for cell in cells for b in cell["ids"] if b not in own])[:10]
     target = tmp_path / ("part" + snapshot.SUFFIX)
     snapshot.export_snapshot(conn, target, ids=keep)
     received = db.open_ready(target)
