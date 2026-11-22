@@ -600,8 +600,15 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Checked:** file names and sizes against the model pages (search
   extracts); llama.cpp's release file names against its release workflow;
   the build number and the vectors file against LlmOnLan's source.
-- **Not run here:** llama.cpp itself and the real models. The tests start a
-  stand-in program that takes llama-server's arguments. CI checks that the
-  real engine starts on Windows and Linux.
+- **Run for real in CI** (`desktop/scripts/engine-selfcheck.py`, Linux build
+  machine, 2026-11-22): light and vectors models downloaded from their real
+  addresses (806 and 558 MB), server started, 768-number vectors, one
+  notebook question answered in 18 s on 4 CPU cores with the form imposed by
+  a schema: the right passage found by meaning, 1 statement kept, 4 set
+  aside. The engine starts (`--version`) on Windows and macOS too. Medium
+  and advanced were not run; nor any model on Windows or macOS.
+- **Seen in that run:** the statement kept was true to the passage, but the
+  words it quoted were another sentence of the same passage. The check
+  proves the quote exists in the source, not that it is the right proof.
 - **Known limits:** CPU builds only (no graphics card use on Windows and
   Linux yet); Apple's build needs a recent macOS; no Intel Mac.

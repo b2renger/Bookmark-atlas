@@ -17,6 +17,11 @@ nothing to compile, the same HTTP API as a farm, and a crash cannot take the
 app down. Models are not in the data folder, which people sync and back up.
 One writer at a time: choosing another size stops the first.
 
+**Verified for real:** trial builds 45029646707 and 45030368799: llama.cpp
+b11836 fetched on the three platforms (file names as guessed from its
+release workflow), `--version` runs on all three, and on Linux the
+self-check ran the light and vectors models end to end (see PHASES 26).
+
 **Not built yet:** choosing per question where it is answered (this
 computer, the farm, a provider). Today the choice is made in Settings and
 vectors carry over between this computer and a farm.
