@@ -36,7 +36,7 @@
   #stages small { font-size: 11px; color: var(--muted); line-height: 1.15; min-height: 13px; }
   #stages button[aria-current="page"] .n { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   #stages button.next .n { border-color: var(--accent); box-shadow: 0 0 0 3px var(--chip); }
-  #stages button.next .t { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  #stages button.next .t { box-shadow: inset 0 -2px 0 var(--accent); }
   #tools { display: flex; gap: 2px; align-items: center; }
   #tools > button:not(#help-here) { background: none; border: 0; color: var(--muted); padding: 6px 9px; border-radius: 6px; font: inherit; cursor: pointer; }
   #tools > button[aria-current="page"] { background: var(--chip); color: var(--ink); font-weight: 600; }
@@ -786,7 +786,7 @@
           what you had forgotten. Notion (or a file) is where bookmarks come from; the app is where
           they are cleaned, explored and kept.</p>
         <p>The top of the window follows the path your bookmarks take, in five numbered stages.
-          Each stage says where you stand under its name, the next useful one is outlined, and the
+          Each stage says where you stand under its name, the suggested next one is underlined, and the
           row under it holds that stage's screens and a one-line suggestion.</p>
         <ol>
           <li><strong>Collect</strong> (Sources): bring bookmarks in from a browser on this computer,
@@ -998,8 +998,12 @@
         <h4>Why you can lean on an answer, and where to stay careful</h4>
         <ul>
           <li><strong>Every statement is checked.</strong> The model must copy the words it relies on;
-            Atlas looks for those words in the source and sets the statement aside if they are not
-            there. The answer says how many were set aside.</li>
+            Atlas looks for those words in the source, whole word for whole word and inside one
+            sentence (a few words may be skipped in the middle), and sets the statement aside if
+            they are not there. The answer says how many were set aside.</li>
+          <li><strong>What the check does not prove.</strong> It proves the quoted words are in the
+            source, not that they are the right proof of the statement. Press the number and read
+            the quote before you rely on a statement that matters.</li>
           <li><strong>“Not in the sources”</strong> tells you what your question asked that the
             sources do not say. An empty answer is a real result, not a failure.</li>
           <li><strong>The check proves the words exist, not that the model read them rightly.</strong>
@@ -1021,11 +1025,16 @@
         <ul>
           <li><strong>Three sizes.</strong> <em>Light</em> (0.8 GB) runs anywhere but often loses the
             thread of the sources. <em>Medium</em> (3.1 GB) is the one to start with on a computer
-            with 8 GB of memory. <em>Advanced</em> (5.3 GB) wants 16 GB. The page marks the one
+            with 8 GB of memory. <em>Advanced</em> (5.0 GB) wants 16 GB. The page marks the one
             suggested for your computer.</li>
           <li><strong>Vectors</strong> (0.6 GB) is a fourth, small model: with it Atlas finds passages
             and places bookmarks by meaning. It is the same model a LlmOnLan farm serves, so its
             vectors remain valid if you later move to a farm.</li>
+          <li><strong>What is downloaded.</strong> Each model is one file from Hugging Face, fixed in
+            advance by its size and its fingerprint (SHA-256): a file that is cut short or is not
+            that file is not installed. A download that stops continues where it stopped.</li>
+          <li><strong>It stops with the app.</strong> The model runs as a program of its own, which
+            ends when Atlas is closed, even if Atlas is ended abruptly.</li>
           <li><strong>Speed.</strong> Without a graphics card, loading takes up to a minute or two the
             first time and an answer from half a minute to a few minutes. A long job (summaries for
             thousands of bookmarks) is better given to a farm or a provider.</li>
@@ -1121,15 +1130,25 @@
 
         <h4>What is sent, and what to expect</h4>
         <ul>
-          <li><strong>Sent:</strong> titles, summaries and tags (vectors, questions, names, tags); the
-            text of a page (summaries, then and now). Only to the server you connected. Settings
-            says so when that address is not on your local network.</li>
+          <li><strong>Sent:</strong> titles, summaries and tags (vectors, names, tags); the
+            text of a page (summaries, then and now); for a notebook, the passages found for your
+            question and the conversation. Only to the model you set up. Settings says so when it
+            is not on this computer or your local network.</li>
+          <li><strong>Pages are read from the public web only.</strong> A link to an address inside
+            your own network (a router, an intranet) is left alone, however it is written and
+            wherever a redirect leads, so its content can never be sent to a model by mistake.</li>
+          <li><strong>Keys.</strong> A password or key is kept for the address it was typed for and
+            sent nowhere else: change the address and Atlas asks for it again. It follows no
+            redirect.</li>
           <li><strong>Never changed without you:</strong> summaries, tags and merges are proposals in
             Grooming. Topic names are applied only when you press the button.</li>
           <li><strong>A model can be wrong.</strong> It sees only what is in your collection, not the
             pages (except in jobs 2 and 3). Use answers as a reading aid and check what matters.</li>
           <li><strong>Long jobs</strong> go batch by batch and can be stopped; pressing the button again
             continues where they stopped. Tick “redo the ones already done” to redo.</li>
+          <li><strong>A request that fails</strong> records nothing: its bookmark stays to be done and
+            the next run tries it again. When the model refuses every request (a wrong password,
+            no credit), the job stops at once and shows the reason.</li>
         </ul>
 
         <h4>When something does not work</h4>
@@ -1236,7 +1255,8 @@
       <p class="help">A snapshot is one file holding bookmarks with their tags, the topics, the map and your saved views, as they are now. Someone with Bookmark Atlas opens it with the menu
         <strong>Atlas &gt; Open snapshot…</strong> and sees what you see, without touching their own
         collection. It does not contain your Notion token, your grooming history or the raw Notion
-        records.</p>
+        records. A snapshot of a selection carries nothing about the rest of your collection: no
+        saved view, and no name or note of a topic that none of its bookmarks belongs to.</p>
       <div class="row">
         <div class="grow"><label for="snap-name">Name shown to the receiver</label><input type="text" id="snap-name" maxlength="120"></div>
         <div><label for="snap-scope">Contents</label>
@@ -2611,7 +2631,9 @@ function drawMap() {
       const text = label.text.length > limit ? label.text.slice(0, limit - 1) + "…" : label.text;
       const [x, y] = project(label.x, label.y, label.z, frame);
       const width = g.measureText(text).width;
-      const left = label.align === "left" ? x : x - width / 2;
+      let left = label.align === "left" ? x : x - width / 2;
+      // A name whose place is in view is kept whole: it slides in from the edge instead of being cut.
+      if (x >= 0 && x <= frame.w && width + 12 < frame.w) left = Math.max(6, Math.min(left, frame.w - width - 6));
       const box = { x: left - 4, y: y - 11, w: width + 8, h: 22, cluster: label.cluster || null };
       if (box.x + box.w < 0 || box.y + box.h < 0 || box.x > frame.w || box.y > frame.h) continue;
       if (!focused && map.labels.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue;
@@ -3894,7 +3916,7 @@ function drawBloom() {
   const surface = css("--viz-surface"), ink = css("--ink"), muted = css("--muted");
   g.fillStyle = surface; g.fillRect(0, 0, rect.width, rect.height);
   g.translate(bloomView.x, bloomView.y); g.scale(bloomView.k, bloomView.k);
-  const cx = rect.width / 2, cy = rect.height / 2, half = Math.min(rect.width, rect.height) / 2, R = Math.max(30, half - Math.min(150, half * 0.4));
+  const cx = rect.width / 2, cy = rect.height / 2, half = Math.min(rect.width, rect.height) / 2, R = Math.max(30, half - Math.min(235, half * 0.52));  // room for the strokes and for a name written outwards, whole
   const radius = [0, R * 0.2, R * 0.46, R * 0.7], rim = R * 0.74, reach = R * 0.3;
   bloom.geometry = { cx, cy, rim, R, reach, inner: radius[1] };
   const at = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];

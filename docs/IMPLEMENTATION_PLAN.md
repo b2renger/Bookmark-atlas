@@ -1,4 +1,12 @@
-# Implementation plan
+# Implementation plan (historical)
+
+> **Kept for the record.** This is the plan the project started from on
+> 2026-11-11. It covers the first seven phases and uses its own numbering;
+> what was actually built, phase by phase, is in [PHASES.md](PHASES.md).
+> Two things planned here were never built: writing back to Notion ("Notion
+> out", `atlas push`), and four of the grooming scripts first listed. Its
+> "not yet verified" notes were true on that day and have not been kept up
+> to date.
 
 First written 2026-11-11, revised the same day after reading a real export of
 the Notion table. Facts marked "checked" were read at the source on that date;

@@ -37,13 +37,20 @@ from pathlib import Path
 from . import settings
 
 VECTOR_CONTRACT = "embeddinggemma-2/768/v1"
+# Every file is pinned: the repository's commit in its address, its exact size
+# and its SHA-256 (the one Hugging Face itself publishes for the file, checked
+# against a download by .github/workflows/pins.yml on 2026-11-22). A pin proves
+# the file has not changed since that day; moving to a newer file means running
+# that workflow again and changing the three values together.
 CATALOGUE = {
     "light": {
         "label": "Light",
         "name": "Gemma 3 1B",
         "file": "gemma-3-1b-it-Q4_K_M.gguf",
-        "url": "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
-        "bytes": 806_000_000,
+        "url": "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/"
+        "f9c28bcd85737ffc5aef028638d3341d49869c27/gemma-3-1b-it-Q4_K_M.gguf",
+        "bytes": 806_058_240,
+        "sha256": "8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135",
         "memory": 4,
         "for": "Any computer. Quick, but often loses the thread of the sources: expect statements "
         "set aside and thin answers.",
@@ -52,8 +59,10 @@ CATALOGUE = {
         "label": "Medium",
         "name": "Gemma 4 E2B",
         "file": "gemma-4-E2B-it-Q4_K_M.gguf",
-        "url": "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
-        "bytes": 3_110_000_000,
+        "url": "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/"
+        "0314792d7f1f7e229411f620751375812bb9faf2/gemma-4-E2B-it-Q4_K_M.gguf",
+        "bytes": 3_106_738_272,
+        "sha256": "740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8",
         "memory": 8,
         "for": "Most computers with 8 GB of memory or more. The one to start with.",
     },
@@ -61,8 +70,10 @@ CATALOGUE = {
         "label": "Advanced",
         "name": "Gemma 4 E4B",
         "file": "gemma-4-E4B-it-Q4_K_M.gguf",
-        "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf",
-        "bytes": 4_980_000_000,
+        "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/"
+        "bfc15c382204943c3a8fff0c750b94ae2364d7a3/gemma-4-E4B-it-Q4_K_M.gguf",
+        "bytes": 4_977_171_584,
+        "sha256": "85a896a047553e842f25297ee5b031d64ff30147d9c4af17b1e4b394cd1fab87",
         "memory": 16,
         "for": "16 GB of memory or more. Better answers, slow without a graphics card.",
     },
@@ -169,7 +180,7 @@ def _fetch(key: str, opener=None) -> None:
         except urllib.error.HTTPError as error:
             if error.code != 416 or not have:
                 raise
-            response = None  # nothing left to send: the part is the whole file
+            response = None  # nothing left to send: the part is all there will be
         if response is not None:
             with response:
                 if have and response.status != 206:
@@ -191,6 +202,11 @@ def _fetch(key: str, opener=None) -> None:
             return
         size = part.stat().st_size
         expected = entry["bytes"] if entry.get("sha256") else announced
+        if expected and size < expected and response is None:
+            # The server has no more to give and this is not the whole file:
+            # continuing would go round in circles. Start again from nothing.
+            part.unlink(missing_ok=True)
+            raise EngineError("The file that arrived is not the expected one. Try again.")
         if expected and size < expected:
             raise EngineError(
                 f"The download stopped early ({size / 1e6:.0f} of {expected / 1e6:.0f} MB). "

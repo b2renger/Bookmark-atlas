@@ -22,7 +22,8 @@ async function hashOf(url) {
 const out = { made: new Date().toISOString(), llama: {}, python: {}, models: {} };
 
 // llama.cpp, the build named in prepare-engine.mjs.
-const BUILD = /const BUILD = '([^']+)'/.exec(fs.readFileSync(new URL('./prepare-engine.mjs', import.meta.url), 'utf8'))[1];
+// The build pinned now, or another one to move to: LLAMA_BUILD=b12345 node print-pins.mjs
+const BUILD = process.env.LLAMA_BUILD || JSON.parse(fs.readFileSync(new URL('../pins.json', import.meta.url), 'utf8')).llama.build;
 const LLAMA = { 'win32-x64': /-bin-win-cpu-x64\.zip$/, 'linux-x64': /-bin-ubuntu-x64\.tar\.gz$/, 'darwin-arm64': /-bin-macos-arm64\.tar\.gz$/ };
 let release = await (await fetch(`https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/${BUILD}`, { headers })).json();
 out.llama.build = BUILD;
@@ -43,7 +44,9 @@ for (const [platform, triple] of Object.entries(TRIPLES)) {
 
 // The three writing models: which commit "main" is today, and the file's hash.
 const engine = fs.readFileSync(new URL('../../src/atlas/engine.py', import.meta.url), 'utf8');
-for (const url of engine.match(/https:\/\/huggingface\.co\/[^"\s]+\/resolve\/main\/[^"\s]+\.gguf/g) || []) {
+// Addresses are written over two lines in engine.py (repository, then commit/file): "main" is asked for here.
+const repos = [...engine.matchAll(/"(https:\/\/huggingface\.co\/[^"]+\/resolve\/)"\s*\n\s*"[0-9a-f]{40}\/([^"]+\.gguf)"/g)].map((m) => `${m[1]}main/${m[2]}`);
+for (const url of repos) {
     try {
         const head = await fetch(url, { method: 'HEAD', redirect: 'manual', headers: { 'user-agent': headers['user-agent'] } });
         out.models[url] = {

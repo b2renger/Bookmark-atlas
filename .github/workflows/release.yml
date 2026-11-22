@@ -101,7 +101,7 @@ jobs:
 
       - name: Install shell dependencies
         working-directory: desktop
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       # Standalone Python + the atlas package into desktop/backend.
       - name: Prepare the backend
@@ -129,6 +129,14 @@ jobs:
         shell: bash
         timeout-minutes: 3
         run: backend/python/python.exe -I -u scripts/keychain-selfcheck.py backend/app
+
+      # The model server must end when the app is gone, even killed. Not a gate.
+      - name: Check the engine guard
+        continue-on-error: true
+        working-directory: desktop
+        shell: bash
+        timeout-minutes: 3
+        run: backend/python/python.exe -I -u scripts/guard-selfcheck.py backend/app
 
       # Build only. Publishing is done below with gh, onto a release made
       # first: electron-builder's own publisher races to create the release.
@@ -328,7 +336,7 @@ jobs:
 
       - name: Install shell dependencies
         working-directory: desktop
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Prepare the backend
         working-directory: desktop
@@ -347,6 +355,12 @@ jobs:
         working-directory: desktop
         timeout-minutes: 3
         run: backend/python/bin/python3 -I -u scripts/keychain-selfcheck.py backend/app
+
+      - name: Check the engine guard
+        continue-on-error: true
+        working-directory: desktop
+        timeout-minutes: 3
+        run: backend/python/bin/python3 -I -u scripts/guard-selfcheck.py backend/app
 
       - name: Prepare the built-in engine (llama.cpp)
         working-directory: desktop

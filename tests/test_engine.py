@@ -3,6 +3,7 @@
 
 import hashlib
 import os
+import re
 import stat
 import sys
 import time
@@ -91,12 +92,15 @@ def test_what_the_page_is_told(tmp_path):
     have("medium")
     state = engine.state()
     assert state["available"] and state["shipped"] and state["models"][1]["downloaded"]
-    # Every file comes from a named place over https; the vectors file is pinned by its hash.
+    # Every file comes from a named place over https, at one commit of its repository,
+    # with its exact size and its hash: what is installed is that file or nothing.
     for entry in engine.CATALOGUE.values():
         assert entry["url"].startswith("https://huggingface.co/") and entry["url"].endswith(
             entry["file"]
         )
-    assert len(engine.CATALOGUE["vectors"]["sha256"]) == 64
+        assert re.search(r"/resolve/[0-9a-f]{40}/", entry["url"]) and "/main/" not in entry["url"]
+        assert re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) and entry["bytes"] % 32 == 0
+    assert state["models"][2]["gigabytes"] == 5.0
 
 
 def test_a_download_is_checked_and_can_resume(monkeypatch):
@@ -136,7 +140,8 @@ def test_a_download_is_checked_and_can_resume(monkeypatch):
 
 
 def test_a_download_can_fail_or_be_cancelled_and_says_so(monkeypatch):
-    monkeypatch.setitem(engine.CATALOGUE, "light", {**engine.CATALOGUE["light"], "bytes": 4000})
+    unpinned = {**engine.CATALOGUE["light"], "bytes": 4000, "sha256": None}
+    monkeypatch.setitem(engine.CATALOGUE, "light", unpinned)
 
     def broken(request, timeout=0):
         raise OSError("network unreachable")
@@ -283,8 +288,13 @@ def test_through_the_api_download_use_ask_remove(tmp_path, path):  # noqa: F811
 def test_a_download_cut_short_is_not_installed(monkeypatch):
     """A connection that ends at 60% of what the server announced once passed
     for a finished download: the engine then failed to load the file."""
-    monkeypatch.setitem(engine.CATALOGUE, "light", {**engine.CATALOGUE["light"], "bytes": 1000})
     data = b"m" * 1000
+    pinned = {
+        **engine.CATALOGUE["light"],
+        "bytes": 1000,
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+    monkeypatch.setitem(engine.CATALOGUE, "light", pinned)
     part = engine.model_path("light").with_name(engine.CATALOGUE["light"]["file"] + ".part")
 
     class Cut(Reply):
@@ -313,8 +323,13 @@ def test_a_download_that_breaks_in_any_way_can_be_tried_again(monkeypatch):
     import http.client
     import urllib.error
 
-    monkeypatch.setitem(engine.CATALOGUE, "light", {**engine.CATALOGUE["light"], "bytes": 1000})
     data = b"m" * 1000
+    pinned = {
+        **engine.CATALOGUE["light"],
+        "bytes": 1000,
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+    monkeypatch.setitem(engine.CATALOGUE, "light", pinned)
 
     class Breaks(Reply):
         def read(self, size):
@@ -330,14 +345,14 @@ def test_a_download_that_breaks_in_any_way_can_be_tried_again(monkeypatch):
     def nothing_left(request, timeout=0):
         raise urllib.error.HTTPError(request.full_url, 416, "Range Not Satisfiable", {}, None)
 
-    monkeypatch.setitem(
-        engine.CATALOGUE,
-        "light",
-        {**engine.CATALOGUE["light"], "sha256": hashlib.sha256(data).hexdigest()},
-    )
     engine.download("light", nothing_left)
     assert wait_for("light", "done", "failed")["status"] == "done"
     assert engine.model_path("light").read_bytes() == data
+    # A short part and nothing left to send: not the file, and not a loop. Start over.
+    engine.remove("light")
+    part.write_bytes(data[:300])
+    engine.download("light", nothing_left)
+    assert "not the expected one" in wait_for("light", "failed")["error"] and not part.exists()
 
 
 def test_the_engine_ends_when_the_program_that_started_it_is_killed(tmp_path):

@@ -1,15 +1,17 @@
 # Bookmark Atlas
 
-A desktop app to explore and refine a bookmark collection: clustering, maps,
-nested collections and trends, built to encourage discovery.
+A desktop app to explore, clean and study a bookmark collection: topics, maps,
+a tree, links, trends, and notebooks where a language model answers from your
+sources and must quote them.
 
-Atlas is the final database. Bookmarks (with summaries and tags) arrive from a
-Notion table, which is only an inbox and an optional outbox. The local SQLite
-file is the reference, and it is cleaned with grooming scripts run from the
-interface.
+Your collection lives in one SQLite file on your computer. Bookmarks arrive
+from the browsers on the computer, from files, or from a Notion table; Atlas
+is where they are kept, cleaned and read. Nothing is sent anywhere unless you
+start it ([what goes online](#privacy-and-what-goes-online)).
 
 It is also a test bed for **e-means**, a clustering algorithm published in
-November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
+November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)); the
+result is in [docs/reports/e-means-test.md](docs/reports/e-means-test.md).
 
 ## What it looks like
 
@@ -23,27 +25,6 @@ These pictures were taken from an invented collection (`tools/demo_collection.py
 | ![The map lying flat with time rising from it](docs/screenshots/space-time.png) **Space and time.** The map lies flat, time is the height. | ![Bookmarks joined by lines in space](docs/screenshots/links-3d.png) **Links (3D).** Each bookmark tied to its three closest. |
 | ![Bookmarks on a line joined by arcs](docs/screenshots/threads.png) **Threads.** An arc between two bookmarks that resemble each other. | ![The topic tree drawn from its centre](docs/screenshots/tree.png) **Tree.** Families, topics, and one stroke per bookmark. |
 | ![The grid of cells](docs/screenshots/grid.png) **Grid.** Where the collection is dense. | ![Bars per month](docs/screenshots/trends.png) **Trends.** Saved and published per month. |
-
-## Status
-
-Everything planned is published. Import (Notion or CSV), browse, groom the
-collection with scripts, group it into topic clusters, explore it on a map, on
-a grid and as a tree of topics, follow the links between bookmarks, see what
-is rising, save views, and share or compare snapshots. The e-means test is
-done: see [docs/reports/e-means-test.md](docs/reports/e-means-test.md).
-
-What has been used for real, and what has not:
-
-- **Used for real:** the Windows app and its self-update, the Notion sync with
-  a real token, the CSV import (a 962-row export).
-- **Started by the build, not yet used by a person:** the Linux and macOS
-  builds.
-- **Tested with stand-in pages only:** the two features that read the web
-  (publication dates, link check).
-
-- Summary of each phase: [docs/PHASES.md](docs/PHASES.md)
-- Where development stands: [docs/DEVLOG.md](docs/DEVLOG.md)
-- Where it is going: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
 ## Install
 
@@ -98,226 +79,237 @@ macOS and Linux. Settings shows the current place, and
 - The folder is your whole collection. To share part of it, use Export
   selection.
 
-macOS and Linux builds are not produced yet.
-
-## Use it
+## First use
 
 The top of the window follows the path your bookmarks take, in five numbered
-stages. Each says where you stand, the next useful one is outlined, and the
-row under it holds that stage's screens:
+stages. Each says where you stand, the suggested next one is underlined, and
+the row under it holds that stage's screens and a one-line suggestion:
 
 1. **Collect** (Sources): bring bookmarks in.
 2. **Clean** (Grooming): duplicates, tags, dates, with preview and undo.
-3. **Explore**: Bookmarks, Clusters, Map, Grid, Tree, Links, Trends.
+3. **Explore**: Bookmarks, Map, Topics, Grid, Tree, Links, Trends.
 4. **Study** (Notebook): question a set of bookmarks with a language model.
 5. **Keep** (Views, Workspaces): save, share, work on a copy.
 
-Nothing forces the order. Settings (data folder, language models) and the
-Guide sit at the top right.
+Nothing forces the order. An empty collection opens on Collect, with five
+**getting-started steps** that tick themselves off. Settings (data folder,
+language models) and the **Guide** sit at the top right; the **?** opens the
+Guide's section for the screen you are on.
 
-In **Collect** you can load data three ways, and combine them:
+## The five stages
 
-- **A browser on this computer**: its bookmarks are read directly.
-- **A file**: a CSV exported from Notion, a bundle from another Atlas, or a
-  browser's bookmarks file. No token needed.
-- **Notion**: connect with a token, pick the table, import. Later imports only
-  fetch rows edited since.
+### 1. Collect
 
-In **Bookmarks**, tick rows (or "select all matching" a search) to add or
-remove a tag, delete, or **export the selection** as a file another Atlas user
-can import from Collect.
+Three ways in, which can be combined. A link already in the collection is
+never duplicated: links are compared after normalisation, so `twitter.com`
+and `x.com`, tracking parameters or a trailing slash do not make two.
 
-The **Map** draws every bookmark as a dot, similar ones close together, with
-topic names on top. Hover and click to read, click a topic to focus it, type
-to highlight matches, Shift+drag to select an area.
+- **A browser on this computer** (Chrome, Edge, Brave, Vivaldi, Opera,
+  Chromium, Arc, Firefox and its relatives, Safari): its bookmarks are read
+  where the browser keeps them. Folders become tags. Only bookmarks are read.
+- **A file**: a CSV exported from Notion, a browser's bookmarks file, a bundle
+  exported by another Atlas, or a MySQL/MariaDB dump (`.sql`) of a site that
+  kept links. A dump goes into a workspace of its own: links, titles,
+  descriptions, dates and tags only, never accounts.
+- **A Notion table**, in four steps on the same screen:
+  1. **Token.** Create one in Notion's Developer portal and paste it. A
+     *personal access token* sees what you can see; an *internal connection*
+     token sees only what is shared with the connection (share the database
+     with it). The token is checked with Notion before it is kept.
+  2. **Table.** List the tables the token can see and pick yours.
+  3. **Columns.** Check the guessed mapping. Only the link column is required.
+  4. **Import.** *Preview* shows what would happen and writes nothing.
+     *Import now* does it. Later imports only ask for rows edited since.
 
-In **Clusters**, group the collection by topic. Each cluster shows its telling
-tags and a few bookmarks; rename it, or "show bookmarks" to work on it in the
-list.
+What an import does: a link not seen before becomes a bookmark; a row edited
+in Notion later is kept for review and never overwrites what you have; a
+bookmark you deleted stays deleted; importing again changes nothing if the
+source has not changed.
 
-A **filter bar** sits above the list, the map, the grid, the tree, the links
-and the trends: tags, site, and a range of dates (saved, published, or saved
-with published as a fallback). What you set there applies everywhere.
+### 2. Clean
 
-**Threads** (in Links) puts every bookmark on one line and draws an arc between
-two that resemble each other: above the line when the link crosses topics,
-below when it stays inside one. "Surprise me" jumps to a link you would not
-have looked for. The **Tree** tab also draws the whole tree at once, with one
-stroke per bookmark on the rim.
+**Grooming** runs scripts on the collection: merge duplicates, merge tag
+spellings, set platforms, fix dates. Every script shows a preview first,
+makes a backup before writing, and can be undone from the history. You can
+add your own: see [docs/GROOMING.md](docs/GROOMING.md).
 
-On the **Map**, "Arrange by" moves the same dots between four layouts, with an
-animation: by similarity, along a timeline with one row per topic, on the
-grid, or in 3D with the map lying flat and time rising from it (drag to turn).
-**Play** replays the collection as it grew; the slider goes to any day.
+Two lookups go online, only when you press them: *Look up publication dates*
+reads the date each page declares, and *Check the links* asks whether each
+page still answers. Neither changes a bookmark: a script then proposes what
+they found, for review.
 
-The **Grid** is a self-organising map: every bookmark sits in one cell,
-neighbouring cells hold related bookmarks, and a larger disc means more
-bookmarks. It shows where the collection is dense. Click a cell to read it,
-select it or open it in the list.
+### 3. Explore
 
-The **Tree** gathers close topics into families and splits large topics into
-parts. Open a pearl to go inside; rename anything; move a topic to another
-family.
+A **filter bar** sits above every screen of this stage: tags, site, and a
+range of dates (saved, published, or saved with published as a fallback).
+What you set there applies everywhere.
 
-In **Grooming**, "Look up publication dates" opens the pages of bookmarks that
-have no publication date and reads the date each page declares. It changes
-nothing by itself: the script "Publication date read from the page" then
-proposes the dates for review. This is the only part of the app, with the
-Notion sync and the update check, that goes online.
+- **Bookmarks**: the list. Search, tick rows (or "select all" of what the
+  search and filters show) to add or remove a tag, delete, export the
+  selection as a file another Atlas can import, or start a notebook.
+- **Topics**: one press groups similar bookmarks and names each group after
+  its telling tags. Rename a topic, or open it in the list.
+- **Map**: every bookmark is a dot, similar ones close together, topic names
+  on top. Click a topic to focus it, type to highlight, Shift+drag to select
+  an area. "Arrange by" moves the same dots between five layouts: similarity,
+  a timeline with one row per topic, the grid, space and time in 3D (the map
+  lying flat, time rising from it), and links in 3D. **Play** replays the
+  collection as it grew.
+- **Grid**: a self-organising map. Neighbouring cells hold related bookmarks
+  and a larger disc means more of them: it shows where the collection is dense.
+- **Tree**: close topics gathered into families, large topics split into
+  parts. Open a pearl to go inside, rename anything, move a topic. The whole
+  tree can also be drawn at once, one stroke per bookmark.
+- **Links**: which topics share the most similar bookmarks, the bookmarks
+  between two topics, those that resemble nothing else, and old bookmarks
+  close to what you gathered lately. **Threads** puts every bookmark on one
+  line with an arc between two that resemble each other; "Surprise me" jumps
+  to a link you would not have looked for.
+- **Trends**: bookmarks saved and published per month, how long after
+  publication you save things, and which topics and tags take more or less
+  room in the last 90 days.
 
-**Links** shows which topics share the most similar bookmarks, the bookmarks
-that sit between two topics, those that resemble nothing else, and old
-bookmarks close to what you gathered lately. In the list, "similar bookmarks"
-under any bookmark shows its nearest neighbours.
+Every picture can be zoomed and moved (scroll, drag, double-click to go
+back). Every bookmark named anywhere opens a **side panel** with its summary,
+tags and the bookmarks most like it; Ctrl+click goes straight to the page.
 
-**Trends** shows bookmarks saved and published per month, how long after
-publication you save things, and which topics and tags take more or less room
-in the last 90 days.
+### 4. Study
 
-The app explains itself: a **Guide** tab with a section per tab (the **?** at
-the top right opens the section for where you are), five **getting-started
-steps** on the first screen that tick themselves off, and in Collect the
-steps to get a Notion token.
+A **notebook** is a set of bookmarks (a topic, a selection, what the filter
+shows), a conversation about them, and the notes you keep: sources on the
+left, the conversation in the middle, notes on the right.
 
-Every picture can be zoomed and moved: scroll to zoom, drag to move,
-double-click to go back. And every bookmark named anywhere (in a list, on the
-map, on a thread, on the tree) opens a **side panel** with its summary, tags
-and the bookmarks most like it, and a button to open the page in your browser.
-Ctrl+click goes straight to the page.
-
-**Workspaces** are copies of part of your collection that live apart: their
-own tags, topics, map, views, grooming history and Notion table. Start one
-from a filter, a selection, a topic, everything, or nothing; bring data in
-from a CSV, a bundle, a snapshot, another Notion table or a browser's
-bookmarks file; then merge it back (merging only adds) or delete it. They are
-kept in `Workspaces/` inside your data folder. **Browsers on this
-computer** (Chrome, Edge, Brave, Vivaldi, Opera, Chromium, Arc, Firefox and
-its relatives, Safari) are read directly from Collect: folders become tags,
-and only bookmarks are read. A database dump (an `.sql`
-export of a site that kept links) is read into a workspace of its own: links,
-titles, descriptions, dates and tags only, never accounts.
-
-In **Views**, save where you are under a name and come back to it later, or
-export a **snapshot**: one file with bookmarks, clusters, map and views that
-someone else opens with **Atlas > Open snapshot…**, without touching their own
-collection.
-
-Then clean it in **Grooming**: merge duplicates, merge tag spellings, set
-platforms and fix dates. Every script shows a preview first, makes a backup
-before writing, and can be undone. You can add your own scripts: see
-[docs/GROOMING.md](docs/GROOMING.md).
-
-### Notebooks
-
-Choose a set of bookmarks (a topic, a selection, the filter) and study it
-with a language model: sources on the left, the conversation in the middle,
-your notes on the right. Atlas finds the passages closest to each question on
-your own computer; the model answers from those only and must quote the words
-each statement rests on; Atlas checks the quote is really in the source and
-sets aside what fails. What the sources do not say is said, not guessed.
-Notes export as a Markdown document with quotes and sources.
+- Atlas finds the passages closest to each question on your own computer.
+- The model answers from those only, and must quote the words each statement
+  rests on.
+- Atlas checks the quote is in the source, word for word and within one
+  sentence, and sets aside what fails. The check proves the words are there,
+  not that they are the right proof: read the quote.
+- When the sources do not answer, the answer says so instead of guessing.
+- Notes export as a Markdown document with quotes and sources.
 
 The notebook is tied to the pictures. Above the conversation it shows the
-set's figures, counted by Atlas: how many sources, over which months, a bar
-per year, their topics and tags, with **see them on the map / over time / in
-the list**. A question about the set itself ("how many per year?") is answered
-from those figures and says so. Under an answer, **see its sources on the
-map** selects the bookmarks it rests on; and any selection made on a picture
-can become a notebook.
-
-Every connection you set up is kept (this computer, your network, each
-provider). With two or more, **Answered by** next to Ask sends one question to
-the model you choose, and each answer names the model that wrote it.
+set's figures, counted by Atlas and not by the model: how many sources, over
+which months, a bar per year, their topics and tags, with **see them on the
+map / over time / in the list** and a way back. A question about the set
+itself ("how many per year?") is answered from those figures and says so.
+Under an answer, **see its sources on the map** selects the bookmarks it
+rests on.
 
 ![A notebook: sources, the set's figures, a conversation with quoted statements, notes](docs/screenshots/notebook.png)
 
 (The answers in this picture come from a stand-in model that only lifts sentences from the passages.)
 
-### A language model inside the app
+A notebook needs a language model: see [Language models](#language-models).
 
-The desktop app ships llama.cpp. In **Settings ▸ Language models ▸ On this
-computer**, download one of three sizes (0.8, 3.1 or 5.3 GB; the page suggests
-one for your memory) and press **Use**: notebooks then work with nothing
-leaving the computer. A fourth small model gives vectors (finding by meaning);
-it is the one a LlmOnLan farm serves, so vectors carry over to a farm.
-Without a graphics card answers take from half a minute to a few minutes.
+### 5. Keep
 
-### A language model on your network (optional)
+- **Views**: save where you are under a name and come back to it.
+- **Snapshots**: one file with bookmarks, topics, map and views that someone
+  else opens with **Atlas > Open snapshot…**, without touching their own
+  collection. A snapshot of *part* of the collection carries nothing about
+  the rest: no saved view, no name or note of a topic none of its bookmarks
+  belongs to.
+- **Workspaces**: copies of part of your collection that live apart, with
+  their own tags, topics, map, views, grooming history and Notion table.
+  Start one from a filter, a selection, a topic, everything or nothing; then
+  merge it back (merging only adds) or delete it.
 
-Atlas can use a model that runs on a machine of yours: a
-[LlmOnLan](https://github.com/b2renger/LlmOnLan) farm, found by itself on the
-local network, or any server that speaks the OpenAI API (Ollama, llama.cpp,
-vLLM, LM Studio). Connect it in **Settings ▸ Language models**. Then:
+## Language models
 
-- **Place bookmarks by meaning**: vectors from the model replace word counts
-  for the map, topics, links and "similar bookmarks" (French and English
-  bookmarks on one subject meet).
+Optional, and needed only for notebooks and the jobs listed below. Set one up
+in **Settings ▸ Language models**. Every connection you set up is kept; with
+two or more, **Answered by** in a notebook sends one question to the model
+you choose, and each answer names the model that wrote it.
+
+- **On this computer.** The app ships llama.cpp. Download one of three sizes
+  (0.8, 3.1 or 5.0 GB; the page suggests one for your memory) and press
+  **Use**: nothing leaves the computer. A fourth small model gives vectors
+  (finding by meaning); it is the one a LlmOnLan farm serves, so vectors carry
+  over to a farm. Without a graphics card an answer takes from half a minute
+  to a few minutes. Each file is pinned by size and SHA-256 and installed
+  only when whole.
+- **On your network.** A [LlmOnLan](https://github.com/b2renger/LlmOnLan)
+  farm, found by itself, or any server that speaks the OpenAI API (Ollama,
+  llama.cpp, vLLM, LM Studio).
+- **A provider with an API key**: Claude, OpenAI, Gemini or Mistral. What is
+  sent then leaves your computer and each request is billed to your key.
+  Claude offers no vectors; the other three do.
+
+What a model does besides notebooks:
+
+- **Place bookmarks by meaning**: its vectors replace word counts for the
+  map, topics, links and "similar bookmarks", so French and English bookmarks
+  on one subject meet.
 - **Rewrite summaries and tags** (Grooming): pages are read again, the model
-  writes a summary and picks tags, and two scripts propose the changes to
-  preview, apply and undo.
-- **Ask**: what a selection, the filter or a topic shares; a briefing; what is
-  missing; a reading order; or your own question, with numbered sources that
-  open the bookmarks.
+  writes, and two scripts propose the changes to preview, apply and undo.
 - **Compare then and now** (Grooming): is each page still what its summary
-  says, has it moved on, or is it now something else? A script tags the ones
-  that changed.
-- **Find tags that mean the same** (Grooming): synonyms, translations and
-  abbreviations, proposed as merges.
-- **Suggest names** for topics, and **why?** two bookmarks are alike.
+  says? A script tags the ones that changed.
+- **Find tags that mean the same** (Grooming), proposed as merges.
+- **Suggest names** for topics, and say **why** two bookmarks are alike.
 
-The app teaches this itself: a four-step tour on the Bookmarks tab, and the
-Guide section "A language model on your network" (first-time steps, what each
-thing does, what is sent, what to do when something fails).
+Nothing a model writes changes a bookmark without a preview. A request that
+fails records nothing and is tried again by the next run.
 
-No machine of your own? Choose **Claude, OpenAI, Gemini or Mistral** in the
-same place and paste an API key. Then what is sent leaves your computer and
-each request is billed to your key; Claude offers no vectors, the other three
-do.
+## Privacy and what goes online
 
-Only titles, summaries, tags and (for summaries) page text are sent, and only
-to the server you connected. Passwords, API keys and the Notion token stay on
-this computer: in the system keychain when there is one (Windows Credential
-Manager, macOS Keychain, a Linux secret service), else in a private file of
-your user account. Never in the database, the data folder, a snapshot or an
-export. Settings says which of the two is used.
-Nothing a model writes changes a bookmark without a preview.
+- **Your collection** is one folder on your computer. The app's page is
+  served to this computer only, and only to the app's own window.
+- **Secrets** (the Notion token, model passwords and API keys) are not in
+  that folder, the database, a snapshot or an export. They are kept in the
+  system keychain (Windows Credential Manager, macOS Keychain, a Linux secret
+  service), or, where none answers, in a private file of the app. Settings
+  says which. A key is only sent to the address it was typed for, and never
+  follows a redirect.
+- **What goes online, and only when you start it:** the Notion import; the
+  two lookups in Grooming; reading pages for a model or a notebook; the
+  download of a model; requests to the model you connected; and, at start,
+  the check for a new version on GitHub.
+- **Pages are fetched from the public web only.** A link to an address inside
+  your own network (a router, an intranet) is left alone, however it is
+  written and wherever a redirect leads.
+- **What a model receives:** titles, summaries and tags; page text for
+  summaries; for a notebook, the passages found for the question and the
+  conversation. With a model on this computer or your network, that stays
+  there; with a provider, it goes to the provider.
+- **Builds:** the Python, the llama.cpp program and the models the app
+  downloads are pinned by SHA-256, and the npm packages by a lockfile. The
+  installers are not signed (see Install).
 
-### Connect Notion
+## Status
 
-In **Settings**:
+Version 0.27.0. Summary of each phase: [docs/PHASES.md](docs/PHASES.md).
+Where development stands: [docs/DEVLOG.md](docs/DEVLOG.md). The plan the
+project started from, kept for the record:
+[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
-1. **Token.** Create one in Notion's Developer portal and paste it. Either kind
-   works:
-   - a *personal access token* sees what you can see, with nothing to share;
-   - an *internal connection* token sees only what is shared with the
-     connection. Share the bookmarks database with it, from the connection's
-     Content access tab or from the database's ••• menu under Connections.
+What has been run for real, and what has not:
 
-   The token is checked with Notion before it is stored, and it is stored on
-   your computer outside the database file.
-2. **Table.** List the tables the token can see and pick yours.
-3. **Columns.** Check the guessed mapping. Only the link column is required.
-4. **Import.** *Preview* shows what would happen without writing anything.
-   *Import now* does it. Later imports only ask Notion for rows edited since.
+- **Used by a person:** the Windows app and its self-update, the Notion
+  import with a real token, the CSV import (a 962-row export).
+- **Run on the build machines, not yet by a person:** the Linux and macOS
+  apps (started and their page loaded); the keychain on Windows and macOS
+  (a value stored, read back and deleted); the built-in engine with the
+  Light and Vectors models on Linux (one notebook question answered).
+- **Tested with stand-ins only:** a LlmOnLan farm, the four providers, the
+  browsers' own files, and the two features that read the web.
+- **Never run:** the Medium and Advanced models; any model on Windows or
+  macOS; a Linux desktop keychain.
 
-### What an import does
-
-- A link not seen before becomes a bookmark.
-- A row edited in Notion later is kept for review. It never overwrites what is
-  in the database.
-- A bookmark you deleted stays deleted.
-- Importing again changes nothing if Notion has not changed.
-
-Links are compared after normalisation, so `twitter.com` and `x.com`, tracking
-parameters, or a trailing slash do not create duplicates.
+In November 2026 three reviewers that had not seen the code being written
+went through the repository. What they found, and what was done about it, is
+in phases 29 and 30 of [docs/PHASES.md](docs/PHASES.md), with the limits that
+remain.
 
 ## For developers
 
-Needs Python 3.11 or later; the backend uses the standard library only.
+Needs Python 3.11 or later. The backend uses the standard library; NumPy is
+needed for topics and maps, and `keyring` (optional) puts secrets in the
+system keychain.
 
 ```sh
-python3 -m pip install -e ".[analysis]"
-atlas ui                                # the interface, in your browser
+python3 -m pip install -e ".[analysis,keychain]"
+atlas ui                                # the interface, in your browser (the address it prints carries a key)
 python -m pytest
 ruff check . && ruff format --check .
 ```
@@ -343,7 +335,7 @@ atlas groom list                        # grooming scripts
 atlas groom preview normalize-tags      # what it would change
 atlas groom apply normalize-tags
 atlas groom undo last
-atlas cluster                           # group by topic (needs numpy)
+atlas cluster                           # find the topics (needs numpy)
 atlas compare                           # e-means against k-means on your data
 atlas doctor                            # check the installation and Notion access
 ```
@@ -367,15 +359,7 @@ nothing else.
   is attached to the run and nothing is published.
 - Self-update reads public GitHub Releases, so it needs the repository to stay
   public.
-
-## Planned shape
-
-- **Import**: incremental import from Notion through its API, or from a CSV
-  export. Imports never overwrite local curation.
-- **Local store**: one SQLite file, exportable to CSV and JSON.
-- **Grooming**: scripts for duplicates, tags and dates, each with preview,
-  journal and undo.
-- **Analysis**: embeddings, e-means (with k-means as a baseline), 2D projection,
-  self-organising map.
-- **Views**: map, SOM grid, pearl tree, link graph, tendencies over time.
-- **Snapshots**: saved runs and views, exportable as a single shareable file.
+- **Pins:** `desktop/pins.json` (llama.cpp, Python), `desktop/package-lock.json`,
+  `desktop/constraints.txt` and the model catalogue in `src/atlas/engine.py`
+  hold what the build and the app may download. To move one, run the `pins`
+  workflow: it prints the new hashes and changes nothing.

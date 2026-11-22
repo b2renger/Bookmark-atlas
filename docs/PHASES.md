@@ -24,6 +24,19 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 | 15 | Pan and zoom everywhere; the bookmark side panel | v0.15.0 | done |
 | 16 | In-app guide, getting-started steps, Notion token help | v0.16.0 | done |
 | 17 | Grid cells named apart; 3D arrangements in plain sight | v0.17.0 | done |
+| 18 | The 3D link graph organises itself by topic | v0.18.0 | done |
+| 19 | The page fills the window and makes room for the side panel | v0.18.0 | done |
+| 20 | Database dump import; fifteen thousand bookmarks | v0.19.0 | done |
+| 21 | A language model on the local network | v0.20.0 | done; tested with a stand-in farm only |
+| 22 | Then and now, tags that mean the same, the model tutorial | v0.21.0 | done; stand-in only |
+| 23 | Import straight from the browsers on this computer | v0.22.0 | done; on files built for the tests |
+| 24 | Providers reached with an API key | v0.23.0 | done; stand-in only |
+| 25 | Notebooks | v0.24.0 | done |
+| 26 | A language model inside the app | v0.25.0 | done; Light and Vectors run on the Linux build machine |
+| 27 | The interface follows the data: five stages | v0.26.0 | done |
+| 28 | The notebook and the pictures; who answers | v0.26.0 | done; stand-ins only |
+| 29 | An independent review: four urgent findings | v0.26.1 | done; keychain run on the Windows and macOS build machines |
+| 30 | The rest of the review | v0.27.0 | done, with the limits listed in the phase |
 
 ## Phase 0: scaffolding
 
@@ -676,4 +689,59 @@ documentation. Their findings were confirmed by experiment where marked.
 - **Known limits:** secrets are per computer user, no longer per data
   folder: two collections tied to two Notion workspaces share one token
   slot. `keyring` and its dependencies are not pinned by hash.
+
+## Phase 30: the rest of the review (v0.27.0)
+
+What the three reviewers found beyond the four urgent items, and what the
+fixes themselves turned up.
+
+- **Quote check** (`notebook.supported`): whole words (`non-toxic`, `1.5`
+  are one word each), in order, sentence ends respected, at most twelve
+  words skipped inside one sentence, at least four words of which two carry
+  meaning. Eleven counter-examples from the review are tests.
+- **Model jobs** (`assist.write_notes`, `compare_pages`, `find_tag_groups`):
+  a request that fails records nothing; the page leaves it out for the rest
+  of the job (`skip`) and stops when a whole batch is refused (`stuck`).
+- **Engine**: every model pinned by commit, size and SHA-256; a file is
+  installed only when whole; any failure of a download can be retried; a
+  guard process ends the server when the app is gone; every caller waits
+  until the server answers; a wait that gives up never removes a newer
+  server. **The Advanced model's address was wrong since 0.25.0** (404): found
+  by `pins.yml`, corrected after reading the repository's file list.
+- **Fetching pages** (`pagedates`): addresses in any spelling a system
+  accepts, every redirect, and the machine actually reached (when no proxy
+  stands in between) are held to "public web only".
+- **The page**: served only to an address carrying a per-run key
+  (`App.door`); a negative length is refused.
+- **Snapshots**: a partial one carries no view, no edit of a topic it has no
+  bookmark of, and a tree cut down to its own branches. A workspace
+  (`own=True`) keeps everything.
+- **Robustness**: map of vectors with one dimension; fewer than four
+  bookmarks; default `mysqldump` output; a cut dump; CSV mentioning SQL; huge
+  cells; dates at the edge of the calendar; an absurd passage number; a
+  figures question recognised by phrases, not single words; the notebook's
+  figures use the app's usual date and survive anything in a date column.
+- **Page reader** (`assist._Reader`): a list of open elements instead of a
+  count, so an unclosed tag closes with its parent.
+- **Builds**: `desktop/pins.json` (llama.cpp, Python) checked by the
+  prepare scripts; `package-lock.json` and `npm ci`; `constraints.txt` for
+  pip; the release workflow is read-only except in the two jobs that
+  publish, and the typed version reaches the script through the environment.
+- **Interface**: see the release note. One function (`stagesSoon`) reads the
+  stages again after any change. The page still has no test runner: three
+  contracts are pinned by tests that read the page's source.
+- **Documentation**: README rewritten; Guide corrected; DEVLOG headings name
+  the release of each phase; the phase table is complete; the first plan is
+  marked historical.
+- **Checked:** 434 tests (93 more than at the review), browser runs at 760,
+  1000, 1280 and 1700 px, and REPLACE-CI-EVIDENCE
+- **Not checked:** a real farm or provider; the Medium and Advanced models
+  answering; any model on Windows or macOS; a Linux desktop keychain.
+- **Left as known limits, on purpose:** links that differ only by port or
+  fragment are one link (changing it means renormalising every stored
+  link); a Notion import holds the database while it pages; undo leaves the
+  row of a tag it created; the map, threads and whole-tree pictures are
+  pointer-only; pip packages are pinned by version, not by hash; installers
+  are unsigned; anyone who can start a process as you can still read the
+  app's memory or files, as for any desktop program.
 

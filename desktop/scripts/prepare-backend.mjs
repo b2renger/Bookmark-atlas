@@ -9,6 +9,7 @@
 // sidecar/build-sidecar.mjs.
 
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,23 +31,29 @@ const source = path.resolve(desktop, '..', 'src', 'atlas');
 const log = (m) => console.log(`[prepare-backend] ${m}`);
 const die = (m) => { console.error(`[prepare-backend] ERROR: ${m}`); process.exit(1); };
 
-async function findPythonAsset(triple) {
-    // The latest release, not a fixed tag: tags rotate often.
+// The release, the file and its SHA-256 are pinned in ../pins.json: every build
+// of the app carries the same Python, and a file that changed is refused.
+const PINS = JSON.parse(fs.readFileSync(path.join(desktop, 'pins.json'), 'utf8')).python;
+
+async function findPythonAsset(key) {
+    const pin = PINS[key];
+    if (!pin) die(`no pinned Python for ${key} in pins.json`);
     const headers = { 'user-agent': 'bookmark-atlas-prepare-backend', accept: 'application/vnd.github+json' };
     if (process.env.GH_TOKEN) headers.authorization = `Bearer ${process.env.GH_TOKEN}`;
-    const res = await fetch('https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest', { headers });
+    const res = await fetch(`https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/${PINS.tag}`, { headers });
     if (!res.ok) die(`GitHub API answered ${res.status}. Set GH_TOKEN if rate-limited.`);
     const release = await res.json();
-    const pattern = new RegExp(`^cpython-${PY_PREFIX.replace('.', '\\.')}\\.\\d+\\+.*-${triple}\\.tar\\.gz$`);
-    const asset = (release.assets || []).find((a) => pattern.test(a.name));
-    if (!asset) die(`no Python ${PY_PREFIX} build for ${triple} in release ${release.tag_name}`);
-    return asset;
+    const asset = (release.assets || []).find((a) => a.name === pin.name);
+    if (!asset) die(`release ${PINS.tag} has no file named ${pin.name}`);
+    return { ...asset, sha256: pin.sha256 };
 }
 
-async function download(url, dest) {
+async function download(url, dest, sha256) {
     const res = await fetch(url, { headers: { 'user-agent': 'bookmark-atlas-prepare-backend' } });
     if (!res.ok) die(`download answered ${res.status} for ${url}`);
     const buffer = Buffer.from(await res.arrayBuffer());
+    const digest = crypto.createHash('sha256').update(buffer).digest('hex');
+    if (digest !== sha256) die(`${path.basename(url)} is not the pinned file: sha256 ${digest}, expected ${sha256}`);
     fs.writeFileSync(dest, buffer);
     log(`downloaded ${path.basename(url)} (${(buffer.length / 1e6).toFixed(0)} MB)`);
 }
@@ -72,9 +79,9 @@ async function main() {
     // 1. Standalone Python.
     const pythonDir = path.join(backend, 'python');
     removeIfPresent(pythonDir);
-    const asset = await findPythonAsset(triple);
+    const asset = await findPythonAsset(key);
     const tarball = path.join(backend, 'python.tar.gz');
-    await download(asset.browser_download_url, tarball);
+    await download(asset.browser_download_url, tarball, asset.sha256);
     // Relative paths and cwd, so tar never sees a Windows drive colon (which
     // GNU tar would read as a remote host).
     execFileSync('tar', ['-xzf', 'python.tar.gz'], { cwd: backend, stdio: 'inherit' });
@@ -94,7 +101,7 @@ async function main() {
     const pythonExe = process.platform === 'win32'
         ? path.join(pythonDir, 'python.exe')
         : path.join(pythonDir, 'bin', 'python3');
-    execFileSync(pythonExe, ['-I', '-m', 'pip', 'install', '--no-warn-script-location', '--disable-pip-version-check', 'tzdata', 'numpy', 'keyring'], { stdio: 'inherit' });
+    execFileSync(pythonExe, ['-I', '-m', 'pip', 'install', '--no-warn-script-location', '--disable-pip-version-check', '-c', path.join(desktop, 'constraints.txt'), 'tzdata', 'numpy', 'keyring'], { stdio: 'inherit' });
     execFileSync(pythonExe, ['-I', '-c', 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Paris"); import numpy; print("numpy", numpy.__version__); import keyring; print("keyring", type(keyring.get_keyring()).__module__)'], { stdio: 'inherit' });
 
     // 4. The atlas package.

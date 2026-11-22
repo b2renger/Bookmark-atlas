@@ -9,11 +9,14 @@
 // for Gemma 4 and EmbeddingGemma 2 (which need b11454 or later).
 
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const BUILD = 'b11836';
+// Which build, which file and its SHA-256 are pinned in ../pins.json.
+const PINS = JSON.parse(fs.readFileSync(new URL('../pins.json', import.meta.url), 'utf8')).llama;
+const BUILD = PINS.build;
 // The CPU builds: they run on every machine. (Apple's includes Metal.)
 const ASSETS = {
     'win32-x64': /-bin-win-cpu-x64\.zip$/,
@@ -45,7 +48,9 @@ if (process.env.GH_TOKEN) headers.authorization = `Bearer ${process.env.GH_TOKEN
 const res = await fetch(`https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/${BUILD}`, { headers });
 if (!res.ok) die(`GitHub API answered ${res.status} for llama.cpp ${BUILD}. Set GH_TOKEN if rate-limited.`);
 const release = await res.json();
-const asset = release.assets.find((a) => wanted.test(a.name));
+const pin = PINS[key];
+if (!pin) die(`no pinned llama.cpp file for ${key} in pins.json`);
+const asset = release.assets.find((a) => a.name === pin.name && wanted.test(a.name));
 if (!asset) die(`llama.cpp ${BUILD} has no file matching ${wanted}. It has:\n  ${release.assets.map((a) => a.name).join('\n  ')}`);
 
 fs.rmSync(engine, { recursive: true, force: true });
@@ -56,7 +61,11 @@ const archive = path.join(scratch, asset.name);
 log(`downloading ${asset.name} (${(asset.size / 1e6).toFixed(0)} MB)`);
 const download = await fetch(asset.browser_download_url, { headers: { 'user-agent': headers['user-agent'] } });
 if (!download.ok) die(`download answered ${download.status}`);
-fs.writeFileSync(archive, Buffer.from(await download.arrayBuffer()));
+const bytes = Buffer.from(await download.arrayBuffer());
+const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+if (digest !== pin.sha256) die(`${asset.name} is not the pinned file: sha256 ${digest}, expected ${pin.sha256}`);
+log(`sha256 matches the pin (${digest.slice(0, 16)}…)`);
+fs.writeFileSync(archive, bytes);
 // bsdtar (Windows, macOS) and GNU tar read .tar.gz; bsdtar also reads .zip.
 if (asset.name.endsWith('.zip') && process.platform !== 'win32') execFileSync('unzip', ['-q', archive, '-d', scratch], { stdio: 'inherit' });
 else execFileSync('tar', ['-xf', archive, '-C', scratch], { stdio: 'inherit' });

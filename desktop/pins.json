@@ -1,0 +1,40 @@
+{
+  "note": "Set by .github/workflows/pins.yml (desktop/scripts/print-pins.mjs). Each hash was computed on a download and equals the digest GitHub publishes for the asset.",
+  "made": "2026-11-22T18:28:24.789Z",
+  "llama": {
+    "build": "b11836",
+    "win32-x64": {
+      "name": "llama-b11836-bin-win-cpu-x64.zip",
+      "bytes": 24081237,
+      "sha256": "4da5a55754e47bb062fd4bb31ce654776f1e25901ff77bad6485a0df5e6be2cc"
+    },
+    "linux-x64": {
+      "name": "llama-b11836-bin-ubuntu-x64.tar.gz",
+      "bytes": 22350511,
+      "sha256": "42bd9edc1845ade56750ba838dce13a245543cbbbf454e8a0b9de98545f9cf31"
+    },
+    "darwin-arm64": {
+      "name": "llama-b11836-bin-macos-arm64.tar.gz",
+      "bytes": 16161898,
+      "sha256": "58d8af16987720af9e0a9a0a3b6edda36045b01219651c731e6013eacaef4e1f"
+    }
+  },
+  "python": {
+    "tag": "20261110",
+    "win32-x64": {
+      "name": "cpython-3.12.16+20261110-x86_64-pc-windows-msvc-install_only.tar.gz",
+      "bytes": 47438699,
+      "sha256": "e23fe5b16926de1d81661b1a97352e89fb167549c55a6825796ccd0f32ec7f1b"
+    },
+    "linux-x64": {
+      "name": "cpython-3.12.16+20261110-x86_64-unknown-linux-gnu-install_only.tar.gz",
+      "bytes": 68163679,
+      "sha256": "c2f87d4b4e8db3abddb0f116c6ccfc503d0cbdbb9ee8faacddad1b679ec12e99"
+    },
+    "darwin-arm64": {
+      "name": "cpython-3.12.16+20261110-aarch64-apple-darwin-install_only.tar.gz",
+      "bytes": 25371130,
+      "sha256": "e956e60bc9465d577ef8062059aa05cd3a2665b4b8678a2ed24e432368330b8f"
+    }
+  }
+}

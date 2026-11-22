@@ -4,7 +4,39 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
-## 2026-11-22: v0.26.1; phase 29, the review's four urgent findings
+Each heading names the phase and the version it was released as. (Until
+November 2026 the headings named the version published *before* the phase,
+which read as if each phase were one release behind; they were corrected.)
+
+## 2026-11-22: phase 30 (released as v0.27.0): the rest of the review
+
+**Works:** see PHASES 30. New in the code: `notebook._words`/`_at`/
+`_with_gap`; `assist` jobs with `skip`, `failed_ids`, `stuck`;
+`engine._guard`, `_begin`, `_until_ready`, pinned `CATALOGUE`;
+`pagedates._opener` with checked connections and redirects; `App.door`;
+`snapshot._cut_tree`; `db.upgrade`; `desktop/pins.json` and `pins.yml`.
+
+**Decisions:** a quote must match word for word rather than "nearly": a
+statement lost to a hyphen is cheaper than one kept on half a word.
+Requests that fail are retried by the next job, not stored as done. The
+engine is guarded from outside (a process waiting on a pipe) because the
+shell ends the backend without warning and nothing inside it can count on
+running last. Pins are set by a workflow that prints and changes nothing:
+a person moves a pin, never a build.
+
+**What went wrong on the way:** the Advanced model had never been
+downloadable; its address had been "checked" from search extracts. The
+first run of `pins.yml` reported success with that 404 inside (a pipe hid
+the failure); both are fixed. Lesson kept: an address is verified by
+fetching it, and a check that cannot fail is not a check.
+
+**Not built:** keyboard use of the pictures; tests that run the page's
+JavaScript; hashes for pip; normalising ports and fragments in links.
+
+**Next:** run the Medium and Advanced models for real; a first test runner
+for the page; keyboard access to the map.
+
+## 2026-11-22: phase 29 (released as v0.26.1): the review's four urgent findings
 
 **Works:** `settings.private_dir`, `settle`, guarded keychain calls,
 `open_direct`; `llm._own_key`, `kept_key_for`, connections file beside the
@@ -27,7 +59,7 @@ length and hash, engine processes that end with the app, failed model
 requests not stored as done, the page reader on unclosed tags, private
 addresses, stale stage status; then the interface and documentation list.
 
-## 2026-11-22: v0.26.0; phases 27 and 28, stages, and the notebook tied to the pictures
+## 2026-11-22: phases 27 and 28 (released as v0.26.0): stages, and the notebook tied to the pictures
 
 **Works:** `#stages` and `#subnav` with `STAGE_OF`, `renderStages`,
 `measureBars`; `#view-collect`; `notebook.glance`/`figures` and the figures
@@ -48,7 +80,7 @@ what people have.
 model jobs (notes, tag groups) choose their connection; "ask about this
 topic" directly from Clusters and the Tree.
 
-## 2026-11-22: v0.24.0 published; phase 26, the built-in engine
+## 2026-11-22: phase 26 (released as v0.25.0): the built-in engine
 
 **Works:** `engine.CATALOGUE`, `download` (resume, hash, cancel),
 `ensure`/`stop` (two servers, LLAMA_* variables dropped, key in the
@@ -73,7 +105,7 @@ vectors carry over between this computer and a farm.
 **Next:** the interface rebuilt around the flow of the data, with the
 conversation tied to the visualisations; routing per question belongs there.
 
-## 2026-11-22: v0.23.0 published; phase 25, notebooks
+## 2026-11-22: phase 25 (released as v0.24.0): notebooks
 
 **Direction:** research notebook (see PHASES 25). After the local engine,
 the user wants the whole interface rebuilt around the flow of the data, and
@@ -100,7 +132,7 @@ format, above all a small one. That is the point of the next phase.
 **Next:** phase 26, the local engine (llama.cpp in the app, three model
 sizes, routing). Then the interface rebuild and chat-to-visualisation links.
 
-## 2026-11-18: v0.22.0 published; phase 24, providers with an API key
+## 2026-11-18: phase 24 (released as v0.23.0): providers with an API key
 
 **Works:** `llm.PROVIDERS`, `Connection.api` ("local", "openai",
 "anthropic"), `_auth`, `all_models` / `models` / `vector_models`, the
@@ -120,7 +152,7 @@ OpenAI-style provider with vectors.
 **Not verified:** the real providers (no key here), Mistral's address, the
 Gemini endpoint's handling of batches of texts for vectors.
 
-## 2026-11-16: v0.21.0 published; phase 23, browsers on this computer
+## 2026-11-16: phase 23 (released as v0.22.0): browsers on this computer
 
 **Works:** `browsers.found(home, env, platform)`, `read`, `summary`,
 `read_chromium` / `read_firefox` / `read_safari`; `importer.import_browser_items`
@@ -143,7 +175,7 @@ installed browsers: none here.
 **Verified:** 315 Python tests (7 new) on made-up profiles; the Settings card
 in a browser, including a profile that cannot be read.
 
-## 2026-11-14: v0.20.0 published; phase 22, the rest and the tutorial
+## 2026-11-14: phase 22 (released as v0.21.0): the rest and the tutorial
 
 **Asked for:** build what was left, document, make the in-app tutorials,
 release.
@@ -168,7 +200,7 @@ and dark, no page error.
 
 **Next:** feedback from the rig; prompts will need tuning on real answers.
 
-## 2026-11-14: v0.19.0 published; phase 21, language models
+## 2026-11-14: phase 21 (released as v0.20.0): language models
 
 **Asked for:** LLMs reasoning over selections, refetching links, rewriting
 summaries and tags, through the user's LlmOnLan farm. Read first: LlmOnLan's
@@ -203,7 +235,7 @@ gemma4:12b honours the JSON instruction every time.
 
 **Next:** try it on the rig; then tag merges by the model and then-and-now.
 
-## 2026-11-13: v0.18.0 published; phase 20, SQL dump import and scale
+## 2026-11-13: phase 20 (released as v0.19.0): SQL dump import and scale
 
 **Asked for:** import an old database export. The file given was a phpMyAdmin
 dump of a MariaDB database (not SQLite): 15,252 links, 8,621 tags, 471
@@ -238,7 +270,7 @@ read the same; PostgreSQL's `COPY` blocks will not).
 **Next:** the grooming scripts on this workspace (dead links are likely many
 for 2007-2012); a name for the workspace chosen at import.
 
-## 2026-11-13: v0.17.0 published; phase 18, 3D link layout by topic
+## 2026-11-13: phase 18 (released as v0.18.0): 3D link layout by topic
 
 **Reported by the user, with a screenshot:** Links · 3D on 3,396 bookmarks was
 a flat uniform mesh.
@@ -275,7 +307,7 @@ frame rate on their machine.
 **Next:** open ideas only: live page in the side panel, neural text vectors,
 density contours, Intel Mac build, smaller installer, renaming workspaces.
 
-## 2026-11-13: v0.16.0 published; phase 17, grid names and 3D buttons
+## 2026-11-13: phase 17 (released as v0.17.0): grid names and 3D buttons
 
 **Reported by the user, with a screenshot:** repeated names on the grid; the
 3D not found.
@@ -289,7 +321,7 @@ with the old selector, which stays for saved views.
 real collection: 88 distinct names; each button, including pressing 3D before
 the map exists.
 
-## 2026-11-13: v0.15.0 published; phase 16, guide, getting-started steps, token help
+## 2026-11-13: phase 16 (released as v0.16.0): guide, getting-started steps, token help
 
 **Asked:** explain and refine the in-app documentation and add a tutorial;
 for instance, how to get a Notion token.
@@ -318,7 +350,7 @@ the demo collection (ticks, "?" from five tabs, put away, reload, bring back).
 **Not verified:** Notion's screens themselves; the steps follow their
 documentation, and labels there can change.
 
-## 2026-11-13: v0.14.0 published; phase 15, pan and zoom everywhere, side panel
+## 2026-11-13: phase 15 (released as v0.15.0): pan and zoom everywhere, side panel
 
 **Asked:** pan and zoom in all visualisations; every link openable in a side
 panel and in the browser.
@@ -337,7 +369,7 @@ map, a thread, the tree and a grid cell; open in a new tab; Ctrl+click; zoom
 and pan on each picture, then a click on a mark while zoomed lands on the
 right bookmark. No server change; 271 Python tests still pass.
 
-## 2026-11-12: v0.13.0 published on three platforms; phase 14, workspaces
+## 2026-11-12: phase 14 (released as v0.14.0): workspaces
 
 **Asked:** a workspace feature, to import specific data from other sources and
 export subsets. Answers to the two design questions: a workspace is a copy;
@@ -361,7 +393,7 @@ the real collection: create from a filter, import a browser file inside,
 search and map inside, come back, merge, delete, an empty workspace with every
 tab opened.
 
-## 2026-11-12: v0.12.0 published; phase 13, snapshot comparison and more platforms
+## 2026-11-12: phase 13 (released as v0.13.0): snapshot comparison and more platforms
 
 **Confirmed by the user:** the Notion sync works with a real token. The README
 and the phase table no longer call it untested.
@@ -385,7 +417,7 @@ wrong file.
 **Next:** nothing planned is left. Open ideas: neural text vectors, density
 contours on the map, an Intel Mac build, a smaller installer.
 
-## 2026-11-12: v0.11.0 published; phase 12, visual loose ends
+## 2026-11-12: phase 12 (released as v0.12.0): visual loose ends
 
 **Works:** map arrangement `links3d` (force layout in the page, about 300
 steps, three per frame); `savePicture`; the date brush (`/api/facets` now
@@ -407,7 +439,7 @@ collection, light and dark, including two real downloads and a drag and drop.
 
 **Next:** snapshot comparison; macOS and Linux builds.
 
-## 2026-11-12: v0.10.0 published; phase 11, grooming loose ends
+## 2026-11-12: phase 11 (released as v0.11.0): grooming loose ends
 
 **Works:** scripts `review-source-edits`, `merge-similar`,
 `merge-tag-synonyms`, `flag-dead-links`; migration 0005 (`link_checks`);
@@ -424,7 +456,7 @@ and its script with a stand-in for the web.
 
 **Next:** visual loose ends (date brush, tree editing, 3D link graph, export).
 
-## 2026-11-12: v0.9.0 published; phase 10, filter everywhere, Threads, the whole tree
+## 2026-11-12: phase 10 (released as v0.10.0): filter everywhere, Threads, the whole tree
 
 **Asked:** the filter on the remaining tabs; beautiful visualisations in the
 spirit of Jer Thorp, Stefanie Posavec and related data artists; ways to
@@ -462,7 +494,7 @@ residency. Principles were taken, no artwork was reproduced.
 
 **Next:** publish 0.10.0.
 
-## 2026-11-12: v0.8.0 published; phase 9, publication dates read from the pages
+## 2026-11-12: phase 9 (released as v0.9.0): publication dates read from the pages
 
 **Asked:** a way, in Grooming, to get the publication date of a source.
 Read as "retrieve"; the literal reading (take dates back) is covered too.
@@ -559,7 +591,7 @@ refuses to publish a version that is not the one in `pyproject.toml` at the
 commit being built. Before starting a release, check that `main` on GitHub
 is the commit just pushed.
 
-## 2026-11-11: v0.6.0 published; phase 7, links and tendencies
+## 2026-11-11: phase 7 (released as v0.7.1): links and tendencies
 
 **Published:** v0.6.0.
 
@@ -602,7 +634,7 @@ is the commit just pushed.
 **Next:** the user's first run on Windows, and the Notion sync with a real
 token.
 
-## 2026-11-11: v0.5.0 published; phase 6, grid and topic tree
+## 2026-11-11: phase 6 (released as v0.6.0): grid and topic tree
 
 **Published:** v0.5.0 (the third smoke test, opening a snapshot in the
 packaged app, passed).
@@ -651,7 +683,7 @@ packaged app, passed).
 
 **Next:** phase 7, links and tendencies.
 
-## 2026-11-11: v0.4.0 published; phase 5, saved views and snapshots
+## 2026-11-11: phase 5 (released as v0.5.0): saved views and snapshots
 
 **Published:** v0.4.0.
 
@@ -709,7 +741,7 @@ packaged app, passed).
 
 - Publish 0.5.0. Phase 6: self-organising map and pearl tree.
 
-## 2026-11-11: v0.3.0 published; phase 4, the map
+## 2026-11-11: phase 4 (released as v0.4.0): the map
 
 **Published:** v0.3.0. Its first attempt was stopped by the test gate: a test
 expected exact cluster sizes from plain e-means on the 72-item toy set, which
