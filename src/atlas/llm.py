@@ -165,7 +165,7 @@ def describe() -> dict:
         "embed_url": config.get("embed_url"),
         "embed_model": config.get("embed_model"),
         "has_password": bool(settings.get_secret(SECRET)),
-        "local": is_local(config.get("base_url") or ""),
+        "local": config.get("kind") == "local" or is_local(config.get("base_url") or ""),
         "provider": PROVIDERS.get(config.get("kind") or "", {}).get("name"),
     }
 
@@ -334,6 +334,8 @@ class Connection:
         self.base = config["base_url"].rstrip("/")
         self.password = settings.get_secret(SECRET) if password is None else (password or None)
         self.chat_model = config.get("chat_model")
+        # The model inside the app: its server is started when first needed.
+        self.built_in = config.get("chat_model") if config.get("kind") == "local" else None
         self.provider = PROVIDERS.get(config.get("kind") or "")
         self.api = self.provider["api"] if self.provider else "local"
         self._limit = self.provider.get("limit", "max_tokens") if self.provider else "max_tokens"
@@ -348,8 +350,24 @@ class Connection:
 
     # -- chat --
 
+    def _start(self) -> None:
+        """Have the built-in engine running with the chosen model."""
+        if not self.built_in:
+            return
+        from . import engine
+
+        try:
+            server = engine.ensure(self.built_in)
+        except engine.EngineError as error:
+            raise LlmError(str(error)) from None
+        self.base, self.password, self.chat_model = server["url"], server["key"], server["name"]
+
     def all_models(self) -> list[str]:
         """Every model the server lists, as the names it takes."""
+        if self.built_in:
+            from . import engine
+
+            return [key for key in engine.WRITERS if engine.model_path(key).is_file()]
         url = f"{self.base}/models" + ("?limit=1000" if self.api == "anthropic" else "")
         answer = request("GET", url, key=self.password, timeout=20, headers=self._auth())
         names = [m.get("id") for m in (answer or {}).get("data") or [] if m.get("id")]
@@ -382,11 +400,14 @@ class Connection:
         max_tokens: int = 900,
         temperature: float = 0.2,
         waits: int = 2,
+        schema: dict | None = None,
     ) -> str:
         """The model's reply as text. A full server is waited for a little, then
-        ``Busy`` is raised so a long job can stop and say when to come back."""
+        ``Busy`` is raised so a long job can stop and say when to come back.
+        ``schema`` (a JSON schema) holds a local model to the form asked for."""
         if not self.chat_model:
             raise LlmError("No model is chosen. Pick one in Settings ▸ Language models.")
+        self._start()
         url = f"{self.base}/chat/completions"
         if self.api == "anthropic":
             # Claude's own API: the instructions apart from the conversation.
@@ -420,11 +441,25 @@ class Connection:
                 # (the farm passes both spellings through to whichever engine serves).
                 body["chat_template_kwargs"] = {"enable_thinking": False}
                 body["think"] = False
-                if self._json_mode:
+                if self._json_mode and schema and self.built_in:
+                    # llama.cpp can only produce text that fits the schema: a small
+                    # model cannot wander off the form.
+                    body["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {"name": "answer", "schema": schema},
+                    }
+                elif self._json_mode:
                     body["response_format"] = {"type": "json_object"}
         for attempt in range(waits + 3):
             try:
-                answer = request("POST", url, key=self.password, body=body, headers=self._auth())
+                answer = request(
+                    "POST",
+                    url,
+                    key=self.password,
+                    body=body,
+                    headers=self._auth(),
+                    timeout=900 if self.built_in else TIMEOUT,  # no graphics card: be patient
+                )
                 break
             except Busy as busy:
                 if attempt >= waits or busy.retry_after > 20:
@@ -473,6 +508,20 @@ class Connection:
 
     def embedding(self) -> dict:
         """Where vectors come from: ``{url, key, model, contract, dims}``."""
+        if self.built_in:
+            from . import engine
+
+            try:
+                server = engine.ensure("vectors")
+            except engine.EngineError as error:
+                raise LlmError(str(error)) from None
+            return {
+                "url": f"{server['url']}/embeddings",
+                "key": server["key"],
+                "model": server["name"],
+                "contract": engine.VECTOR_CONTRACT,
+                "dims": 768,
+            }
         if self._embed:
             return self._embed
         config = self.config

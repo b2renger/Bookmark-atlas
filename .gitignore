@@ -30,3 +30,5 @@ desktop/backend/app/
 desktop/backend/BUILD_INFO.json
 desktop/backend/*.tar.gz
 desktop/dist/
+desktop/engine/
+desktop/engine-download/

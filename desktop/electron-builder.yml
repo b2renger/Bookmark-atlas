@@ -20,6 +20,10 @@ extraResources:
     filter:
       - "**/*"
       - "!**/__pycache__/**"
+  # llama.cpp's llama-server, fetched by scripts/prepare-engine.mjs: the engine
+  # of the built-in language model. Models are downloaded later, on request.
+  - from: engine
+    to: engine
 
 directories:
   output: dist

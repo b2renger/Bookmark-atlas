@@ -364,6 +364,13 @@ class App:
         }
         from atlas import llm
 
+        if config["kind"] == "local":
+            from atlas import engine
+
+            if config["chat_model"] not in engine.WRITERS:
+                raise ValueError("Choose one of the three sizes.")
+            return {**dict.fromkeys(config, ""), "kind": "local", "name": "This computer",
+                    "base_url": "local", "chat_model": config["chat_model"]}  # fmt: skip
         provider = llm.PROVIDERS.get(config["kind"])
         if provider:
             # A provider's address is its own: a key is never sent to one typed in.
@@ -399,9 +406,30 @@ class App:
             settings.delete_secret(llm.SECRET)
         return self.llm_state()
 
-    def llm_forget(self) -> dict:
-        from atlas import llm
+    def engine(self, body: dict | None = None) -> dict:
+        """The model inside the app: what is there, downloads, and which one is used."""
+        from atlas import engine, llm
 
+        body = body or {}
+        action, model = str(body.get("action") or ""), str(body.get("model") or "")
+        if action == "download":
+            engine.download(model)
+        elif action == "cancel":
+            engine.cancel(model)
+        elif action == "remove":
+            engine.remove(model)
+            if llm.load().get("kind") == "local" and llm.load().get("chat_model") == model:
+                llm.forget()
+        elif action == "stop":
+            engine.stop()
+        elif action:
+            raise ValueError("Unknown action.")
+        return engine.state()
+
+    def llm_forget(self) -> dict:
+        from atlas import engine, llm
+
+        engine.stop()
         llm.forget()
         return self.llm_state()
 
@@ -1228,6 +1256,8 @@ def make_handler(app: App):
                 ("GET", "/api/browsers"): lambda: app.browsers(),
                 ("POST", "/api/browsers"): lambda: app.browsers(self._body()),
                 ("GET", "/api/llm"): lambda: app.llm_state(),
+                ("GET", "/api/engine"): lambda: app.engine(),
+                ("POST", "/api/engine"): lambda: app.engine(self._body()),
                 ("POST", "/api/llm/find"): lambda: app.llm_find(self._body()),
                 ("POST", "/api/llm/test"): lambda: app.llm_test(self._body()),
                 ("POST", "/api/llm/connect"): lambda: app.llm_connect(self._body()),

@@ -41,6 +41,7 @@ class FakeFarm:
         # provider that refuses any parameter it does not know. `limit` is the one
         # name that provider takes for the length of an answer.
         self.provider = provider
+        self.engine = False  # True: llama-server itself, one key for everything
         self.limit = limit
         self.listed = listed
         self.password = password
@@ -69,6 +70,8 @@ class FakeFarm:
                 return key is None or self.headers.get("Authorization") == f"Bearer {key}"
 
             def do_GET(self):  # noqa: N802
+                if self.path == "/health":
+                    return self._send(200, {"status": "ok"})
                 if self.path == "/lol/self":
                     return self._send(200, farm.snapshot())
                 if self.path == "/lol/plugin-keys":
@@ -129,7 +132,7 @@ class FakeFarm:
                     if not farm.embeddings:
                         return self._send(404, {"error": {"message": "no such route"}})
                     key = "embed-key" if farm.password else "open-embed-key"
-                    if farm.provider:
+                    if farm.provider or farm.engine:
                         key = farm.password
                     if not self._authorised(key):
                         return self._send(401, {"error": {"message": "bad key"}})

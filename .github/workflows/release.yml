@@ -117,6 +117,19 @@ jobs:
       # Build only. Publishing is done below with gh, onto a release made
       # first: electron-builder's own publisher races to create the release.
       # --publish never still writes latest.yml and the blockmap.
+      - name: Prepare the built-in engine (llama.cpp)
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/prepare-engine.mjs
+
+      - name: Check the engine starts
+        working-directory: desktop
+        shell: bash
+        run: |
+          cat engine/ENGINE_INFO.json
+          engine/llama-server.exe --version
+
       - name: Build the installer
         working-directory: desktop
         run: npx --no-install electron-builder --win --publish never "-c.extraMetadata.version=${{ steps.version.outputs.version }}"
@@ -302,6 +315,22 @@ jobs:
         run: |
           backend/python/bin/python3 -I -u backend/run_atlas.py --db "$RUNNER_TEMP/doctor.sqlite" doctor
           backend/python/bin/python3 -I -c "import sys; sys.path.insert(0, 'backend/app'); import numpy as np; from atlas.analysis import cluster; x = np.random.default_rng(0).normal(size=(400, 8)).astype('float32'); print({a: round(cluster.fit(x, 5, algorithm=a)[2]['mse'], 3) for a in cluster.ALGORITHMS})"
+
+      - name: Prepare the built-in engine (llama.cpp)
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/prepare-engine.mjs
+
+      # Apple's build asks for a recent macOS: on an older runner it may not
+      # start, and the app then says so and offers the other ways to connect.
+      - name: Check the engine starts
+        working-directory: desktop
+        shell: bash
+        run: |
+          cat engine/ENGINE_INFO.json
+          ls -la engine | head -40
+          if engine/llama-server --version; then echo "engine ok"; elif [[ "$RUNNER_OS" == "macOS" ]]; then echo "::warning::llama-server did not start on this macOS runner ($(sw_vers -productVersion))"; else exit 1; fi
 
       - name: Build
         working-directory: desktop

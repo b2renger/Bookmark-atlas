@@ -578,3 +578,30 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
 - **Ask** is hidden: its four questions live in the notebook.
 - **Tested against the stand-in model**, including one that invents
   statements: they do not get through.
+
+## Phase 26: a language model inside the app
+
+- **Decided with the user:** llama.cpp bundled; three sizes (light under
+  1 GB, medium for most machines, advanced).
+- **The engine:** `desktop/scripts/prepare-engine.mjs` fetches llama.cpp's
+  `llama-server` (build b11836, the CPU build for each platform) into
+  `desktop/engine`, packaged beside the app. `atlas.engine` starts it on a
+  port of this computer only, behind a key made up at start, one server for
+  writing and one for vectors; they stop with the app.
+- **Models, downloaded on request** into the app's settings folder (not the
+  data folder): Gemma 3 1B (0.8 GB), Gemma 4 E2B (3.1 GB), Gemma 4 E4B
+  (5.3 GB), and EmbeddingGemma 2 (0.6 GB) pinned by hash, the same file a
+  LlmOnLan farm serves, so vectors carry between this computer and a farm.
+  Downloads resume and can be stopped.
+- **Form imposed:** for the built-in engine a notebook's answer is asked for
+  with a JSON schema, so a small model cannot leave the statement/quote form.
+- **Settings:** "On this computer (built in)" is the first choice; the size
+  suggested for this computer's memory is marked.
+- **Checked:** file names and sizes against the model pages (search
+  extracts); llama.cpp's release file names against its release workflow;
+  the build number and the vectors file against LlmOnLan's source.
+- **Not run here:** llama.cpp itself and the real models. The tests start a
+  stand-in program that takes llama-server's arguments. CI checks that the
+  real engine starts on Windows and Linux.
+- **Known limits:** CPU builds only (no graphics card use on Windows and
+  Linux yet); Apple's build needs a recent macOS; no Intel Mac.

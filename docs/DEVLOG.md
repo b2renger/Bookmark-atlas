@@ -4,6 +4,26 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-22: v0.24.0 published; phase 26, the built-in engine
+
+**Works:** `engine.CATALOGUE`, `download` (resume, hash, cancel),
+`ensure`/`stop` (two servers, LLAMA_* variables dropped, key in the
+environment), `state`, `advised`; `llm.Connection.built_in` and `_start`;
+`schema=` on `chat`; `/api/engine`; Settings panel; `prepare-engine.mjs`;
+`ATLAS_ENGINE_DIR` and `ATLAS_MODELS_DIR` from the shell.
+
+**Decisions:** llama-server as a separate program, not a Python binding:
+nothing to compile, the same HTTP API as a farm, and a crash cannot take the
+app down. Models are not in the data folder, which people sync and back up.
+One writer at a time: choosing another size stops the first.
+
+**Not built yet:** choosing per question where it is answered (this
+computer, the farm, a provider). Today the choice is made in Settings and
+vectors carry over between this computer and a farm.
+
+**Next:** the interface rebuilt around the flow of the data, with the
+conversation tied to the visualisations; routing per question belongs there.
+
 ## 2026-11-22: v0.23.0 published; phase 25, notebooks
 
 **Direction:** research notebook (see PHASES 25). After the local engine,

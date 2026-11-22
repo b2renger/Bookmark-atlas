@@ -123,6 +123,10 @@ function startBackend() {
                 // folder is complete on its own.
                 ATLAS_CONFIG_DIR: dataFolder,
                 ATLAS_APP_VERSION: app.getVersion(),
+                // The built-in language model: llama.cpp ships beside the app; the
+                // model files are large, so they stay out of the data folder.
+                ATLAS_ENGINE_DIR: path.join(app.isPackaged ? process.resourcesPath : __dirname, 'engine'),
+                ATLAS_MODELS_DIR: path.join(app.getPath('userData'), 'models'),
             },
             windowsHide: true,
             stdio: ['ignore', 'pipe', 'pipe'],

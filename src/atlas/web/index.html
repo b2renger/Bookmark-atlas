@@ -123,6 +123,9 @@
   #start-model li.done strong { font-weight: 500; color: var(--muted); }
   #start-model li.next { background: var(--chip); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
   .fromodel { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; margin: 6px 0; }
+  #engine-models li { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  #engine-models li.advised strong::after { content: " · suggested for this computer"; font-weight: 400; color: var(--muted); }
+  #engine-models progress { width: 220px; vertical-align: middle; }
   #llm-vectors h3 { margin: 18px 0 4px; } #llm-vectors p.help { max-width: 78ch; color: var(--muted); }
   #selbar { position: sticky; top: 58px; z-index: 1; background: var(--chip); border: 1px solid var(--line);
     border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
@@ -619,8 +622,9 @@
         model about them, and the notes you keep. Every statement in an answer is tied to the exact
         words of a source: press its number to read them. What the sources do not say is said, not
         guessed.</p>
-      <div class="note" id="nb-off" hidden>No language model is connected yet.
-        <button class="linkish" id="nb-connect">Connect one in Settings</button></div>
+      <div class="note" id="nb-off" hidden>A notebook needs a language model, and none is set up yet. One can run on this
+        computer (a download, no account), on your network, or at a provider with an API key.
+        <button class="linkish" id="nb-connect">Set one up in Settings</button></div>
       <div class="row">
         <div><label for="nb-scope">New notebook about</label><select id="nb-scope" style="width:auto"></select></div>
         <div id="nb-topic-box" hidden><label for="nb-topic">Topic</label><select id="nb-topic" style="width:auto"></select></div>
@@ -960,10 +964,34 @@
             and the conversation go to the model, wherever it runs.</li>
         </ul>
       </div></details>
-      <details id="guide-models"><summary>A language model on your network (Settings, Ask, Grooming)</summary><div>
-        <p>Optional. Atlas can use a language model that runs on a machine of yours: a
-          <strong>LlmOnLan farm</strong>, which it finds by itself, or any server that speaks the OpenAI
-          API (Ollama, llama.cpp, vLLM, LM Studio). Everything below is off until you connect one.</p>
+      <details id="guide-models"><summary>Language models: on this computer, on your network, or with an API key</summary><div>
+        <p>Optional. Atlas can use a language model in three places, chosen in Settings ▸ Language
+          models ▸ <em>Where the model runs</em>. Everything below is off until one is set up.</p>
+        <h4>On this computer (built in)</h4>
+        <p>The desktop app carries its own engine (llama.cpp). Download a model once, press
+          <em>Use</em>, and it answers with nothing leaving your computer, no account and nothing
+          to install.</p>
+        <ul>
+          <li><strong>Three sizes.</strong> <em>Light</em> (0.8 GB) runs anywhere but often loses the
+            thread of the sources. <em>Medium</em> (3.1 GB) is the one to start with on a computer
+            with 8 GB of memory. <em>Advanced</em> (5.3 GB) wants 16 GB. The page marks the one
+            suggested for your computer.</li>
+          <li><strong>Vectors</strong> (0.6 GB) is a fourth, small model: with it Atlas finds passages
+            and places bookmarks by meaning. It is the same model a LlmOnLan farm serves, so its
+            vectors remain valid if you later move to a farm.</li>
+          <li><strong>Speed.</strong> Without a graphics card, loading takes up to a minute or two the
+            first time and an answer from half a minute to a few minutes. A long job (summaries for
+            thousands of bookmarks) is better given to a farm or a provider.</li>
+          <li><strong>Why answers can still be trusted from a small model:</strong> in a notebook the
+            engine can only produce text in the form asked for, and Atlas checks every quote against
+            the source. A weaker model gives fewer statements, not invented ones.</li>
+          <li><strong>If the engine does not start.</strong> Close other programs (memory), or pick a
+            lighter size. On a Mac the engine needs a recent macOS; if it will not start, use one
+            of the two other ways below.</li>
+        </ul>
+        <h4>On your network</h4>
+        <p>A <strong>LlmOnLan farm</strong>, which Atlas finds by itself, or any server that speaks
+          the OpenAI API (Ollama, llama.cpp, vLLM, LM Studio).</p>
         <div class="where"><button class="linkish" id="guide-model-steps">Show the four model steps on the Bookmarks tab</button></div>
 
         <h4>First time, in ten minutes</h4>
@@ -1422,7 +1450,12 @@
         <button class="action" id="llm-forget" hidden>Disconnect</button></div>
       <div class="row" style="margin-top:8px">
         <div><label for="llm-where">Where the model runs</label>
-          <select id="llm-where" style="width:auto"><option value="lan">On my network (a farm, or a server of mine)</option></select></div>
+          <select id="llm-where" style="width:auto"><option value="engine">On this computer (built in)</option><option value="lan">On my network (a farm, or a server of mine)</option></select></div>
+      </div>
+      <div id="llm-engine" hidden>
+        <p class="help" id="engine-help"></p>
+        <ul class="plain" id="engine-models"></ul>
+        <div class="note muted" id="engine-note" role="status"></div>
       </div>
       <div class="note" id="llm-cloud" hidden></div>
       <div class="row" style="margin-top:8px" id="llm-lan">
@@ -4453,7 +4486,7 @@ function renderModelTour() {
   if (!tour || tour.hidden || !progress.bookmarks || (tour.connected && tour.meaning && tour.notes && tour.asked && !renderModelTour.asked)) { card.hidden = true; return; }
   const settings = () => { $("tab-settings").click(); setTimeout(() => $("llm-card").scrollIntoView({ block: "start" }), 60); };
   const steps = [
-    ["connected", "Connect a model on your network", "A LlmOnLan farm is found by itself; any OpenAI-compatible server works with its address. Test, then Connect.", "Open Settings", settings],
+    ["connected", "Set up a language model", "On this computer: download one size and press Use. Or a LlmOnLan farm on your network, or a provider with an API key.", "Open Settings", settings],
     ["meaning", "Place bookmarks by meaning", "Compute the vectors, choose “meaning”, then run Clusters and redraw the Map: bookmarks on one subject meet, whatever their words or language.", "Open Settings", settings],
     ["notes", "Rewrite a few summaries", "Select ten bookmarks, then in Grooming: read the pages, let the model write, and preview the result before applying.", "Open Grooming", () => { $("tab-grooming").click(); setTimeout(() => $("assist-card").scrollIntoView({ block: "start" }), 200); }],
     ["asked", "Open a notebook on a topic", "Notebook ▸ New notebook about one topic ▸ Create, then ask. Every statement of the answer shows the words of the source it rests on.", "Open Notebook", () => $("tab-notebook").click()],
@@ -4511,11 +4544,16 @@ async function loadLlm() {
   llm.state = await api("GET", "/api/llm");
   const c = llm.state.connection, v = llm.state.vectors;
   note("llm-now", c.connected
-    ? "Connected to " + (c.name || c.base_url) + " · writing with " + c.chat_model + (c.has_password ? (c.provider ? " · key kept" : " · password kept") : "")
+    ? "Connected to " + (c.name || c.base_url) + " · writing with " + (c.kind === "local" ? "the " + c.chat_model + " model" : c.chat_model) + (c.has_password ? (c.provider ? " · key kept" : " · password kept") : "")
       + (c.provider ? " · on the internet: what you send goes to this provider and is billed to your key" : c.local ? "" : " · This address is not on your local network: what you send leaves it.")
     : "Not connected.", c.connected ? (c.local ? "good" : "bad") : "muted");
   $("llm-forget").hidden = !c.connected;
-  if ($("llm-where").options.length === 1) for (const p of llm.state.providers) $("llm-where").append(el("option", { value: p.kind, textContent: p.name + " (API key)" }));
+  if ($("llm-where").options.length === 2) {
+    for (const p of llm.state.providers) $("llm-where").append(el("option", { value: p.kind, textContent: p.name + " (API key)" }));
+    $("llm-where").value = c.connected ? (c.kind === "local" ? "engine" : c.provider ? c.kind : "lan") : "engine";
+    $("llm-where").onchange();
+  }
+  if (false) for (const p of llm.state.providers) $("llm-where").append(el("option", { value: p.kind, textContent: p.name + " (API key)" }));
   $("llm-vectors").hidden = !c.connected && !v.ready;
   $("vec-source").value = v.source;
   if (!vec.running) note("vec-note", describeVectors(v), "muted");
@@ -4546,10 +4584,62 @@ function llmBody() {
     chat_model: $("llm-model").value, embed_model: d.kind === "farm" ? "" : d.provider ? $("llm-embed-pick").value : $("llm-embed").value.trim(),
     password: $("llm-password").value || null, keep_password: !$("llm-password").value && !!(llm.state && llm.state.connection.has_password && llm.state.connection.base_url === $("llm-base").value) };
 }
+// The model inside the app: three sizes to download once, and the vectors model.
+const engineUi = { timer: null };
+async function engineDo(body) { const state = await api("POST", "/api/engine", body); renderEngine(state); return state; }
+async function loadEngine() { renderEngine(await api("GET", "/api/engine")); }
+function renderEngine(state) {
+  const c = llm.state && llm.state.connection, using = c && c.kind === "local" ? c.chat_model : null;
+  if (!state.available) {
+    $("engine-help").textContent = "The built-in engine comes with the desktop app. This copy does not have it: connect a model on your network or with an API key instead.";
+    $("engine-models").replaceChildren(); return;
+  }
+  $("engine-help").textContent = "A language model that runs on this computer: nothing leaves it, nothing to install, no account. Download one size once (kept in " + state.folder + "), then press Use. "
+    + (state.memory_gb ? "This computer has " + state.memory_gb + " GB of memory. " : "") + "Without a graphics card an answer takes from half a minute to a few minutes. The vectors model lets Atlas find passages and place bookmarks by meaning; it is the same one a LlmOnLan farm uses, so its vectors stay valid if you move to a farm.";
+  let busyNow = false;
+  $("engine-models").replaceChildren(...state.models.map((m) => {
+    const d = m.download, loading = d && (d.status === "downloading" || d.status === "checking"), actions = [];
+    busyNow = busyNow || loading;
+    if (loading) {
+      const bar = el("progress", { max: d.total || 1, value: d.bytes });
+      const stop = el("button", { className: "action", textContent: "Stop" }); stop.onclick = () => engineDo({ action: "cancel", model: m.key }).catch((e) => note("engine-note", e.message, "bad"));
+      actions.push(bar, " " + (d.status === "checking" ? "checking…" : (d.bytes / 1e9).toFixed(2) + " of " + ((d.total || 0) / 1e9).toFixed(1) + " GB") + " ", stop);
+    } else if (!m.downloaded) {
+      const get = el("button", { className: "action", textContent: "Download (" + m.gigabytes + " GB)" });
+      get.onclick = () => engineDo({ action: "download", model: m.key }).catch((e) => note("engine-note", e.message, "bad"));
+      actions.push(get);
+    } else {
+      if (m.key !== "vectors") {
+        const use = el("button", { className: using === m.key ? "action" : "action primary", textContent: using === m.key ? "In use" : "Use", disabled: using === m.key });
+        use.onclick = () => busy(use, () => useEngine(m));
+        actions.push(use, " ");
+      } else actions.push(el("span", { className: "tagline", textContent: "ready · " }));
+      const remove = el("button", { className: "linkish", textContent: "remove the file" });
+      remove.onclick = () => engineDo({ action: "remove", model: m.key }).then(() => loadLlm()).catch((e) => note("engine-note", e.message, "bad"));
+      actions.push(remove);
+    }
+    return el("li", { className: m.key === state.advised ? "advised" : "" }, [
+      el("div", {}, [el("strong", { textContent: m.label + " · " + m.name }), el("div", { className: "tagline", textContent: m["for"] + (m.key === "vectors" ? "" : " Needs about " + m.memory + " GB of memory.") + (d && d.status === "failed" ? " " + d.error : "") })]),
+      el("div", {}, actions)]);
+  }));
+  clearTimeout(engineUi.timer);
+  if (busyNow && currentView === "settings") engineUi.timer = setTimeout(() => loadEngine().catch(() => {}), 1200);
+}
+async function useEngine(model) {
+  note("engine-note", "Loading " + model.name + " into memory… the first time takes up to a minute or two.", "muted");
+  try {
+    await api("POST", "/api/llm/connect", { kind: "local", chat_model: model.key });
+    const result = await api("POST", "/api/llm/test", { kind: "local", chat_model: model.key });
+    await loadLlm(); await loadEngine();
+    note("engine-note", model.name + " is ready: it answered in " + result.seconds + " s. " + (result.vectors ? "Vectors are ready too." : "For answers found by meaning, also download the Vectors model above.") + " Open Notebook to use it.", "good");
+  } catch (error) { await loadLlm().catch(() => {}); note("engine-note", error.message, "bad"); }
+}
 // A provider on the internet, reached with an API key: say plainly what that means.
 $("llm-where").onchange = () => {
   const kind = $("llm-where").value, provider = llm.state && llm.state.providers.find((p) => p.kind === kind);
-  $("llm-lan").hidden = !!provider; $("llm-farms").replaceChildren(); $("llm-cloud").hidden = !provider;
+  $("llm-engine").hidden = kind !== "engine"; if (kind === "engine") loadEngine().catch((e) => note("engine-note", e.message, "bad"));
+  $("llm-lan").hidden = kind !== "lan"; $("llm-farms").replaceChildren(); $("llm-cloud").hidden = !provider;
+  if (kind === "engine") { $("llm-form").hidden = true; note("llm-note", "", "muted"); return; }
   if (!provider) { $("llm-form").hidden = true; note("llm-note", "", "muted"); return; }
   $("llm-cloud").replaceChildren(el("strong", { textContent: provider.name + " runs on the internet. " }),
     "What Atlas sends for a job (titles, summaries, tags, and page text for summaries) leaves your computer and goes to that company, under its terms, and each request is billed to your key: a few thousand summaries can cost real money, so start with a selection. "
@@ -4893,7 +4983,7 @@ async function openNotebook(id) {
 function renderNotebook() {
   const book = nb.book, c = llm.state && llm.state.connection;
   $("nb-title").textContent = book.name;
-  $("nb-model").textContent = c && c.connected ? "Answers written by " + c.chat_model + " (" + (c.provider || c.name || "your server") + (c.provider ? ", on the internet" : "") + ")" : "No language model connected: Settings ▸ Language models";
+  $("nb-model").textContent = c && c.connected ? (c.kind === "local" ? "Answers written by the " + c.chat_model + " model on this computer" : "Answers written by " + c.chat_model + " (" + (c.provider || c.name || "your server") + (c.provider ? ", on the internet" : "") + ")") : "No language model connected: Settings ▸ Language models";
   renderSources(); renderMessages(); renderNotes();
 }
 function renderSources() {

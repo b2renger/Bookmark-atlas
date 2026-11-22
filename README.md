@@ -193,6 +193,15 @@ each statement rests on; Atlas checks the quote is really in the source and
 sets aside what fails. What the sources do not say is said, not guessed.
 Notes export as a Markdown document with quotes and sources.
 
+### A language model inside the app
+
+The desktop app ships llama.cpp. In **Settings ▸ Language models ▸ On this
+computer**, download one of three sizes (0.8, 3.1 or 5.3 GB; the page suggests
+one for your memory) and press **Use**: notebooks then work with nothing
+leaving the computer. A fourth small model gives vectors (finding by meaning);
+it is the one a LlmOnLan farm serves, so vectors carry over to a farm.
+Without a graphics card answers take from half a minute to a few minutes.
+
 ### A language model on your network (optional)
 
 Atlas can use a model that runs on a machine of yours: a

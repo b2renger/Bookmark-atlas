@@ -276,6 +276,28 @@ RULES = (
 )
 
 
+ANSWER_SHAPE = {
+    "type": "object",
+    "properties": {
+        "statements": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "passage": {"type": "integer"},
+                    "quote": {"type": "string"},
+                },
+                "required": ["text", "passage", "quote"],
+            },
+        },
+        "missing": {"type": "string"},
+    },
+    "required": ["statements", "missing"],
+}
+
+
 def _flat(text: str) -> str:
     """Text for comparison: lower case, plain quotes, single spaces, no edge punctuation."""
     text = text.lower().replace("’", "'").replace("“", '"').replace("”", '"').replace("…", "...")
@@ -384,6 +406,7 @@ def answer(conn: sqlite3.Connection, connection, ids: list[str], question: str, 
             },
         ],
         max_tokens=900,
+        schema=ANSWER_SHAPE,
     )
     if not isinstance(reply, dict):
         raise llm.LlmError("The model did not answer in the form that was asked for.")
