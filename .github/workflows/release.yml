@@ -332,6 +332,16 @@ jobs:
           ls -la engine | head -40
           if engine/llama-server --version; then echo "engine ok"; elif [[ "$RUNNER_OS" == "macOS" ]]; then echo "::warning::llama-server did not start on this macOS runner ($(sw_vers -productVersion))"; else exit 1; fi
 
+      # The real engine with real model files, once per build, on Linux: the
+      # only place this can be tried before a person does. Not a gate: the
+      # model host being down must not stop a release. Read its log.
+      - name: Run the engine for real (light model, one notebook question)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        working-directory: desktop
+        timeout-minutes: 15
+        run: backend/python/bin/python3 -I -u scripts/engine-selfcheck.py engine backend/app
+
       - name: Build
         working-directory: desktop
         run: npx --no-install electron-builder ${{ matrix.flag }} --publish never "-c.extraMetadata.version=${{ steps.version.outputs.version }}"
