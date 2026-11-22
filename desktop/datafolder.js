@@ -1,8 +1,9 @@
 // Where the user's data lives, and how to move it.
 //
-// Everything a user owns is in ONE folder: the database, their grooming
-// scripts, the backups and the Notion token. Copying that folder to another
-// machine and pointing the app at it brings everything back.
+// A user's collection is in ONE folder: the database, their grooming scripts,
+// the backups and the workspaces. Copying that folder to another machine and
+// pointing the app at it brings the collection back. Tokens and keys are not
+// in it: they stay on the computer (keychain, or the app's own folder).
 //
 // Which folder that is, is remembered per machine in a small pointer file in
 // the app's own settings folder. Nothing here depends on Electron, so it is
@@ -13,7 +14,8 @@ const path = require('node:path');
 
 const DATABASE = 'atlas.sqlite';
 // What makes up the user's data. Anything else in the folder is left alone.
-const ITEMS = [DATABASE, 'secrets.json', 'scripts', 'backups', 'Workspaces'];
+// Not secrets.json: tokens and keys stay on this computer (keychain or the app's own folder).
+const ITEMS = [DATABASE, 'scripts', 'backups', 'Workspaces'];
 const POINTER = 'location.json';
 
 /** The folder chosen on this machine, or null if none was chosen. */

@@ -36,6 +36,7 @@ def path_of(home: Path | str, workspace_id: str) -> Path:
     target = root(home) / workspace_id / "atlas.sqlite"
     if not target.is_file():
         raise ValueError("No such workspace.")
+    db.upgrade(target)  # a workspace made by an earlier version follows the app
     return target
 
 
@@ -62,6 +63,9 @@ def list_all(home: Path | str) -> list[dict]:
         return found
     for target in sorted(folder.glob("*/atlas.sqlite")):
         try:
+            # Only the main collection is upgraded at start: a workspace made by
+            # an earlier version is upgraded here, or it would vanish from the list.
+            db.upgrade(target)
             conn = db.open_ready(target)
         except Exception:  # a damaged or foreign file is not listed, and not touched
             continue

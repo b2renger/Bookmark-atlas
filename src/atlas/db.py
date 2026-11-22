@@ -58,18 +58,34 @@ def migrate(conn: sqlite3.Connection) -> list[str]:
     for number, name, sql in _migrations():
         if number <= current:
             continue
-        # executescript commits on its own, so each migration is followed by
-        # an explicit version bump; a crash in between is detected next time
-        # because the tables already exist and the script fails loudly.
-        conn.executescript(sql)
-        conn.execute(
-            "INSERT INTO meta (key, value) VALUES ('schema_version', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (str(number),),
-        )
+        # One migration is one transaction, version number included: it is
+        # applied whole or not at all. A failure or a crash halfway leaves the
+        # file as it was, and the next start simply tries again.
         conn.commit()
+        try:
+            conn.executescript(
+                "BEGIN IMMEDIATE;\n"
+                + sql
+                + "\n;INSERT INTO meta (key, value) VALUES ('schema_version', '"
+                + str(int(number))
+                + "') ON CONFLICT(key) DO UPDATE SET value = excluded.value;\nCOMMIT;"
+            )
+        except BaseException:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
         applied.append(name)
     return applied
+
+
+def upgrade(path: Path | str) -> list[str]:
+    """Bring an existing file to this version's schema. Returns the names
+    applied (none when it is current). A file from a newer Atlas is left alone."""
+    conn = connect(path)
+    try:
+        return migrate(conn) if schema_version(conn) < latest_version() else []
+    finally:
+        conn.close()
 
 
 def connect(path: Path | str, *, create: bool = False) -> sqlite3.Connection:
@@ -106,6 +122,7 @@ def open_ready(path: Path | str) -> sqlite3.Connection:
     if current > latest:
         conn.close()
         raise RuntimeError(
-            f"Database schema is version {current}, newer than this version of Atlas ({latest})."
+            f"This file was last used by a newer Atlas (schema {current}; this one knows "
+            f"{latest}). Update Atlas to open it."
         )
     return conn

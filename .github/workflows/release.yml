@@ -114,6 +114,16 @@ jobs:
           # The analysis stack in the bundled runtime: vendored e-means on NumPy.
           backend/python/python.exe -I -c "import sys; sys.path.insert(0, 'backend/app'); import numpy as np; from atlas.analysis import cluster; x = np.random.default_rng(0).normal(size=(400, 8)).astype('float32'); print({a: round(cluster.fit(x, 5, algorithm=a)[2]['mse'], 3) for a in cluster.ALGORITHMS})"
 
+      # Tokens and keys must reach the system keychain from the bundled
+      # Python. Not a gate (a build machine may have no keychain session, and
+      # the app then uses a private file): read its log.
+      - name: Check the keychain is reached
+        continue-on-error: true
+        working-directory: desktop
+        shell: bash
+        timeout-minutes: 3
+        run: backend/python/python.exe -I -u scripts/keychain-selfcheck.py backend/app
+
       # Build only. Publishing is done below with gh, onto a release made
       # first: electron-builder's own publisher races to create the release.
       # --publish never still writes latest.yml and the blockmap.
@@ -315,6 +325,12 @@ jobs:
         run: |
           backend/python/bin/python3 -I -u backend/run_atlas.py --db "$RUNNER_TEMP/doctor.sqlite" doctor
           backend/python/bin/python3 -I -c "import sys; sys.path.insert(0, 'backend/app'); import numpy as np; from atlas.analysis import cluster; x = np.random.default_rng(0).normal(size=(400, 8)).astype('float32'); print({a: round(cluster.fit(x, 5, algorithm=a)[2]['mse'], 3) for a in cluster.ALGORITHMS})"
+
+      - name: Check the keychain is reached
+        continue-on-error: true
+        working-directory: desktop
+        timeout-minutes: 3
+        run: backend/python/bin/python3 -I -u scripts/keychain-selfcheck.py backend/app
 
       - name: Prepare the built-in engine (llama.cpp)
         working-directory: desktop

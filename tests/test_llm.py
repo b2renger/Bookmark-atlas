@@ -271,3 +271,160 @@ def test_a_server_saved_before_providers_existed_stays_a_plain_server(farm):
     assert farm.calls[-1]["body"]["think"] is False  # still spoken to as a local server
     real = {"kind": "openai", "base_url": "https://api.openai.com/v1", "chat_model": "x"}
     assert llm.Connection(real, password="k").api == "openai"
+
+
+# ---- keys: never lost, never sent elsewhere ------------------------------------
+
+
+def _old_single_connection(tmp_path):
+    from atlas import settings
+
+    folder = settings.private_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "llm.json").write_text(
+        '{"kind": "farm", "name": "Old farm", "base_url": "http://10.0.0.5:4000/v1", "chat_model": "m"}'
+    )
+    settings.set_secret(llm.SECRET, "FARM-PW")
+    return settings
+
+
+def test_an_old_key_stays_with_its_connection_when_another_is_added(tmp_path):
+    """0.26.0 handed the old key to the connection being added, or dropped it."""
+    from atlas import db
+    from atlas.server import App
+
+    settings = _old_single_connection(tmp_path)
+    path = tmp_path / "a.sqlite"
+    conn = db.connect(path, create=True)
+    db.migrate(conn)
+    conn.close()
+    app = App(path)
+    app.llm_connect({"kind": "openai", "chat_model": "gpt-9", "password": "sk-new"})
+    assert settings.get_secret(llm.secret_name("lan")) == "FARM-PW"
+    assert settings.get_secret(llm.secret_name("openai")) == "sk-new"
+    assert settings.get_secret(llm.SECRET) is None
+    assert llm.Connection(slot="lan").password == "FARM-PW"
+    assert app.llm_use({"slot": "lan"})["connection"]["has_password"]
+    assert llm.Connection().password == "FARM-PW"
+
+
+def test_an_old_key_survives_choosing_the_model_on_this_computer(tmp_path):
+    settings = _old_single_connection(tmp_path)
+    llm.save({"kind": "local", "base_url": "local", "chat_model": "light", "name": "This computer"})
+    assert settings.get_secret(llm.secret_name("lan")) == "FARM-PW"
+    assert settings.get_secret(llm.secret_name("local")) is None
+
+
+def test_a_kept_key_is_only_used_for_the_address_it_was_typed_for(tmp_path):
+    from atlas import db
+    from atlas.server import App
+
+    path = tmp_path / "a.sqlite"
+    conn = db.connect(path, create=True)
+    db.migrate(conn)
+    conn.close()
+    mine, theirs = FakeFarm(password="PW-A"), FakeFarm()
+    try:
+        app = App(path)
+        app.llm_connect({**mine.config(), "password": "PW-A"})
+        elsewhere = {
+            "kind": "server",
+            "base_url": theirs.url,
+            "chat_model": "m",
+            "keep_password": True,
+        }
+        seen = len(theirs.calls)
+        with pytest.raises(RuntimeError, match="type the password"):
+            app.llm_test(elsewhere)
+        with pytest.raises(RuntimeError, match="type the password"):
+            app.llm_connect(elsewhere)
+        assert len(theirs.calls) == seen  # nothing was sent there at all
+        assert llm.load()["base_url"] == mine.config()["base_url"]  # and nothing was changed
+        # Vectors asked at another machine (another name) count as another address too.
+        with pytest.raises(RuntimeError, match="type the password"):
+            app.llm_connect(
+                {
+                    **mine.config(),
+                    "embed_url": theirs.url.replace("127.0.0.1", "localhost") + "/v1",
+                    "keep_password": True,
+                }
+            )
+        # The same address keeps its key; so does another model on it.
+        app.llm_connect({**mine.config(), "chat_model": "other", "keep_password": True})
+        assert llm.Connection().password == "PW-A" and llm.load()["chat_model"] == "other"
+        # A connection described by the caller never borrows a kept key.
+        assert llm.Connection({"kind": "server", "base_url": theirs.url + "/v1"}).password is None
+    finally:
+        mine.close()
+        theirs.close()
+
+
+def test_a_key_follows_no_redirect():
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    seen = []
+
+    class Second(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(dict(self.headers))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        do_POST = do_GET
+
+        def log_message(self, *args):
+            pass
+
+    second = ThreadingHTTPServer(("127.0.0.1", 0), Second)
+
+    class First(Second):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{second.server_address[1]}/v1/models")
+            self.end_headers()
+
+        do_POST = do_GET
+
+    first = ThreadingHTTPServer(("127.0.0.1", 0), First)
+    for server in (first, second):
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{first.server_address[1]}/v1/models"
+        with pytest.raises(llm.LlmError, match="another address"):
+            llm.request("GET", url, key="SECRET-KEY")
+        with pytest.raises(llm.LlmError, match="another address"):
+            llm.request("POST", url, body={}, headers={"x-api-key": "ANT-KEY"})
+        assert seen == []
+        # Notion's token the same way.
+        from atlas import notion
+
+        status, _, _ = notion._urllib_transport("GET", url, {"Authorization": "Bearer ntn_x"}, None)
+        assert status == 302 and seen == []
+    finally:
+        first.shutdown()
+        second.shutdown()
+
+
+def test_what_a_connection_file_says_cannot_send_a_key_elsewhere():
+    openai = llm.PROVIDERS["openai"]["base_url"]
+    told = llm._settled(
+        {"kind": "openai", "base_url": openai, "embed_url": "http://evil.example/v1"}
+    )
+    assert told["embed_url"] == "" and told["kind"] == "openai"
+    assert (
+        llm._settled({"kind": "openai", "base_url": "http://evil.example/v1"})["kind"] == "server"
+    )
+    assert not llm.is_local("http://localhost:pw@evil.example/v1")
+    assert not llm.is_local("http://10.0.0.1@evil.example/v1")
+    assert llm.is_local("http://user:pw@10.0.0.1:8000/v1")
+
+
+def test_a_damaged_connection_file_reads_as_no_connection():
+    from atlas import settings
+
+    settings.private_dir().mkdir(parents=True, exist_ok=True)
+    for text in ('{"saved": []}', '{"saved": "x", "active": "lan"}', "[1, 2]", "not json"):
+        (settings.private_dir() / "llm.json").write_text(text)
+        assert llm.load() == {} and llm.kept() == []

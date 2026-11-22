@@ -73,7 +73,8 @@ test('copyData brings the whole collection and leaves the source untouched', () 
 
     const copied = df.copyData(from, to);
 
-    assert.deepEqual(copied, ['atlas.sqlite', 'secrets.json', 'scripts', 'backups', 'Workspaces']);
+    assert.deepEqual(copied, ['atlas.sqlite', 'scripts', 'backups', 'Workspaces']);
+    assert.equal(fs.existsSync(path.join(to, 'secrets.json')), false, 'secrets never travel with the data');
     assert.equal(fs.readFileSync(path.join(to, 'Workspaces', 'study', 'atlas.sqlite'), 'utf8'), 'workspace-bytes');
     assert.equal(fs.readFileSync(path.join(to, 'atlas.sqlite'), 'utf8'), 'database-bytes');
     assert.equal(fs.readFileSync(path.join(to, 'scripts', 'mine.py'), 'utf8'), 'NAME = "mine"');

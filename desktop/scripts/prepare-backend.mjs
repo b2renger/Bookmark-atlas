@@ -90,11 +90,12 @@ async function main() {
 
     // 3. Packages. tzdata: Windows has no time zone database Python can read,
     //    and Notion dates may name a zone. numpy: vectors and clustering.
+    //    keyring: tokens and keys go to the system keychain, not to a file.
     const pythonExe = process.platform === 'win32'
         ? path.join(pythonDir, 'python.exe')
         : path.join(pythonDir, 'bin', 'python3');
-    execFileSync(pythonExe, ['-I', '-m', 'pip', 'install', '--no-warn-script-location', '--disable-pip-version-check', 'tzdata', 'numpy'], { stdio: 'inherit' });
-    execFileSync(pythonExe, ['-I', '-c', 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Paris"); import numpy; print("numpy", numpy.__version__)'], { stdio: 'inherit' });
+    execFileSync(pythonExe, ['-I', '-m', 'pip', 'install', '--no-warn-script-location', '--disable-pip-version-check', 'tzdata', 'numpy', 'keyring'], { stdio: 'inherit' });
+    execFileSync(pythonExe, ['-I', '-c', 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Paris"); import numpy; print("numpy", numpy.__version__); import keyring; print("keyring", type(keyring.get_keyring()).__module__)'], { stdio: 'inherit' });
 
     // 4. The atlas package.
     const appDir = path.join(backend, 'app');

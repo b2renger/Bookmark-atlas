@@ -342,6 +342,7 @@ class App:
             "vectors": self._with(assist.vector_status),
             "providers": llm.providers(),
             "kept": llm.kept(),
+            "keys_in": settings.kept_in(),
         }
 
     def llm_find(self, body: dict) -> dict:
@@ -392,7 +393,7 @@ class App:
 
         password = body.get("password")
         if password is None and body.get("keep_password"):
-            password = llm.secret_for(llm.slot_of(self._llm_config(body)))
+            password = llm.kept_key_for(self._llm_config(body))
         return llm.test(self._llm_config(body), password)
 
     def llm_connect(self, body: dict) -> dict:
@@ -402,9 +403,8 @@ class App:
         if not config["chat_model"]:
             raise ValueError("Choose a model.")
         slot = llm.slot_of(config)
-        kept = llm.secret_for(slot) if body.get("keep_password") else None
+        kept = llm.kept_key_for(config) if body.get("keep_password") else None
         llm.save(config)
-        llm.activate(slot)  # moves a key kept the old way to its own place
         if body.get("password") or kept:
             settings.set_secret(llm.secret_name(slot), str(body.get("password") or kept))
         else:
@@ -1075,6 +1075,9 @@ class App:
         for key, name in (("platform", "platform"), ("date_from", "from"), ("date_to", "to")):
             query[name] = [str(chosen.get(key) or "")]
         query["dates"] = [str(chosen.get("date_kind") or "when")]
+        if body.get("ids_only"):  # "select all" inside "only these": the same narrowing
+            passing = set(self.bookmark_ids(query)["ids"])
+            return {"ids": [str(i) for i in ids if str(i) in passing]}
         return self.bookmarks(query, only=[str(i) for i in ids])
 
     def bookmarks(self, query: dict, only: list[str] | None = None) -> dict:

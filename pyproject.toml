@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bookmark-atlas"
-version = "0.26.0"
+version = "0.26.1"
 description = "Explore and groom a bookmark collection stored in a local SQLite file"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,6 +14,8 @@ dependencies = []
 [project.optional-dependencies]
 # Vectors and clustering. The desktop app bundles it.
 analysis = ["numpy"]
+# Tokens and keys in the system keychain instead of a private file. The desktop app bundles it.
+keychain = ["keyring"]
 
 [project.scripts]
 atlas = "atlas.cli:main"

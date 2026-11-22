@@ -78,9 +78,10 @@ updates…** opens the download page. There is no build for Intel Macs.
 
 ### Your data folder
 
-Everything you own is in one folder: the bookmarks (`atlas.sqlite`), your
-grooming scripts, the backups and the Notion token. By default it is
-`%APPDATA%\Bookmark Atlas`. Settings shows the current place, and
+Your collection is in one folder: the bookmarks (`atlas.sqlite`), your
+grooming scripts, the backups and the workspaces. By default it is
+`%APPDATA%\Bookmark Atlas` on Windows, and the app's own settings folder on
+macOS and Linux. Settings shows the current place, and
 **Atlas > Open data folder** opens it. Updates and uninstalling leave it alone.
 
 - **Put it elsewhere:** **Atlas > Choose data folder…** copies your data to
@@ -88,8 +89,14 @@ grooming scripts, the backups and the Notion token. By default it is
   The original stays in place as a safety copy.
 - **Change computer:** copy the folder to the new machine, install Bookmark
   Atlas there, and choose the folder with the same menu.
-- The folder holds your Notion token. Do not hand it to someone else; to share
-  bookmarks, use Export selection.
+- The Notion token and the keys of language models are **not** in this folder.
+  They stay on the computer: in the system keychain when there is one, else in
+  a private file of the app. On a new computer you enter them again.
+  (Up to 0.26.0 they were written to `secrets.json` in this folder. 0.26.1
+  moves them out at its first start and deletes that file. If the folder was
+  synced or copied somewhere in the meantime, renew those keys.)
+- The folder is your whole collection. To share part of it, use Export
+  selection.
 
 macOS and Linux builds are not produced yet.
 
@@ -268,7 +275,11 @@ each request is billed to your key; Claude offers no vectors, the other three
 do.
 
 Only titles, summaries, tags and (for summaries) page text are sent, and only
-to the server you connected. The password is kept in the system keychain.
+to the server you connected. Passwords, API keys and the Notion token stay on
+this computer: in the system keychain when there is one (Windows Credential
+Manager, macOS Keychain, a Linux secret service), else in a private file of
+your user account. Never in the database, the data folder, a snapshot or an
+export. Settings says which of the two is used.
 Nothing a model writes changes a bookmark without a preview.
 
 ### Connect Notion

@@ -21,6 +21,8 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
 
+from . import settings
+
 API_ROOT = "https://api.notion.com/v1"
 NOTION_VERSION = "2026-03-11"
 
@@ -60,7 +62,7 @@ class NotionError(Exception):
 def _urllib_transport(method: str, url: str, headers: dict, body: bytes | None):
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with settings.open_direct(request, timeout=30) as response:  # the token follows no redirect
             return response.status, dict(response.headers), response.read()
     except urllib.error.HTTPError as error:
         return error.code, dict(error.headers), error.read()

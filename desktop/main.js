@@ -119,9 +119,11 @@ function startBackend() {
             env: {
                 ...process.env,
                 ...spec.env,
-                // The Notion token lives beside the database, so the data
-                // folder is complete on its own.
                 ATLAS_CONFIG_DIR: dataFolder,
+                // Tokens and keys go to the system keychain; when there is none,
+                // to a file in this app's own folder. Never to the data folder,
+                // which people sync, copy and hand over.
+                ATLAS_SECRETS_DIR: userData(),
                 ATLAS_APP_VERSION: app.getVersion(),
                 // The built-in language model: llama.cpp ships beside the app; the
                 // model files are large, so they stay out of the data folder.

@@ -263,7 +263,7 @@ def _cmd_notion_token(args: argparse.Namespace) -> int:
     where = settings.set_token(token)
     name = who["name"] or "unnamed connection"
     workspace = f" in {who['workspace']}" if who["workspace"] else ""
-    place = "the system keychain" if where == "keychain" else str(settings.config_dir())
+    place = "the system keychain" if where == "keychain" else str(settings.private_dir())
     print(f"Token accepted: {name}{workspace}. Stored in {place}.")
     return 0
 

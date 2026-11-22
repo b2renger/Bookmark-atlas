@@ -21,6 +21,7 @@ import socket
 import struct
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -106,7 +107,19 @@ class Busy(LlmError):
 
 
 def _path():
-    return settings.config_dir() / "llm.json"
+    """Beside the keys, in the folder of this computer's user: a data folder
+    received from someone must not be able to say where your keys are sent.
+    A file an older version left with the data is adopted once."""
+    path = settings.private_dir() / "llm.json"
+    old = settings.config_dir() / "llm.json"
+    if old != path and old.exists() and not path.exists():
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(old.read_bytes())
+            old.unlink()
+        except OSError:
+            return old
+    return path
 
 
 _FIELDS = ("kind", "name", "base_url", "self_url", "chat_model", "embed_url", "embed_model")
@@ -127,6 +140,8 @@ def _read() -> dict:
     except (FileNotFoundError, json.JSONDecodeError):
         return {"active": None, "saved": {}}
     if not isinstance(data, dict):
+        return {"active": None, "saved": {}}
+    if "saved" in data and not isinstance(data["saved"], dict):
         return {"active": None, "saved": {}}
     if "saved" not in data:
         if not data.get("base_url"):
@@ -157,12 +172,16 @@ def _settled(config: dict) -> dict:
     provider = PROVIDERS.get(config.get("kind") or "")
     if provider and (config.get("base_url") or "").rstrip("/") != provider["base_url"]:
         return {**config, "kind": "server"}
+    if provider and (config.get("embed_url") or config.get("self_url")):
+        # A provider's vectors are asked at its own address, nowhere else.
+        return {**config, "embed_url": "", "self_url": ""}
     return config
 
 
 def save(config: dict) -> dict:
     """Keep a connection in its place and make it the one in use. The others
     stay, so a question can be sent to any of them."""
+    _own_key()  # before "in use" changes: an old key belongs to the old connection
     keep = {key: config[key] for key in _FIELDS if config.get(key)}
     data = _read()
     data["saved"][slot_of(keep)] = keep
@@ -175,23 +194,52 @@ def secret_name(slot: str) -> str:
     return f"{SECRET}:{slot}"
 
 
+def _own_key() -> None:
+    """Before each connection had its own key there was one key, for the one
+    connection. Give it to that connection, whatever is done next: it must
+    never end up under another connection's name, nor be lost."""
+    legacy = settings.get_secret(SECRET)
+    if not legacy:
+        return
+    active = _read()["active"]
+    if active and not settings.get_secret(secret_name(active)):
+        settings.set_secret(secret_name(active), legacy)
+    settings.delete_secret(SECRET)
+
+
 def secret_for(slot: str) -> str | None:
-    """The password or key of a kept connection. One kept before each
-    connection had its own is still found."""
-    return settings.get_secret(secret_name(slot)) or (
-        settings.get_secret(SECRET) if slot == _read()["active"] else None
-    )
+    """The password or key of a kept connection."""
+    _own_key()
+    return settings.get_secret(secret_name(slot))
+
+
+def _host(url: str) -> str:
+    try:
+        return (urllib.parse.urlsplit(url or "").hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def kept_key_for(config: dict) -> str | None:
+    """The key already kept for this connection, when the page says "keep it".
+    Only for the address it was given for: a kept key is never sent to an
+    address that was not the one in place when it was typed."""
+    slot = slot_of(config)
+    was = load(slot)
+    same = (was.get("base_url") or "").rstrip("/") == (config.get("base_url") or "").rstrip("/")
+    vectors = config.get("embed_url") or ""
+    if vectors and vectors.rstrip("/") != (was.get("embed_url") or "").rstrip("/"):
+        same = same and _host(vectors) == _host(config.get("base_url") or "")
+    if not was or not same:
+        raise LlmError("The address changed: type the password or key again.")
+    return secret_for(slot)
 
 
 def activate(slot: str) -> dict:
+    _own_key()
     data = _read()
     if slot not in data["saved"]:
         raise LlmError("That connection is not kept any more.")
-    legacy = settings.get_secret(SECRET)
-    if legacy and data["active"] and not settings.get_secret(secret_name(data["active"])):
-        settings.set_secret(secret_name(data["active"]), legacy)  # give the old one its place
-    if legacy:
-        settings.delete_secret(SECRET)
     data["active"] = slot
     _write(data)
     return data["saved"][slot]
@@ -199,6 +247,7 @@ def activate(slot: str) -> dict:
 
 def forget(slot: str | None = None) -> None:
     """Forget a kept connection (the one in use when none is named) and its key."""
+    _own_key()
     data = _read()
     slot = slot or data["active"]
     if not slot:
@@ -206,7 +255,6 @@ def forget(slot: str | None = None) -> None:
     data["saved"].pop(slot, None)
     settings.delete_secret(secret_name(slot))
     if data["active"] == slot:
-        settings.delete_secret(SECRET)
         data["active"] = None
     _write(data)
 
@@ -257,7 +305,7 @@ def describe() -> dict:
 
 def is_local(url: str) -> bool:
     """Does this address stay on the machine or the local network?"""
-    host = (re.match(r"https?://\[?([^/\]:]+)", url or "") or [None, ""])[1].lower()
+    host = _host(url)  # the machine really reached: not what stands before an @
     if host in ("localhost", "") or host.endswith((".local", ".lan", ".home")):
         return bool(host)
     try:
@@ -299,9 +347,16 @@ def request(
         headers["Authorization"] = f"Bearer {key}"
     call = urllib.request.Request(url, data=data, headers=headers, method=method)  # noqa: S310
     try:
-        with urllib.request.urlopen(call, timeout=timeout) as response:  # noqa: S310
+        # A password or key follows no redirect: it would arrive at another address.
+        with settings.open_direct(call, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8", "replace") or "null")
     except urllib.error.HTTPError as error:
+        if error.code in (301, 302, 303, 307, 308):
+            raise LlmError(
+                "The server tried to send the request to another address "
+                f"({(error.headers.get('Location') or 'not named')[:120]}). Atlas does not "
+                "follow that. Give that address directly if it is the right one."
+            ) from None
         text = error.read(20_000).decode("utf-8", "replace")
         try:
             detail = json.loads(text).get("error")
@@ -412,22 +467,25 @@ class Connection:
     def __init__(
         self, config: dict | None = None, password: str | None = None, slot: str | None = None
     ):
-        if config is None and slot:
-            config = load(slot)
-            if not config:
+        # A key is looked up only for a connection that is kept, under that
+        # connection's own name. A connection described by the caller comes
+        # with its password or goes without.
+        if config is None:
+            slot = slot or _read()["active"]
+            config = load(slot) if slot else {}
+            if not config and slot:
                 raise LlmError("That connection is not kept any more: choose another.")
-            password = secret_for(slot) or "" if password is None else password
-        elif config is None and password is None:
-            active = _read()["active"]
-            password = (secret_for(active) or "") if active else None
-        config = load() if config is None else _settled(config)
+            if password is None and slot:
+                password = secret_for(slot)
+        else:
+            config = _settled(config)
         if not config.get("base_url"):
             raise LlmError(
                 "No language model is connected. Connect one in Settings ▸ Language models."
             )
         self.config = config
         self.base = config["base_url"].rstrip("/")
-        self.password = settings.get_secret(SECRET) if password is None else (password or None)
+        self.password = password or None
         self.chat_model = config.get("chat_model")
         # The model inside the app: its server is started when first needed.
         self.built_in = config.get("chat_model") if config.get("kind") == "local" else None

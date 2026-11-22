@@ -109,9 +109,34 @@ def test_filter_through_the_api(conn, path):  # noqa: F811
     )
     assert [item["title"] for item in only["items"]] == ["three"]
     assert app.bookmarks_listed({"ids": everything, "facets": "nonsense"})["total"] == 4
+    # "Select all" inside "only these" is narrowed the same way as the list it sits on.
+    asked = {"ids": everything[:3], "facets": {"tags": ["Splats"]}, "ids_only": True}
+    narrowed = app.bookmarks_listed(asked)["ids"]
+    assert narrowed and set(narrowed) == set(everything[:3]) & set(
+        app.bookmark_ids({"tag": ["Splats"]})["ids"]
+    )
+    assert len(narrowed) == app.bookmarks_listed({**asked, "ids_only": False})["total"]
     assert app.facets()["tags"][0]["count"] == 2
     with pytest.raises(ValueError):
         app.bookmark_ids({"from": ["soon"]})
+
+
+def test_select_all_asks_with_the_same_narrowing_as_the_list():
+    """The page has no test runner: this pins the one thing that must not come
+    apart again. "Select all N" once ignored the filter bar and selected the
+    whole collection, and a batch delete then removed everything."""
+    from pathlib import Path
+
+    import atlas
+
+    page = (Path(atlas.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    handler = page[page.index('$("sel-all").onclick') :][:400]
+    assert "listRequest({ ids_only: true })" in handler and "/api/bookmarks/ids" not in handler
+    loader = page[page.index("async function loadBookmarks(") :][:300]
+    assert "listRequest({ limit: 100, offset: shown })" in loader
+    shared = page[page.index("function listRequest(") :][:700]
+    for part in ("selectionFilter", "facetBody()", "facetQuery()", "clusterFilter", '$("search")'):
+        assert part in shared
 
 
 def test_a_view_remembers_the_filter_and_the_arrangement(conn):

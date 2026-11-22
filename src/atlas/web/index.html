@@ -1092,7 +1092,9 @@
         <ul>
           <li><strong>Where to get a key:</strong> Claude at console.anthropic.com, OpenAI at
             platform.openai.com, Gemini at aistudio.google.com, Mistral at console.mistral.ai. The
-            key is kept in this computer's keychain, never in the database, a snapshot or an export.</li>
+            key stays on this computer: in its keychain when it has one, else in a private file of your
+            user account. Never in the database, the data folder, a snapshot or an export. Settings
+            says which of the two is used.</li>
           <li><strong>What changes:</strong> what Atlas sends (titles, summaries, tags, and the text of
             pages for summaries) leaves your computer and goes to that company under its terms.</li>
           <li><strong>It costs money.</strong> Each request is billed to your key. A question costs
@@ -1209,8 +1211,9 @@
 
       <details id="guide-data"><summary>Your data, backups and updates</summary><div>
         <p>Everything is in one folder on your computer: the collection (<code>atlas.sqlite</code>, an
-          ordinary SQLite file), your token, your scripts, backups and workspaces. Its place is shown at
-          the bottom of Settings. To move to another computer, copy that folder, or use
+          ordinary SQLite file), your scripts, backups and workspaces. Its place is shown at
+          the top of Settings. The Notion token and model keys are not in it: they stay on this
+          computer, in its keychain when it has one. To move to another computer, copy that folder, or use
           <strong>Atlas &gt; Choose data folder…</strong> in the menu.</p>
         <p>A backup is made before every grooming run. Nothing leaves your computer except the calls
           you start yourself: the Notion sync, the two lookups in Grooming, and the check for a new
@@ -1510,14 +1513,15 @@
   <div id="view-settings" hidden>
     <section class="card">
       <h2>Where your data lives</h2>
-      <p class="help">Everything is in this one folder: your bookmarks, your grooming scripts, the
-        backups and the Notion token.</p>
+      <p class="help">Your bookmarks, your grooming scripts, the backups and the workspaces are in
+        this one folder. The Notion token and the keys of language models are not: they stay on
+        this computer (its keychain when it has one).</p>
       <p><code id="data-folder"></code></p>
       <p class="tagline" id="about-line"></p>
       <p class="help">To move to another computer, copy this folder there, then pick it with the menu
         <strong>Atlas &gt; Choose data folder…</strong>. The same menu moves your data to another place
-        on this computer, such as a synced drive. Because the folder holds your Notion token, do not
-        hand it to someone else: to share bookmarks, use Export selection.</p>
+        on this computer, such as a synced drive. On another computer you enter the Notion token and any
+        key again. The folder is your whole collection: to share part of it, use Export selection.</p>
     </section>
 
     <section class="card" id="llm-card">
@@ -1528,8 +1532,8 @@
         <strong>LlmOnLan farm</strong> by itself; any other server that speaks the OpenAI API
         (Ollama, llama.cpp, vLLM, LM Studio) works with its address; or use
         <strong>Claude, OpenAI, Gemini or Mistral</strong> with an API key. Nothing is sent anywhere
-        until you connect one, and the password or key is kept in this computer's keychain, never in
-        the database.</p>
+        until you connect one. The password or key stays on this computer (its keychain when it has
+        one, else a private file of your user account), never in the database or the data folder.</p>
       <div class="row"><div class="note grow" id="llm-now"></div>
         <button class="action" id="llm-forget" hidden>Disconnect</button></div>
       <ul class="plain" id="llm-kept"></ul>
@@ -1738,7 +1742,7 @@ async function refreshState() {
   const n = state.notion;
   $("forget-token").hidden = !n.token_set || n.token_source === "environment";
   if (n.token_set && !$("token-note").textContent) {
-    const where = { environment: "the NOTION_TOKEN environment variable", keychain: "the system keychain", file: "a private file on this computer" }[n.token_source];
+    const where = { environment: "the NOTION_TOKEN environment variable", keychain: "the system keychain", file: "a private file on this computer (no keychain answered)" }[n.token_source];
     note("token-note", "A token is set (" + n.token_hint + "), read from " + where + ".", "muted");
   }
   const sel = n.selected;
@@ -4435,13 +4439,22 @@ function safeLink(url) {
   catch (error) { return null; }
 }
 
+// Everything that narrows the list: the search, the topic, the filter bar, "only
+// these". The list and "select all" must ask with the same narrowing, so both
+// go through here: what "select all N" selects is the N the list counts.
+function listRequest(extra) {
+  const q = $("search").value.trim();
+  return selectionFilter
+    ? api("POST", "/api/bookmarks/list", { ids: selectionFilter, q, facets: facetBody(), ...extra })
+    : api("GET", "/api/bookmarks" + (extra.ids_only ? "/ids" : "") + "?q=" + encodeURIComponent(q)
+      + (extra.ids_only ? "" : "&limit=" + extra.limit + "&offset=" + extra.offset)
+      + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : "") + facetQuery());
+}
+function listNarrowed() { return Boolean($("search").value.trim() || clusterFilter || selectionFilter || facetsActive()); }
 async function loadBookmarks(reset) {
   if (reset) shown = 0;
   const q = $("search").value.trim();
-  const data = selectionFilter
-    ? await api("POST", "/api/bookmarks/list", { ids: selectionFilter, q, limit: 100, offset: shown, facets: facetBody() })
-    : await api("GET", "/api/bookmarks?limit=100&offset=" + shown + "&q=" + encodeURIComponent(q)
-      + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : "") + facetQuery());
+  const data = await listRequest({ limit: 100, offset: shown });
   total = data.total;
   const holder = $("list");
   if (reset) holder.replaceChildren();
@@ -4508,9 +4521,8 @@ function refreshSelection() {
   if (!n) { $("sel-count").textContent = "Nothing selected"; $("sel-all").hidden = true; if (!keepNote) note("sel-note", "", "muted"); return; }
   keepNote = false;
   $("sel-count").textContent = n + (n === 1 ? " bookmark selected" : " bookmarks selected");
-  const q = $("search").value.trim();
   $("sel-all").hidden = n >= total;
-  $("sel-all").textContent = "select all " + total + (q || clusterFilter ? " matching" : "");
+  $("sel-all").textContent = "select all " + total + (listNarrowed() ? " shown by the search and filters" : "");
   const all = $("pick-all");
   if (all) { const boxes = [...document.querySelectorAll("td.pick input")]; all.checked = boxes.length > 0 && boxes.every((b) => b.checked); }
   clearTimeout(tagsTimer);
@@ -4569,8 +4581,7 @@ $("sel-delete").onclick = () => {
 $("sel-clear").onclick = () => { keepNote = false; selection.clear(); for (const box of document.querySelectorAll("td.pick input")) box.checked = false; refreshSelection(); };
 $("sel-all").onclick = async () => {
   try {
-    const ids = (await api("GET", "/api/bookmarks/ids?q=" + encodeURIComponent($("search").value.trim())
-      + (clusterFilter ? "&cluster=" + encodeURIComponent(clusterFilter.key) : ""))).ids;
+    const ids = (await listRequest({ ids_only: true })).ids;
     for (const id of ids) selection.add(id);
     for (const box of document.querySelectorAll("td.pick input")) box.checked = selection.has(box.dataset.id);
     refreshSelection();
@@ -4696,7 +4707,7 @@ async function loadLlm() {
   llm.state = await api("GET", "/api/llm");
   const c = llm.state.connection, v = llm.state.vectors;
   note("llm-now", c.connected
-    ? "Connected to " + (c.name || c.base_url) + " · writing with " + (c.kind === "local" ? "the " + c.chat_model + " model" : c.chat_model) + (c.has_password ? (c.provider ? " · key kept" : " · password kept") : "")
+    ? "Connected to " + (c.name || c.base_url) + " · writing with " + (c.kind === "local" ? "the " + c.chat_model + " model" : c.chat_model) + (c.has_password ? (c.provider ? " · key kept" : " · password kept") + (llm.state.keys_in === "keychain" ? " in the system keychain" : " in a private file on this computer (no keychain answered)") : "")
       + (c.provider ? " · on the internet: what you send goes to this provider and is billed to your key" : c.local ? "" : " · This address is not on your local network: what you send leaves it.")
     : "Not connected.", c.connected ? (c.local ? "good" : "bad") : "muted");
   $("llm-forget").hidden = !c.connected;
@@ -4802,7 +4813,7 @@ $("llm-where").onchange = () => {
   if (!provider) { $("llm-form").hidden = true; note("llm-note", "", "muted"); return; }
   $("llm-cloud").replaceChildren(el("strong", { textContent: provider.name + " runs on the internet. " }),
     "What Atlas sends for a job (titles, summaries, tags, and page text for summaries) leaves your computer and goes to that company, under its terms, and each request is billed to your key: a few thousand summaries can cost real money, so start with a selection. "
-    + "Get a key at " + provider.keys + ". It is kept in this computer's keychain, never in the database or an export."
+    + "Get a key at " + provider.keys + ". It stays on this computer (its keychain when it has one), never in the database, the data folder or an export."
     + (provider.vectors ? "" : " Claude writes text but offers no vectors: “Place bookmarks by meaning” stays on words."));
   llmDraft({ kind, provider: true, name: provider.name, base_url: provider.base_url, models: [] });
   note("llm-note", "Paste your API key, then press Test.", "muted");

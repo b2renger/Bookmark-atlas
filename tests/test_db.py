@@ -70,3 +70,48 @@ def test_doctor_judges_the_notion_answer(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(cli, "_check_notion_reachable", lambda: (False, "no route"))
     assert main(["--db", str(tmp_path / "a.sqlite"), "doctor"]) == 1
     assert "no route" in capsys.readouterr().out
+
+
+def test_a_migration_is_applied_whole_or_not_at_all(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "a.sqlite", create=True)
+    db.migrate(conn)
+    latest = db.latest_version()
+    real = db._migrations()
+    broken = (
+        latest + 1,
+        "9999_broken.sql",
+        "CREATE TABLE half (id INTEGER);\nCREATE TABLE half (id INTEGER);",
+    )
+    monkeypatch.setattr(db, "_migrations", lambda: [*real, broken])
+    with pytest.raises(sqlite3.OperationalError):
+        db.migrate(conn)
+    # Nothing of the failed migration stays: not its first table, not its number.
+    assert db.schema_version(conn) == latest
+    assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'half'").fetchone()
+    assert not conn.in_transaction
+    mended = (
+        latest + 1,
+        "9999_mended.sql",
+        "CREATE TABLE half (id INTEGER);\nCREATE TABLE other (id INTEGER);",
+    )
+    monkeypatch.setattr(db, "_migrations", lambda: [*real, mended])
+    assert db.migrate(conn) == ["9999_mended.sql"] and db.schema_version(conn) == latest + 1
+    conn.close()
+
+
+def test_every_earlier_schema_upgrades_to_this_one(tmp_path, monkeypatch):
+    real = db._migrations()
+    for stop in range(1, len(real)):
+        path = tmp_path / f"v{stop}.sqlite"
+        monkeypatch.setattr(db, "_migrations", lambda stop=stop: real[:stop])
+        conn = db.connect(path, create=True)
+        db.migrate(conn)
+        conn.close()
+        monkeypatch.setattr(db, "_migrations", lambda: real)
+        with pytest.raises(RuntimeError, match="Run 'atlas init'"):
+            db.open_ready(path)
+        assert [name for _, name, _ in real[stop:]] == db.upgrade(path)
+        assert db.upgrade(path) == []
+        conn = db.open_ready(path)
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        conn.close()

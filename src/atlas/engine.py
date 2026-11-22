@@ -298,7 +298,11 @@ def ensure(key: str, spawn=subprocess.Popen, wait: float = START_WAIT) -> dict:
         port, secret = _free_port(), secrets.token_urlsafe(24)
         # Only this computer's own variables, never a LLAMA_* one: those set the
         # server's flags (one of them would write every prompt to disk).
-        env = {k: v for k, v in os.environ.items() if not k.upper().startswith("LLAMA_")}
+        env = {  # nothing of ours that the engine has no use for
+            k: v
+            for k, v in os.environ.items()
+            if not k.upper().startswith("LLAMA_") and k != settings.ENV_TOKEN
+        }
         env["LLAMA_API_KEY"] = secret
         log = (models_dir() / f"{role}.log").open("ab")
         try:

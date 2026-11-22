@@ -4,6 +4,29 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-22: v0.26.1; phase 29, the review's four urgent findings
+
+**Works:** `settings.private_dir`, `settle`, guarded keychain calls,
+`open_direct`; `llm._own_key`, `kept_key_for`, connections file beside the
+keys; `db.upgrade` and transactional `migrate`; `listRequest` in the page;
+`tests/conftest.py` keeps every test away from the real keychain.
+
+**Decisions:** secrets leave the data folder for good, keychain or not: the
+folder is what people sync and hand over. A received folder can add a
+secret you lack but never replace one. Redirects are refused rather than
+followed without credentials: an answer from another address than the one
+connected is not what the user chose.
+
+**What the review showed about the process:** claims written from intent
+("kept in the keychain") were never run on the packaged app; the page has no
+tests, so two interface bugs passed 341 tests; nine deliberate breakages
+survived the suite. Each fix here starts from a test that fails first.
+
+**Next (0.27.0):** quote check on whole words, model downloads checked by
+length and hash, engine processes that end with the app, failed model
+requests not stored as done, the page reader on unclosed tags, private
+addresses, stale stage status; then the interface and documentation list.
+
 ## 2026-11-22: v0.26.0; phases 27 and 28, stages, and the notebook tied to the pictures
 
 **Works:** `#stages` and `#subnav` with `STAGE_OF`, `renderStages`,

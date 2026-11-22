@@ -647,3 +647,33 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   other model jobs use the connection in use; starting the model on this
   computer for one routed question stops nothing else but takes its memory.
 
+## Phase 29: an independent review, and its four urgent findings (v0.26.1)
+
+Three reviewers with no knowledge of how the code was written read the
+repository at v0.26.0: security and privacy, code and tests, interface and
+documentation. Their findings were confirmed by experiment where marked.
+
+- **Secrets:** `keyring` is bundled in the desktop app (it was not, so every
+  secret went to `secrets.json` in the data folder). The fallback file lives
+  in `settings.private_dir()` (`ATLAS_SECRETS_DIR`, the app's own folder),
+  `settings.settle()` moves old files out and never replaces a secret already
+  kept. `llm.json` lives there too. Keychain calls are guarded: a keychain
+  that refuses means the private file.
+- **Select all:** the list and "select all" ask through one function
+  (`listRequest`), with the search, topic, filter bar and "only these".
+- **Workspaces:** `db.upgrade` when a workspace is listed or opened. A
+  migration is one transaction including its version number.
+- **Keys of connections:** the single key of older versions is given to its
+  own connection before anything changes (`llm._own_key`); a kept key is
+  reused only for the same address (`kept_key_for`); `settings.open_direct`
+  follows no redirect (models and Notion); a provider's vectors address
+  cannot be set by a file.
+- **Checked:** 359 tests, 18 new. Upgrade from every earlier schema is now
+  tested.
+- **Not checked:** a real keychain. The release build runs
+  `desktop/scripts/keychain-selfcheck.py` on each platform and prints the
+  result; a build machine may have no keychain session.
+- **Known limits:** secrets are per computer user, no longer per data
+  folder: two collections tied to two Notion workspaces share one token
+  slot. `keyring` and its dependencies are not pinned by hash.
+

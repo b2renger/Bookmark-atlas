@@ -209,3 +209,30 @@ def test_workspaces_through_the_api(home):
             app.workspace_create(bad)
     with pytest.raises(ValueError):
         app.workspace_open({"id": "../.."})
+
+
+def test_a_workspace_made_by_an_earlier_version_is_upgraded_not_lost(path, monkeypatch):  # noqa: F811
+    """Only the main collection is upgraded at start. A workspace left at an
+    older schema used to vanish from the list and refuse to open."""
+    app = App(path)
+    made = app.workspace_create({"name": "Study", "empty": True})
+    app.workspace_open({"id": "home"})
+    target = workspaces.path_of(path, made["workspace"]["id"]) if "workspace" in made else None
+    target = target or next(workspaces.root(path).glob("*/atlas.sqlite"))
+    # Take the file back to the schema before the last migration.
+    old = db.connect(target)
+    last = db._migrations()[-1]
+    for (table,) in old.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL"
+    ).fetchall():
+        if f"CREATE TABLE {table} " in last[2] or f"CREATE TABLE {table}(" in last[2]:
+            old.execute(f"DROP TABLE {table}")
+    old.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(last[0] - 1),))
+    old.commit()
+    old.close()
+    with pytest.raises(RuntimeError):
+        db.open_ready(target).close()
+    listed = workspaces.list_all(path)
+    assert [w["name"] for w in listed] == ["Study"]
+    db.open_ready(target).close()  # upgraded by being listed
+    assert app.workspace_open({"id": listed[0]["id"]})
