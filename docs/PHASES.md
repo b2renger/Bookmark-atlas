@@ -734,7 +734,18 @@ fixes themselves turned up.
   the release of each phase; the phase table is complete; the first plan is
   marked historical.
 - **Checked:** 434 tests (93 more than at the review), browser runs at 760,
-  1000, 1280 and 1700 px, and REPLACE-CI-EVIDENCE
+  1000, 1280 and 1700 px, and on the build machines
+  (trial build 45056963897, 2026-11-22): every download of the build matched
+  its pin on the three platforms; `keychain-selfcheck.py` stored, read and
+  deleted a value in Windows Credential Manager and the macOS Keychain (the
+  Linux machine has no secret service: private file); `guard-selfcheck.py`
+  saw the child gone within a second of the parent being killed on all
+  three; `engine-selfcheck.py` on Linux downloaded Light and Vectors at
+  their pinned addresses and answered one notebook question in 16 s, 2
+  statements kept and 3 set aside. The first trial build failed in its test
+  job: an older test fetched a page from this computer, which the new rule
+  rightly refuses when no proxy stands in between; local runs had a proxy
+  and missed it, so tests now always run as without one.
 - **Not checked:** a real farm or provider; the Medium and Advanced models
   answering; any model on Windows or macOS; a Linux desktop keychain.
 - **Left as known limits, on purpose:** links that differ only by port or

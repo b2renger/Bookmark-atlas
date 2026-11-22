@@ -289,7 +289,8 @@ What has been run for real, and what has not:
   import with a real token, the CSV import (a 962-row export).
 - **Run on the build machines, not yet by a person:** the Linux and macOS
   apps (started and their page loaded); the keychain on Windows and macOS
-  (a value stored, read back and deleted); the built-in engine with the
+  (a value stored, read back and deleted); the model's program ending when
+  the app is killed, on the three systems; the built-in engine with the
   Light and Vectors models on Linux (one notebook question answered).
 - **Tested with stand-ins only:** a LlmOnLan farm, the four providers, the
   browsers' own files, and the two features that read the web.
