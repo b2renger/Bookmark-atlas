@@ -109,13 +109,45 @@ def _path():
     return settings.config_dir() / "llm.json"
 
 
-def load() -> dict:
-    """The connection as saved: ``{}`` when none was set up."""
+_FIELDS = ("kind", "name", "base_url", "self_url", "chat_model", "embed_url", "embed_model")
+
+
+def slot_of(config: dict) -> str:
+    """Where a connection is kept: one place for this computer, one for the
+    local network, one for each provider."""
+    kind = config.get("kind") or ""
+    return kind if kind == "local" or kind in PROVIDERS else "lan"
+
+
+def _read() -> dict:
+    """The file as ``{"active": slot or None, "saved": {slot: connection}}``.
+    A file from before several connections could be kept holds one connection."""
     try:
         data = json.loads(_path().read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-    return _settled(data) if isinstance(data, dict) else {}
+        return {"active": None, "saved": {}}
+    if not isinstance(data, dict):
+        return {"active": None, "saved": {}}
+    if "saved" not in data:
+        if not data.get("base_url"):
+            return {"active": None, "saved": {}}
+        only = _settled(data)
+        return {"active": slot_of(only), "saved": {slot_of(only): only}}
+    saved = {k: _settled(v) for k, v in (data.get("saved") or {}).items() if isinstance(v, dict)}
+    active = data.get("active")
+    return {"active": active if active in saved else None, "saved": saved}
+
+
+def _write(data: dict) -> None:
+    path = _path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def load(slot: str | None = None) -> dict:
+    """The connection in use (or the one kept in ``slot``): ``{}`` when none."""
+    data = _read()
+    return data["saved"].get(slot or data["active"] or "", {})
 
 
 def _settled(config: dict) -> dict:
@@ -129,33 +161,85 @@ def _settled(config: dict) -> dict:
 
 
 def save(config: dict) -> dict:
-    keep = {
-        key: config[key]
-        for key in (
-            "kind",
-            "name",
-            "base_url",
-            "self_url",
-            "chat_model",
-            "embed_url",
-            "embed_model",
-        )
-        if config.get(key)
-    }
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(keep, indent=2), encoding="utf-8")
+    """Keep a connection in its place and make it the one in use. The others
+    stay, so a question can be sent to any of them."""
+    keep = {key: config[key] for key in _FIELDS if config.get(key)}
+    data = _read()
+    data["saved"][slot_of(keep)] = keep
+    data["active"] = slot_of(keep)
+    _write(data)
     return keep
 
 
-def forget() -> None:
-    _path().unlink(missing_ok=True)
-    settings.delete_secret(SECRET)
+def secret_name(slot: str) -> str:
+    return f"{SECRET}:{slot}"
+
+
+def secret_for(slot: str) -> str | None:
+    """The password or key of a kept connection. One kept before each
+    connection had its own is still found."""
+    return settings.get_secret(secret_name(slot)) or (
+        settings.get_secret(SECRET) if slot == _read()["active"] else None
+    )
+
+
+def activate(slot: str) -> dict:
+    data = _read()
+    if slot not in data["saved"]:
+        raise LlmError("That connection is not kept any more.")
+    legacy = settings.get_secret(SECRET)
+    if legacy and data["active"] and not settings.get_secret(secret_name(data["active"])):
+        settings.set_secret(secret_name(data["active"]), legacy)  # give the old one its place
+    if legacy:
+        settings.delete_secret(SECRET)
+    data["active"] = slot
+    _write(data)
+    return data["saved"][slot]
+
+
+def forget(slot: str | None = None) -> None:
+    """Forget a kept connection (the one in use when none is named) and its key."""
+    data = _read()
+    slot = slot or data["active"]
+    if not slot:
+        return
+    data["saved"].pop(slot, None)
+    settings.delete_secret(secret_name(slot))
+    if data["active"] == slot:
+        settings.delete_secret(SECRET)
+        data["active"] = None
+    _write(data)
+
+
+def _card(slot: str, config: dict, active: str | None) -> dict:
+    provider = PROVIDERS.get(config.get("kind") or "", {}).get("name")
+    local = config.get("kind") == "local" or is_local(config.get("base_url") or "")
+    if config.get("kind") == "local":
+        label = f"This computer ({config.get('chat_model')})"
+    else:
+        label = f"{provider or config.get('name') or 'My server'} ({config.get('chat_model')})"
+    return {
+        "slot": slot,
+        "label": label,
+        "kind": config.get("kind"),
+        "chat_model": config.get("chat_model"),
+        "provider": provider,
+        "local": local,
+        "active": slot == active,
+    }
+
+
+def kept() -> list[dict]:
+    """Every connection kept, the one in use first: what a question can be sent to."""
+    data = _read()
+    cards = [_card(slot, config, data["active"]) for slot, config in data["saved"].items()]
+    return sorted(cards, key=lambda card: (not card["active"], card["label"]))
 
 
 def describe() -> dict:
     """The connection for the page: never the password itself."""
-    config = load()
+    data = _read()
+    config = data["saved"].get(data["active"] or "", {})
     return {
         "connected": bool(config.get("base_url")),
         "kind": config.get("kind"),
@@ -164,9 +248,10 @@ def describe() -> dict:
         "chat_model": config.get("chat_model"),
         "embed_url": config.get("embed_url"),
         "embed_model": config.get("embed_model"),
-        "has_password": bool(settings.get_secret(SECRET)),
+        "has_password": bool(data["active"] and secret_for(data["active"])),
         "local": config.get("kind") == "local" or is_local(config.get("base_url") or ""),
         "provider": PROVIDERS.get(config.get("kind") or "", {}).get("name"),
+        "slot": data["active"],
     }
 
 
@@ -324,7 +409,17 @@ def discover(seconds: float = 6.0, port: int = BEACON_PORT) -> list[dict]:
 class Connection:
     """The saved connection, resolved: where chat and vectors are asked for."""
 
-    def __init__(self, config: dict | None = None, password: str | None = None):
+    def __init__(
+        self, config: dict | None = None, password: str | None = None, slot: str | None = None
+    ):
+        if config is None and slot:
+            config = load(slot)
+            if not config:
+                raise LlmError("That connection is not kept any more: choose another.")
+            password = secret_for(slot) or "" if password is None else password
+        elif config is None and password is None:
+            active = _read()["active"]
+            password = (secret_for(active) or "") if active else None
         config = load() if config is None else _settled(config)
         if not config.get("base_url"):
             raise LlmError(

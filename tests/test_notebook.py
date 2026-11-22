@@ -261,3 +261,121 @@ def test_through_the_api(path, farm):  # noqa: F811
         app.notebooks({"action": "explode"})
     assert json.dumps(message)  # everything returned can go to the page
     app.llm_forget()
+
+
+def test_the_figures_of_a_set_are_counted_and_offered_as_a_passage(conn, read, farm):
+    from atlas.analysis import store
+
+    store.cluster_run(conn, k=2)
+    ids = list(read.values())
+    seen = notebook.glance(conn, ids)
+    assert seen["sources"] == 12 and (seen["first_day"], seen["last_day"]) == (
+        "2024-01-01",
+        "2024-02-06",
+    )
+    assert seen["per_year"] == [[2024, 12]] and seen["undated"] == 0
+    assert seen["tags"][0] == ["cooking", 6] and seen["sites"] == [["example.org", 12]]
+    assert (
+        sorted(t["count"] for t in seen["topics"]) == [6, 6]
+        and seen["topics"][0]["key"].count(":") == 1
+    )
+    text = notebook.figures(seen)
+    assert text.startswith(
+        "This set holds 12 sources.\nTheir dates run from 2024-01-01 to 2024-02-06."
+    )
+    assert "Sources per year: 2024: 12." in text and "Most used tags: cooking: 6" in text
+    assert (
+        notebook.glance(conn, [])["sources"] == 0
+        and notebook.figures(notebook.glance(conn, [])) == ""
+    )
+    connection = llm.Connection(farm.config(), password="")
+    # A question about the set itself gets the figures as one more passage; another does not.
+    told = notebook.answer(conn, connection, ids, "How many sources per year, and which tags?")
+    last = told["passages"][-1]
+    assert (
+        last["figures"]
+        and last["bookmark_id"] is None
+        and "This set holds 12 sources." in last["text"]
+    )
+    assert len(told["passages"]) <= notebook.PASSAGES_SHOWN
+    assert "Figures counted by Atlas" in farm.calls[-1]["body"]["messages"][-1]["content"]
+    told = notebook.answer(conn, connection, ids, "What does the Danube cross?")
+    assert not any(p["figures"] for p in told["passages"])
+    book = notebook.create(conn, "Set", ids[:4])
+    assert notebook.show(conn, book["id"])["glance"]["sources"] == 4
+
+
+def test_several_connections_are_kept_and_a_question_can_go_to_any(path, tmp_path):  # noqa: F811
+    from atlas import settings
+
+    conn = db.open_ready(path)
+    ids = fill(conn)
+    conn.close()
+    first, second = (
+        FakeFarm(password="one"),
+        FakeFarm(provider="anthropic", password="sk-two", listed=["claude-sonnet-9"]),
+    )
+    try:
+        llm.PROVIDERS["anthropic"] = {**llm.PROVIDERS["anthropic"], "base_url": f"{second.url}/v1"}
+        app = App(path)
+        app.llm_connect({**first.config(), "password": "one"})
+        app.llm_connect(
+            {"kind": "anthropic", "chat_model": "claude-sonnet-9", "password": "sk-two"}
+        )
+        state = app.llm_state()
+        assert [(k["slot"], k["active"]) for k in state["kept"]] == [
+            ("anthropic", True),
+            ("lan", False),
+        ]
+        assert (
+            state["kept"][1]["label"] == "Stand-in farm (gemma4:12b)" and state["kept"][1]["local"]
+        )
+        assert state["connection"]["slot"] == "anthropic" and state["connection"]["has_password"]
+        saved = (tmp_path / "config" / "llm.json").read_text()
+        assert "one" not in saved.replace("Stand-in", "") and "sk-two" not in saved
+        book = app.notebooks(
+            {"action": "create", "name": "Maps", "ids": [ids["map0"], ids["map1"]]}
+        )
+        ask = {"action": "ask", "id": book["id"], "question": "cartography rivers maps?"}
+        assert app.notebooks(ask)["message"]["model"] == "claude-sonnet-9"
+        assert second.calls[-1]["path"] == "/v1/messages"
+        # The same question sent to the farm, without changing what is in use.
+        assert app.notebooks({**ask, "route": "lan"})["message"]["model"] == "gemma4:12b"
+        assert first.calls[-1]["path"] == "/v1/chat/completions"
+        assert app.llm_state()["connection"]["slot"] == "anthropic"
+        with pytest.raises(RuntimeError, match="not kept any more"):
+            app.notebooks({**ask, "route": "openai"})
+        # Switching back needs no key again; forgetting one leaves the other.
+        assert app.llm_use({"slot": "lan"})["connection"]["slot"] == "lan"
+        assert app.notebooks(ask)["message"]["model"] == "gemma4:12b"
+        state = app.llm_use({"slot": "anthropic", "forget": True})
+        assert [k["slot"] for k in state["kept"]] == ["lan"] and state["connection"]["connected"]
+        assert settings.get_secret(llm.secret_name("anthropic")) is None
+        assert settings.get_secret(llm.secret_name("lan")) == "one"
+        app.llm_forget()
+        assert app.llm_state()["kept"] == [] and not app.llm_state()["connection"]["connected"]
+    finally:
+        llm.PROVIDERS["anthropic"] = {
+            **llm.PROVIDERS["anthropic"],
+            "base_url": "https://api.anthropic.com/v1",
+        }
+        first.close()
+        second.close()
+
+
+def test_a_connection_file_from_before_is_still_read(tmp_path):
+    from atlas import settings
+
+    folder = tmp_path / "config"
+    folder.mkdir()
+    (folder / "llm.json").write_text(
+        '{"kind": "farm", "name": "Old farm", "base_url": "http://10.0.0.5:4000/v1", "chat_model": "m"}'
+    )
+    settings.set_secret(llm.SECRET, "old-password")
+    assert llm.load()["name"] == "Old farm" and llm.describe()["has_password"]
+    assert [k["slot"] for k in llm.kept()] == ["lan"]
+    assert llm.Connection().password == "old-password"
+    llm.activate("lan")  # the key moves to its own place
+    assert settings.get_secret(llm.SECRET) is None
+    assert settings.get_secret(llm.secret_name("lan")) == "old-password"
+    assert llm.Connection().password == "old-password"

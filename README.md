@@ -15,6 +15,8 @@ November 2026 ([arXiv 2611.09501](https://arxiv.org/abs/2611.09501)).
 
 These pictures were taken from an invented collection (`tools/demo_collection.py`), not from anyone's bookmarks.
 
+![The five stages at the top of the window: Collect, Clean, Explore, Study, Keep](docs/screenshots/stages.png)
+
 | | |
 |---|---|
 | ![The map, with one topic in focus](docs/screenshots/map.png) **Map.** Similar bookmarks sit close together. | ![The same dots along a timeline](docs/screenshots/timeline.png) **Timeline.** One row per topic. |
@@ -93,15 +95,30 @@ macOS and Linux builds are not produced yet.
 
 ## Use it
 
-In **Settings** you can load data two ways, and combine them:
+The top of the window follows the path your bookmarks take, in five numbered
+stages. Each says where you stand, the next useful one is outlined, and the
+row under it holds that stage's screens:
 
-- **Import a CSV file**: an export of the table from Notion. No token needed.
+1. **Collect** (Sources): bring bookmarks in.
+2. **Clean** (Grooming): duplicates, tags, dates, with preview and undo.
+3. **Explore**: Bookmarks, Clusters, Map, Grid, Tree, Links, Trends.
+4. **Study** (Notebook): question a set of bookmarks with a language model.
+5. **Keep** (Views, Workspaces): save, share, work on a copy.
+
+Nothing forces the order. Settings (data folder, language models) and the
+Guide sit at the top right.
+
+In **Collect** you can load data three ways, and combine them:
+
+- **A browser on this computer**: its bookmarks are read directly.
+- **A file**: a CSV exported from Notion, a bundle from another Atlas, or a
+  browser's bookmarks file. No token needed.
 - **Notion**: connect with a token, pick the table, import. Later imports only
   fetch rows edited since.
 
 In **Bookmarks**, tick rows (or "select all matching" a search) to add or
 remove a tag, delete, or **export the selection** as a file another Atlas user
-can import from Settings.
+can import from Collect.
 
 The **Map** draws every bookmark as a dot, similar ones close together, with
 topic names on top. Hover and click to read, click a topic to focus it, type
@@ -152,7 +169,7 @@ in the last 90 days.
 
 The app explains itself: a **Guide** tab with a section per tab (the **?** at
 the top right opens the section for where you are), five **getting-started
-steps** on the first screen that tick themselves off, and in Settings the
+steps** on the first screen that tick themselves off, and in Collect the
 steps to get a Notion token.
 
 Every picture can be zoomed and moved: scroll to zoom, drag to move,
@@ -168,7 +185,7 @@ from a CSV, a bundle, a snapshot, another Notion table or a browser's
 bookmarks file; then merge it back (merging only adds) or delete it. They are
 kept in `Workspaces/` inside your data folder. **Browsers on this
 computer** (Chrome, Edge, Brave, Vivaldi, Opera, Chromium, Arc, Firefox and
-its relatives, Safari) are read directly from Settings: folders become tags,
+its relatives, Safari) are read directly from Collect: folders become tags,
 and only bookmarks are read. A database dump (an `.sql`
 export of a site that kept links) is read into a workspace of its own: links,
 titles, descriptions, dates and tags only, never accounts.
@@ -192,6 +209,22 @@ your own computer; the model answers from those only and must quote the words
 each statement rests on; Atlas checks the quote is really in the source and
 sets aside what fails. What the sources do not say is said, not guessed.
 Notes export as a Markdown document with quotes and sources.
+
+The notebook is tied to the pictures. Above the conversation it shows the
+set's figures, counted by Atlas: how many sources, over which months, a bar
+per year, their topics and tags, with **see them on the map / over time / in
+the list**. A question about the set itself ("how many per year?") is answered
+from those figures and says so. Under an answer, **see its sources on the
+map** selects the bookmarks it rests on; and any selection made on a picture
+can become a notebook.
+
+Every connection you set up is kept (this computer, your network, each
+provider). With two or more, **Answered by** next to Ask sends one question to
+the model you choose, and each answer names the model that wrote it.
+
+![A notebook: sources, the set's figures, a conversation with quoted statements, notes](docs/screenshots/notebook.png)
+
+(The answers in this picture come from a stand-in model that only lifts sentences from the passages.)
 
 ### A language model inside the app
 

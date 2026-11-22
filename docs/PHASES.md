@@ -612,3 +612,38 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   proves the quote exists in the source, not that it is the right proof.
 - **Known limits:** CPU builds only (no graphics card use on Windows and
   Linux yet); Apple's build needs a recent macOS; no Intel Mac.
+
+## Phase 27: the interface follows the data (v0.26.0)
+
+- **Navigation:** five numbered stages (Collect, Clean, Explore, Study,
+  Keep) with a status line each and the next one outlined; a second row with
+  the stage's screens and a one-line suggestion. A stage reopens on the
+  screen last used in it.
+- **Collect ▸ Sources:** the three imports (browser, file, Notion) moved out
+  of Settings into their own screen; an empty collection lands there.
+- **Checked:** browser runs on an empty and a full invented collection at
+  1700 and 1000 px: no horizontal overflow, sticky bars stack, no page error.
+
+## Phase 28: the notebook and the pictures; who answers (v0.26.0)
+
+- **Figures:** `notebook.glance` counts a set (sources, date range, per
+  year, topics of the latest clustering, tags, sites); `figures` turns it
+  into sentences. Shown above the conversation with a bar per year.
+- **Used to answer:** a question about the set itself gets those sentences
+  as one more passage, so a statement resting on them passes the same quote
+  check and is shown as "figures Atlas counted", not a page.
+- **Referring to the pictures:** see the sources on the map, over time, in
+  the list; a topic chip; "see its sources on the map" under an answer; a
+  selection chip on Clusters and Trends offering a notebook.
+- **Several connections kept:** `llm.json` holds one per place (this
+  computer, the network, each provider) and which is in use; each key under
+  its own keychain name; an old single-connection file is still read and its
+  key moved. `route` on a notebook question sends it to any kept connection.
+- **Checked:** 341 tests (3 new) and a browser run with a stand-in farm and
+  a stand-in provider side by side.
+- **Not checked:** real models reading the figures; a real farm or provider.
+- **Known limits:** which questions get the figures is decided by a word
+  list (English and French); only notebook questions can be routed, the
+  other model jobs use the connection in use; starting the model on this
+  computer for one routed question stops nothing else but takes its memory.
+

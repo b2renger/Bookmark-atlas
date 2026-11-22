@@ -322,11 +322,12 @@ class App:
 
     # ---- language models ----
 
-    def _with(self, work, *, model: bool = False):
-        """Run ``work(conn[, connection])`` on the open collection."""
+    def _with(self, work, *, model: bool = False, route: str | None = None):
+        """Run ``work(conn[, connection])`` on the open collection. ``route``
+        names a kept connection to use in place of the one in use."""
         from atlas import llm
 
-        connection = llm.Connection() if model else None
+        connection = llm.Connection(slot=route or None) if model else None
         conn = self._conn()
         try:
             return work(conn, connection) if model else work(conn)
@@ -340,6 +341,7 @@ class App:
             "connection": llm.describe(),
             "vectors": self._with(assist.vector_status),
             "providers": llm.providers(),
+            "kept": llm.kept(),
         }
 
     def llm_find(self, body: dict) -> dict:
@@ -390,7 +392,7 @@ class App:
 
         password = body.get("password")
         if password is None and body.get("keep_password"):
-            password = settings.get_secret(llm.SECRET)
+            password = llm.secret_for(llm.slot_of(self._llm_config(body)))
         return llm.test(self._llm_config(body), password)
 
     def llm_connect(self, body: dict) -> dict:
@@ -399,11 +401,27 @@ class App:
         config = self._llm_config(body)
         if not config["chat_model"]:
             raise ValueError("Choose a model.")
+        slot = llm.slot_of(config)
+        kept = llm.secret_for(slot) if body.get("keep_password") else None
         llm.save(config)
-        if body.get("password"):
-            settings.set_secret(llm.SECRET, str(body["password"]))
-        elif not body.get("keep_password"):
-            settings.delete_secret(llm.SECRET)
+        llm.activate(slot)  # moves a key kept the old way to its own place
+        if body.get("password") or kept:
+            settings.set_secret(llm.secret_name(slot), str(body.get("password") or kept))
+        else:
+            settings.delete_secret(llm.secret_name(slot))
+        return self.llm_state()
+
+    def llm_use(self, body: dict) -> dict:
+        """Switch to a connection kept earlier, or forget one."""
+        from atlas import engine, llm
+
+        slot = str(body.get("slot") or "")
+        if body.get("forget"):
+            if slot == "local":
+                engine.stop()
+            llm.forget(slot)
+        else:
+            llm.activate(slot)
         return self.llm_state()
 
     def engine(self, body: dict | None = None) -> dict:
@@ -497,7 +515,7 @@ class App:
                 if action == "ask"
                 else (lambda c, m: notebook.overview(c, m, book, str(body.get("kind") or "")))
             )
-            return {"message": self._with(work, model=True)}
+            return {"message": self._with(work, model=True, route=str(body.get("route") or ""))}
         actions = {
             "list": lambda c: {"notebooks": notebook.list_all(c)},
             "create": lambda c: notebook.create(
@@ -1110,6 +1128,7 @@ def _progress(conn) -> dict:
         "tree": "tree" in kinds,
         "saved_view": count("SELECT COUNT(*) FROM views") > 0,
         "hidden": bool(hidden and hidden[0] == "1"),
+        "notebooks": conn.execute("SELECT COUNT(*) FROM notebooks").fetchone()[0],
         "model": _model_progress(conn),
     }
 
@@ -1262,6 +1281,7 @@ def make_handler(app: App):
                 ("POST", "/api/llm/test"): lambda: app.llm_test(self._body()),
                 ("POST", "/api/llm/connect"): lambda: app.llm_connect(self._body()),
                 ("POST", "/api/llm/forget"): lambda: app.llm_forget(),
+                ("POST", "/api/llm/use"): lambda: app.llm_use(self._body()),
                 ("POST", "/api/llm/vectors"): lambda: app.llm_vectors(self._body()),
                 ("POST", "/api/llm/explain"): lambda: app.llm_explain(self._body()),
                 ("POST", "/api/llm/topic-names"): lambda: app.llm_topic_names(self._body()),

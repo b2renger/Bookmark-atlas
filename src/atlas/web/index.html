@@ -29,6 +29,23 @@
   header h1 { font-size: 17px; margin: 0; letter-spacing: .01em; white-space: nowrap; }
   nav { display: flex; gap: 2px; min-width: 0; overflow-x: auto; flex: 1 1 auto; }
   nav button { white-space: nowrap; }
+  #stages { gap: 4px; align-items: stretch; }
+  #stages button { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 7px; align-items: center; text-align: left; padding: 5px 12px 5px 8px; }
+  #stages .n { grid-row: 1 / 3; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  #stages .t { font-weight: 600; color: var(--ink); line-height: 1.15; }
+  #stages small { font-size: 11px; color: var(--muted); line-height: 1.15; min-height: 13px; }
+  #stages button[aria-current="page"] .n { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  #stages button.next .n { border-color: var(--accent); box-shadow: 0 0 0 3px var(--chip); }
+  #tools { display: flex; gap: 2px; align-items: center; }
+  #tools > button:not(#help-here) { background: none; border: 0; color: var(--muted); padding: 6px 9px; border-radius: 6px; font: inherit; cursor: pointer; }
+  #tools > button[aria-current="page"] { background: var(--chip); color: var(--ink); font-weight: 600; }
+  #subnav { flex: none; padding: 6px 24px; border-bottom: 1px solid var(--line); background: var(--panel); align-items: center; position: sticky; top: var(--header-h, 57px); z-index: 2; }
+  #subnav.single > button { display: none; }
+  #subnav.single:has(#stage-hint:empty) { display: none; }
+  #stage-hint { margin-left: auto; color: var(--muted); font-size: 13px; white-space: nowrap; padding-left: 16px; }
+  #stage-hint .linkish { margin-left: 6px; }
+  @media (max-width: 1100px) { #stages small { display: none; } #summary { display: none; } }
+  @media (max-width: 760px) { #stages .t { display: none; } }
   nav button { background: none; border: 0; color: var(--muted); padding: 6px 9px; border-radius: 6px;
     font: inherit; cursor: pointer; }
   nav button[aria-current="page"] { background: var(--chip); color: var(--ink); font-weight: 600; }
@@ -85,6 +102,14 @@
   .toolbar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #sel-chip { margin-left: 16px; background: var(--chip); border-radius: 999px; padding: 3px 12px; font-size: 13px; white-space: nowrap; }
+  #sel-chip .linkish { margin-left: 8px; }
+  #nb-glance { border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 10px; }
+  #nb-glance .gl-row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 6px; }
+  #nb-glance svg { display: block; } #nb-glance .gl-years { display: flex; align-items: flex-end; gap: 14px; }
+  .gl-chip { background: var(--chip); border: 0; border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; }
+  .gl-chip:hover, .gl-chip:focus-visible { outline: 2px solid var(--accent); }
+  #llm-kept li { display: flex; gap: 10px; align-items: baseline; padding: 4px 0; }
   .nb-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px; margin: 0 0 12px; }
   .nb-bar h2 { margin: 0; } .nb-bar h2 input { font: inherit; width: 22em; max-width: 60vw; }
   .nb-grid { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(240px, 320px); gap: 16px; align-items: start; }
@@ -127,7 +152,7 @@
   #engine-models li.advised strong::after { content: " · suggested for this computer"; font-weight: 400; color: var(--muted); }
   #engine-models progress { width: 220px; vertical-align: middle; }
   #llm-vectors h3 { margin: 18px 0 4px; } #llm-vectors p.help { max-width: 78ch; color: var(--muted); }
-  #selbar { position: sticky; top: 58px; z-index: 1; background: var(--chip); border: 1px solid var(--line);
+  #selbar { position: sticky; top: calc(var(--header-h, 57px) + var(--subnav-h, 0px) + 4px); z-index: 1; background: var(--chip); border: 1px solid var(--line);
     border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
   .selrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 6px; }
   .selrow input[type=text], .selrow select { width: auto; flex: 1 1 150px; max-width: 260px; background: var(--panel); }
@@ -323,25 +348,37 @@
 <body>
 <header>
   <h1>Bookmark Atlas</h1>
-  <nav>
-    <button id="tab-notebook">Notebook</button>
-    <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
-    <button id="tab-map">Map</button>
-    <button id="tab-clusters">Clusters</button>
-    <button id="tab-grid">Grid</button>
-    <button id="tab-tree">Tree</button>
-    <button id="tab-links">Links</button>
-    <button id="tab-trends">Trends</button>
-    <button id="tab-ask" hidden>Ask</button>
-    <button id="tab-views">Views</button>
-    <button id="tab-workspaces">Workspaces</button>
-    <button id="tab-grooming">Grooming</button>
-    <button id="tab-settings">Settings</button>
-    <button id="tab-guide">Guide</button>
+  <nav id="stages" aria-label="Stages of the work">
+    <button data-stage="collect"><span class="n">1</span><span class="t">Collect</span><small id="st-collect"></small></button>
+    <button data-stage="clean"><span class="n">2</span><span class="t">Clean</span><small id="st-clean"></small></button>
+    <button data-stage="explore"><span class="n">3</span><span class="t">Explore</span><small id="st-explore"></small></button>
+    <button data-stage="study"><span class="n">4</span><span class="t">Study</span><small id="st-study"></small></button>
+    <button data-stage="keep"><span class="n">5</span><span class="t">Keep</span><small id="st-keep"></small></button>
   </nav>
   <div id="summary"></div>
-  <button id="help-here" title="Help for this tab" aria-label="Help for this tab">?</button>
+  <div id="tools">
+    <button id="tab-settings">Settings</button>
+    <button id="tab-guide">Guide</button>
+    <button id="help-here" title="Help for this screen" aria-label="Help for this screen">?</button>
+  </div>
 </header>
+<nav id="subnav" aria-label="Views of this stage">
+  <button id="tab-collect" data-stage="collect">Sources</button>
+  <button id="tab-workspaces" data-stage="collect">Workspaces</button>
+  <button id="tab-grooming" data-stage="clean">Grooming</button>
+  <button id="tab-bookmarks" data-stage="explore" aria-current="page">Bookmarks</button>
+  <button id="tab-map" data-stage="explore">Map</button>
+  <button id="tab-clusters" data-stage="explore">Clusters</button>
+  <button id="tab-grid" data-stage="explore">Grid</button>
+  <button id="tab-tree" data-stage="explore">Tree</button>
+  <button id="tab-links" data-stage="explore">Links</button>
+  <button id="tab-trends" data-stage="explore">Trends</button>
+  <button id="tab-notebook" data-stage="study">Notebook</button>
+  <button id="tab-ask" data-stage="study" hidden>Ask</button>
+  <button id="tab-views" data-stage="keep">Views</button>
+  <span id="sel-chip" hidden></span>
+  <span id="stage-hint"></span>
+</nav>
 
 <main>
   <div id="facetbar">
@@ -653,6 +690,7 @@
           <ul class="plain" id="nb-sources"></ul>
         </section>
         <section class="card" id="nb-chat-card" aria-label="Conversation">
+          <div id="nb-glance"></div>
           <div id="nb-messages" aria-live="polite"></div>
           <div class="row" id="nb-kinds">
             <span class="tagline">Start with:</span>
@@ -664,6 +702,7 @@
           <div class="row nb-ask">
             <div class="grow"><label for="nb-question" class="sr">Your question</label>
               <textarea id="nb-question" rows="2" maxlength="1000" placeholder="Ask about these sources…"></textarea></div>
+            <div id="nb-route-box" hidden><label for="nb-route">Answered by</label><select id="nb-route" style="width:auto"></select></div>
             <button class="action primary" id="nb-go">Ask</button>
           </div>
           <div class="note muted" id="nb-note" role="status"></div>
@@ -750,9 +789,9 @@
       <ul class="sum">
         <li><strong>A file:</strong> a CSV export, a bundle shared from another Atlas, or the
           bookmarks file exported by a browser (Chrome, Firefox, Safari, Edge: folders become
-          tags). <button class="linkish" id="ws-go-import">Open the import in Settings</button></li>
+          tags). <button class="linkish" id="ws-go-import">Open Collect ▸ Sources</button></li>
         <li><strong>Another Notion table:</strong> each workspace remembers its own table.
-          Open the workspace, then choose the table in Settings.</li>
+          Open the workspace, then choose the table in Collect ▸ Sources.</li>
         <li><strong>A snapshot from someone:</strong> <button class="linkish" id="ws-go-compare">Compare with a snapshot</button>
           shows what it has that you lack and adds it.</li>
         <li><strong>Out:</strong> select bookmarks in the list and export them, or
@@ -772,20 +811,30 @@
           which subjects they form, how those subjects connect, what you are collecting more of, and
           what you had forgotten. Notion (or a file) is where bookmarks come from; the app is where
           they are cleaned, explored and kept.</p>
+        <p>The top of the window follows the path your bookmarks take, in five numbered stages.
+          Each stage says where you stand under its name, the next useful one is outlined, and the
+          row under it holds that stage's screens and a one-line suggestion.</p>
         <ol>
-          <li><strong>Bring bookmarks in</strong> (Settings): from Notion with a token, or from a file.</li>
-          <li><strong>Clean them</strong> (Grooming): merge duplicates, tidy tags, fill in dates. Every
+          <li><strong>Collect</strong> (Sources): bring bookmarks in from a browser on this computer,
+            a file, or Notion.</li>
+          <li><strong>Clean</strong> (Grooming): merge duplicates, tidy tags, fill in dates. Every
             change is shown before it is made and can be undone.</li>
-          <li><strong>Find the topics</strong> (Clusters): one press groups similar bookmarks.</li>
-          <li><strong>Look at them</strong>: Map, Grid, Tree, Links, Trends. Each answers a different question.</li>
-          <li><strong>Keep and share</strong> (Views, Workspaces): save a view, send a snapshot, work on a copy.</li>
+          <li><strong>Explore</strong>: the list, then Clusters to find the topics, then Map, Grid,
+            Tree, Links and Trends. Each answers a different question.</li>
+          <li><strong>Study</strong> (Notebook): choose a set of bookmarks and question it with a
+            language model that must quote its sources. The notebook shows the set's figures and
+            sends you back to the pictures.</li>
+          <li><strong>Keep</strong> (Views, Workspaces): save a view, send a snapshot, work on a copy.</li>
         </ol>
+        <p>Nothing forces the order: every stage can be opened at any time, and a stage reopens on
+          the screen you last used in it. Settings (where your data lives, language models) and
+          this Guide sit at the top right.</p>
         <p>Everywhere: click a bookmark's name to open it in the side panel; press <kbd>Ctrl</kbd>+click
           to go straight to the page. On any picture, scroll to zoom, drag to move, double-click to go back.</p>
         <div class="where"><button class="linkish" id="guide-steps">Show the getting-started steps on the Bookmarks tab</button></div>
       </div></details>
 
-      <details id="guide-settings"><summary>Bringing bookmarks in (Settings)</summary><div>
+      <details id="guide-settings"><summary>Bringing bookmarks in (Collect ▸ Sources)</summary><div>
         <h4>From Notion</h4>
         <ol>
           <li><strong>Token.</strong> Paste a Notion token and press Check and save. “How to get a token”,
@@ -799,7 +848,7 @@
           kept aside; “Review what changed in Notion” in Grooming lets you take it or keep yours. A
           bookmark you deleted here stays deleted.</p>
         <h4>From a browser on this computer</h4>
-        <p>Settings ▸ <em>Import from a browser on this computer</em> ▸ <em>Look for browsers</em> lists
+        <p>Collect ▸ <em>Import from a browser on this computer</em> ▸ <em>Look for browsers</em> lists
           every profile of Chrome, Edge, Brave, Vivaldi, Opera, Chromium, Arc, Firefox (and LibreWolf,
           Waterfox, Zen) and Safari that has bookmarks, with how many. <em>Preview</em> shows what
           would come in; <em>Import</em> brings it in. Folder names become tags (a bookmark in
@@ -812,7 +861,7 @@
         <h4>From a file</h4>
         <p>“Import a file” reads a CSV exported from Notion, a bundle exported from another Atlas, and
           the bookmarks file a browser exports (its folders become tags). Preview first, as with Notion.</p>
-        <div class="where"><button class="linkish" data-go="settings">Open Settings</button></div>
+        <div class="where"><button class="linkish" data-go="collect">Open Collect ▸ Sources</button></div>
       </div></details>
 
       <details id="guide-bookmarks"><summary>The list, the filter and the selection (Bookmarks)</summary><div>
@@ -948,6 +997,30 @@
             <em>Save the notes as a document</em> gives a Markdown file with each statement, its
             quote and the list of sources.</li>
         </ol>
+        <h4>The notebook and the pictures</h4>
+        <ul>
+          <li><strong>The set at a glance.</strong> Above the conversation: how many sources, over
+            which months, a small bar per year, the topics they fall in and their most used tags.
+            These are counted by Atlas, not written by the model, and follow the sources you tick.</li>
+          <li><strong>See them.</strong> “on the map” opens the Map with the notebook's sources
+            selected, “over time” arranges it as a timeline, “in the list” shows only them. A
+            topic chip opens that whole topic in the list.</li>
+          <li><strong>Questions about the set itself</strong> (“how many per year?”, “which topics?”,
+            “the oldest?”) are answered from those same figures. The statement then says it rests
+            on figures Atlas counted, not on a page.</li>
+          <li><strong>From an answer back to the map.</strong> Under an answer, “see its sources on
+            the map” selects exactly the bookmarks the answer rests on.</li>
+          <li><strong>From the pictures to a notebook.</strong> A selection made on the Map, Grid,
+            Tree or Links has <em>New notebook from these</em> in its bar; on Clusters and Trends
+            the same offer sits in the row under the stages.</li>
+        </ul>
+        <h4>Who answers</h4>
+        <p>Atlas keeps every connection you set up: one for this computer, one for your network,
+          one per provider. With two or more, <em>Answered by</em> appears next to Ask: send an
+          everyday question to the model on this computer and a hard one to a larger model,
+          without leaving the notebook. Each answer names the model that wrote it. A choice marked
+          “internet” sends the passages found and the conversation to that provider. Settings ▸
+          Language models lists the connections kept, with “use this one” and “forget”.</p>
         <h4>Why you can lean on an answer, and where to stay careful</h4>
         <ul>
           <li><strong>Every statement is checked.</strong> The model must copy the words it relies on;
@@ -1028,9 +1101,10 @@
           <li><strong>Vectors:</strong> OpenAI, Gemini and Mistral offer them (choose the model under
             “Model for vectors”). Claude does not: with Claude, the map and topics keep comparing
             words, and everything else works.</li>
-          <li><strong>One connection at a time.</strong> Connecting a provider replaces the farm, and
-            the other way round. Vectors already computed stay in the collection; vectors from two
-            different models are never mixed, so changing the vector model computes them again.</li>
+          <li><strong>One connection in use, the others kept.</strong> Connecting a provider no
+            longer replaces the farm or the model on this computer: each keeps its place and its
+            key. Grooming, vectors and names use the one in use; a notebook question can go to
+            any of them (<em>Answered by</em>).</li>
         </ul>
 
         <h4>What each thing does</h4>
@@ -1290,7 +1364,51 @@
     </section>
   </div>
 
-  <div id="view-settings" hidden>
+  <div id="view-collect" hidden>
+    <section class="card">
+      <h2>Bring your bookmarks in</h2>
+      <p class="help">Three ways, which can be combined: links already in the collection are never
+        duplicated. From the <strong>browsers on this computer</strong>, from a <strong>file</strong>
+        (a browser's export, a CSV table, an Atlas file, a database dump), or from a
+        <strong>Notion</strong> table, which Atlas can keep in step with. Each import goes into
+        what is open: your collection, or a workspace.</p>
+    </section>
+    <section class="card" id="browsers-card">
+      <h2>Import from a browser on this computer</h2>
+      <p class="help">Atlas reads the bookmarks of Chrome, Edge, Brave, Vivaldi, Opera, Chromium, Arc,
+        Firefox (and LibreWolf, Waterfox, Zen) and Safari straight from where each browser keeps
+        them. Nothing is changed in the browser, and only bookmarks are read: no history, no
+        passwords. Folder names become tags; the day a bookmark was added becomes its save date.
+        Links already in the collection are not duplicated. They go into whatever is open: your
+        collection, or a workspace.</p>
+      <div class="row"><button class="action" id="browsers-find">Look for browsers</button></div>
+      <div id="browsers-list"></div>
+      <div class="note muted" id="browsers-note" role="status"></div>
+      <dl class="report" id="browsers-report" hidden></dl>
+    </section>
+    <section class="card">
+      <h2>Import a file</h2>
+      <p class="help">Three kinds of file: a CSV export of your table from Notion (••• menu, Export,
+        CSV), a bundle exported from another Atlas (“Export selection” in Bookmarks), or the
+        bookmarks file exported by a browser (an .html file; its folders become tags). No token
+        needed. Links already in the collection are not duplicated. The file goes into whatever
+        is open: your collection, or a workspace.</p>
+      <p class="help">A fourth kind goes to a workspace of its own: a <strong>database dump</strong>
+        (an .sql file written by phpMyAdmin or mysqldump for a site that kept links). Only links,
+        titles, descriptions, dates and tags are read. Accounts, authors, e-mail addresses and
+        passwords stay in the file. Broken accents are repaired and repeated links merged.
+        Preview first to see what the file holds.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="csv-file">File</label>
+          <input type="file" id="csv-file" accept=".csv,.json,.html,.htm,.sql,text/csv,application/json,text/html">
+        </div>
+        <button class="action" id="preview-csv" disabled>Preview</button>
+        <button class="action primary" id="run-csv" disabled>Import file</button>
+      </div>
+      <div class="note" id="csv-note"></div>
+      <dl class="report" id="csv-report" hidden></dl>
+    </section>
     <section class="card">
       <h2><span class="step">1</span>Notion token</h2>
       <p class="help">A token is a long password that lets this app read your Notion table. You make
@@ -1387,7 +1505,9 @@
       <div class="note" id="sync-note"></div>
       <dl class="report" id="report" hidden></dl>
     </section>
+  </div>
 
+  <div id="view-settings" hidden>
     <section class="card">
       <h2>Where your data lives</h2>
       <p class="help">Everything is in this one folder: your bookmarks, your grooming scripts, the
@@ -1400,42 +1520,6 @@
         hand it to someone else: to share bookmarks, use Export selection.</p>
     </section>
 
-    <section class="card" id="browsers-card">
-      <h2>Import from a browser on this computer</h2>
-      <p class="help">Atlas reads the bookmarks of Chrome, Edge, Brave, Vivaldi, Opera, Chromium, Arc,
-        Firefox (and LibreWolf, Waterfox, Zen) and Safari straight from where each browser keeps
-        them. Nothing is changed in the browser, and only bookmarks are read: no history, no
-        passwords. Folder names become tags; the day a bookmark was added becomes its save date.
-        Links already in the collection are not duplicated. They go into whatever is open: your
-        collection, or a workspace.</p>
-      <div class="row"><button class="action" id="browsers-find">Look for browsers</button></div>
-      <div id="browsers-list"></div>
-      <div class="note muted" id="browsers-note" role="status"></div>
-      <dl class="report" id="browsers-report" hidden></dl>
-    </section>
-    <section class="card">
-      <h2>Import a file</h2>
-      <p class="help">Three kinds of file: a CSV export of your table from Notion (••• menu, Export,
-        CSV), a bundle exported from another Atlas (“Export selection” in Bookmarks), or the
-        bookmarks file exported by a browser (an .html file; its folders become tags). No token
-        needed. Links already in the collection are not duplicated. The file goes into whatever
-        is open: your collection, or a workspace.</p>
-      <p class="help">A fourth kind goes to a workspace of its own: a <strong>database dump</strong>
-        (an .sql file written by phpMyAdmin or mysqldump for a site that kept links). Only links,
-        titles, descriptions, dates and tags are read. Accounts, authors, e-mail addresses and
-        passwords stay in the file. Broken accents are repaired and repeated links merged.
-        Preview first to see what the file holds.</p>
-      <div class="row">
-        <div class="grow">
-          <label for="csv-file">File</label>
-          <input type="file" id="csv-file" accept=".csv,.json,.html,.htm,.sql,text/csv,application/json,text/html">
-        </div>
-        <button class="action" id="preview-csv" disabled>Preview</button>
-        <button class="action primary" id="run-csv" disabled>Import file</button>
-      </div>
-      <div class="note" id="csv-note"></div>
-      <dl class="report" id="csv-report" hidden></dl>
-    </section>
     <section class="card" id="llm-card">
       <h2>Language models</h2>
       <p class="help">Optional. Connect a language model that runs on your own network, and Atlas can
@@ -1448,6 +1532,7 @@
         the database.</p>
       <div class="row"><div class="note grow" id="llm-now"></div>
         <button class="action" id="llm-forget" hidden>Disconnect</button></div>
+      <ul class="plain" id="llm-kept"></ul>
       <div class="row" style="margin-top:8px">
         <div><label for="llm-where">Where the model runs</label>
           <select id="llm-where" style="width:auto"><option value="engine">On this computer (built in)</option><option value="lan">On my network (a farm, or a server of mine)</option></select></div>
@@ -1542,18 +1627,81 @@ async function busy(button, work) {
 
 let currentView = "bookmarks";
 let lastWorkView = "bookmarks";   // what "Save view" captures
+const STAGE_OF = { collect: "collect", workspaces: "collect", grooming: "clean", bookmarks: "explore", map: "explore", clusters: "explore", grid: "explore",
+  tree: "explore", links: "explore", trends: "explore", notebook: "study", ask: "study", views: "keep" };
+const lastOfStage = { collect: "collect", clean: "grooming", explore: "bookmarks", study: "notebook", keep: "views" };
 function showView(name) {
+  if (name !== currentView) window.scrollTo(0, 0);  // a new screen starts at its top
   currentView = name;
   if (["bookmarks", "map", "clusters", "grid", "tree", "links", "trends"].includes(name)) lastWorkView = name;
-  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "ask", "notebook", "views", "workspaces", "grooming", "settings", "guide"]) {
+  const stage = STAGE_OF[name] || null;
+  if (stage) lastOfStage[stage] = name;
+  for (const view of ["collect", "bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "ask", "notebook", "views", "workspaces", "grooming", "settings", "guide"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
+  }
+  // The second row shows the views of the stage that is open.
+  let shown = 0;
+  for (const tab of $("subnav").querySelectorAll("button")) { tab.hidden = tab.dataset.stage !== stage || tab.id === "tab-ask"; shown += tab.hidden ? 0 : 1; }
+  $("subnav").classList.toggle("single", shown < 2);
+  for (const button of $("stages").querySelectorAll("button")) {
+    if (button.dataset.stage === stage) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
   }
   $("facetbar").hidden = !["bookmarks", "map", "grid", "tree", "links", "trends"].includes(name);
   if (!$("facetbar").hidden && typeof loadFacetOptions === "function") loadFacetOptions();
   if (name !== "map" && typeof stopPlaying === "function") stopPlaying();
   if (typeof refreshSelection === "function") refreshSelection();
+  if (typeof renderStages === "function") renderStages();
+  try { renderSelChip(); } catch (error) { /* before the selection exists */ }
+  measureBars();
+}
+// The selection follows you through the pictures: where the selection bar is not
+// shown, say so in the second row, and offer to study it.
+const SELBAR_VIEWS = ["bookmarks", "map", "grid", "tree", "links"];
+function renderSelChip() {
+  const chip = $("sel-chip"), show = selection.size > 0 && STAGE_OF[currentView] === "explore" && !SELBAR_VIEWS.includes(currentView);
+  chip.hidden = !show; if (!show) return;
+  const study = el("button", { className: "linkish", textContent: "new notebook from these" }), clear = el("button", { className: "linkish", textContent: "clear" });
+  study.onclick = () => newNotebook([...selection], "Selection of " + selection.size).catch((e) => note("nb-home-note", e.message, "bad"));
+  clear.onclick = () => { selection.clear(); refreshSelection(); if (currentView === "map" && typeof drawMap === "function") drawMap(); };
+  chip.replaceChildren(selection.size + " selected", study, clear);
+}
+// What sticks under the header needs to know how tall it is.
+function measureBars() {
+  const root = document.documentElement.style;
+  root.setProperty("--header-h", document.querySelector("header").offsetHeight + "px");
+  root.setProperty("--subnav-h", $("subnav").offsetHeight + "px");
+}
+window.addEventListener("resize", measureBars);
+// A stage opens on the view last used in it.
+for (const button of $("stages").querySelectorAll("button")) button.onclick = () => $("tab-" + lastOfStage[button.dataset.stage]).click();
+$("tab-collect").onclick = () => showView("collect");
+// Each stage says where it stands, and one line says what comes next.
+function renderStages() {
+  let p = null;
+  try { p = state && state.progress; } catch (error) { return; }   // called once before the state is read
+  if (!p) return;
+  const count = state.status.bookmarks;
+  $("st-collect").textContent = count ? count + " bookmarks" : "nothing yet";
+  $("st-clean").textContent = !count ? "" : p.groomed ? "done once" : "not yet";
+  $("st-explore").textContent = !count ? "" : p.clustered ? (p.mapped ? "topics and map" : "topics, no map") : "no topics yet";
+  $("st-study").textContent = !count ? "" : p.notebooks ? p.notebooks + (p.notebooks === 1 ? " notebook" : " notebooks") : (p.model && p.model.connected ? "no notebook yet" : "needs a model");
+  $("st-keep").textContent = !count ? "" : p.saved_view ? "a view saved" : "";
+  const steps = [
+    [!count, "collect", "Start by bringing your bookmarks in.", "collect", "Open Sources"],
+    [!p.groomed, "clean", "Next: merge duplicates and tidy tags.", "grooming", "Open Grooming"],
+    [!p.clustered, "explore", "Next: find the topics of your collection.", "clusters", "Open Clusters"],
+    [!p.mapped, "explore", "Next: draw the map.", "map", "Open the Map"],
+    [!(p.model && p.model.connected), "study", "Next: set up a language model to study a topic.", "settings", "Open Settings"],
+    [!p.notebooks, "study", "Next: open a notebook on a topic and ask it questions.", "notebook", "Open Notebook"],
+  ];
+  const next = steps.find(([todo]) => todo);
+  for (const button of $("stages").querySelectorAll("button")) button.classList.toggle("next", !!next && button.dataset.stage === next[1] && button.getAttribute("aria-current") !== "page");
+  const hint = $("stage-hint");
+  if (!next || currentView === next[3]) { hint.replaceChildren(); return; }
+  const go = el("button", { className: "linkish", textContent: next[4] }); go.onclick = () => $("tab-" + next[3]).click();
+  hint.replaceChildren(next[2], go);
 }
 
 /* ---- state ---- */
@@ -1566,7 +1714,10 @@ async function refreshState() {
 
   $("data-folder").textContent = state.data_folder;
   $("about-line").textContent = $("summary").textContent.replace(" · v", " · Bookmark Atlas version ");
-  renderStart(); renderModelTour();
+  renderStart(); renderModelTour(); renderStages();
+  // An empty collection opens on the first stage, once.
+  if (!state.status.bookmarks && currentView === "bookmarks" && !refreshState.landed) showView("collect");
+  refreshState.landed = true;
   const snap = state.snapshot;
   $("snapbanner").hidden = !snap;
   if (snap) {
@@ -4014,7 +4165,7 @@ $("ws-create").onclick = () => busy($("ws-create"), async () => {
     await afterSwitch("The workspace “" + made.created.name + "” is open with " + plural(made.created.bookmarks) + ".");
   } catch (error) { note("ws-create-note", error.message, "bad"); }
 });
-$("ws-go-import").onclick = () => $("tab-settings").click();
+$("ws-go-import").onclick = () => $("tab-collect").click();
 $("ws-go-compare").onclick = () => { $("tab-views").click(); $("cmp-file").scrollIntoView({ block: "center" }); };
 $("ws-go-snapshot").onclick = () => { $("tab-views").click(); $("snap-name").scrollIntoView({ block: "center" }); };
 
@@ -4297,7 +4448,7 @@ async function loadBookmarks(reset) {
   if (!total) {
     holder.replaceChildren(el("div", { className: "empty", textContent: q || facetsActive()
       ? "Nothing matches this search and filter."
-      : "No bookmarks yet. Open Settings to connect Notion and import your table." }));
+      : "No bookmarks yet. Open Collect to bring some in: from a browser, a file or Notion." }));
   } else {
     let body = holder.querySelector("tbody");
     if (!body) {
@@ -4344,9 +4495,10 @@ let keepNote = false;
 
 function refreshSelection() {
   const n = selection.size;
+  try { renderSelChip(); } catch (error) { /* before the page is ready */ }
   // After a delete the selection is empty, but its result and Undo must stay visible.
   // The bar serves the list and the map; it sits above both.
-  $("selbar").hidden = (n === 0 && !keepNote) || !["bookmarks", "map", "grid", "tree", "links"].includes(currentView);
+  $("selbar").hidden = (n === 0 && !keepNote) || !SELBAR_VIEWS.includes(currentView);
   // Sticky over the long list; in place above the map, where it would cover the tools.
   $("selbar").style.position = currentView === "bookmarks" ? "" : "static";
   $("sel-show").hidden = n === 0;
@@ -4444,7 +4596,7 @@ $("tab-settings").onclick = () => { showView("settings"); loadLlm().catch((e) =>
 let helpFrom = "bookmarks";
 function openGuide(section) {
   showView("guide");
-  const target = $("guide-" + ({ ask: "notebook" }[section] || section)) || $("guide-start");
+  const target = $("guide-" + ({ ask: "notebook", collect: "settings", settings: "models" }[section] || section)) || $("guide-start");
   for (const part of document.querySelectorAll(".guide details")) part.open = part === target;
   target.scrollIntoView({ block: "start" }); window.scrollBy(0, -80);
   target.querySelector("summary").focus({ preventScroll: true });
@@ -4459,7 +4611,7 @@ function renderStart() {
   const card = $("start");
   if (!progress || progress.hidden || (progress.bookmarks && progress.groomed && progress.clustered && progress.mapped && progress.saved_view)) { card.hidden = true; return; }
   const steps = [
-    ["bookmarks", "Bring your bookmarks in", "From Notion with a token, or from a file. Settings explains how to get a token.", "Open Settings", () => $("tab-settings").click()],
+    ["bookmarks", "Bring your bookmarks in", "From your browsers, a file, or a Notion table.", "Open Sources", () => $("tab-collect").click()],
     ["groomed", "Clean them up", "Merge duplicates and tidy tags. Every change is previewed and can be undone.", "Open Grooming", () => $("tab-grooming").click()],
     ["clustered", "Find the topics", "One press groups similar bookmarks and names each group.", "Open Clusters", () => $("tab-clusters").click()],
     ["mapped", "Draw the map", "See the collection as dots, then try the timeline and the 3D arrangements.", "Open the Map", () => $("tab-map").click()],
@@ -4527,7 +4679,7 @@ document.querySelector("main").prepend($("selbar"));
     await loadBookmarks(true);
     // An empty collection opens on the getting-started steps; if they were put
     // away, on Settings, where bookmarks come in.
-    if (!state.status.bookmarks && state.progress.hidden) showView("settings");
+    if (!state.status.bookmarks && state.progress.hidden) showView("collect");
     if (state.notion.token_set) loadTables();
   } catch (error) {
     $("list").replaceChildren(el("div", { className: "empty", textContent: error.message }));
@@ -4548,6 +4700,13 @@ async function loadLlm() {
       + (c.provider ? " · on the internet: what you send goes to this provider and is billed to your key" : c.local ? "" : " · This address is not on your local network: what you send leaves it.")
     : "Not connected.", c.connected ? (c.local ? "good" : "bad") : "muted");
   $("llm-forget").hidden = !c.connected;
+  const others = (llm.state.kept || []).filter((k) => !k.active);
+  $("llm-kept").replaceChildren(...others.map((k) => {
+    const use = el("button", { className: "linkish", textContent: "use this one" }), drop = el("button", { className: "linkish", textContent: "forget" });
+    const act = (body) => api("POST", "/api/llm/use", body).then(() => loadLlm()).catch((e) => note("llm-note", e.message, "bad"));
+    use.onclick = () => act({ slot: k.slot }); drop.onclick = () => act({ slot: k.slot, forget: true });
+    return el("li", {}, [el("span", { textContent: "Also kept: " + k.label + (k.local ? "" : " · on the internet") }), use, drop]);
+  }));
   if ($("llm-where").options.length === 2) {
     for (const p of llm.state.providers) $("llm-where").append(el("option", { value: p.kind, textContent: p.name + " (API key)" }));
     $("llm-where").value = c.connected ? (c.kind === "local" ? "engine" : c.provider ? c.kind : "lan") : "engine";
@@ -4964,6 +5123,7 @@ $("nb-connect").onclick = () => { showView("settings"); loadLlm().catch(() => {}
 async function newNotebook(ids, name) {
   const book = await nbCall({ action: "create", name, ids });
   nb.book = book; showView("notebook"); await loadNotebooks();
+  refreshState().catch(() => {});  // the Study stage now has a notebook to count
 }
 $("nb-new").onclick = () => busy($("nb-new"), async () => {
   try {
@@ -4980,7 +5140,55 @@ async function openNotebook(id) {
   $("nb-home").hidden = true; $("nb-open").hidden = false;
   renderNotebook();
 }
+// The sources of a notebook taken to the pictures: they become the selection.
+function showSources(ids, where) {
+  selection.clear(); for (const id of ids) selection.add(id); refreshSelection();
+  if (where === "list") { setSelectionFilter([...selection]); $("search").value = ""; $("tab-bookmarks").click(); return; }
+  showView("map");
+  loadMap($("map-clusters").value || undefined).then(() => {
+    const want = where === "time" ? "timeline" : "similarity";
+    if (map.data && map.data.layout && map.layout !== want) { $("map-layout").value = want; return setMapLayout(want); }
+  }).catch((e) => note("map-note", e.message, "bad"));
+}
+// The set at a glance: the figures the pictures are drawn from, with the way to each picture.
+function renderGlance() {
+  const g = nb.book.glance, box = $("nb-glance");
+  if (!g || !g.sources) { box.replaceChildren(); return; }
+  const ids = () => nb.book.sources.filter((s) => s.used).map((s) => s.id), parts = [];
+  const go = (label, where, title) => { const b = el("button", { className: "linkish", textContent: label, title }); b.onclick = () => showSources(ids(), where); return b; };
+  const head = el("div", { className: "gl-row" }, [el("strong", { textContent: g.sources + " sources" + (g.first_day ? " · " + g.first_day.slice(0, 7) + " to " + g.last_day.slice(0, 7) : "") }),
+    el("span", { className: "tagline", textContent: "See them:" }), go("on the map", "map", "Opens the Map with these sources selected"), go("over time", "time", "Opens the Map arranged as a timeline"), go("in the list", "list", "Opens the list with only these")]);
+  parts.push(head);
+  if (g.per_year.length > 1) {
+    const most = Math.max(...g.per_year.map(([, n]) => n)), w = 22, h = 34, svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", g.per_year.length * (w + 3)); svg.setAttribute("height", h + 14); svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Sources per year: " + g.per_year.map(([y, n]) => y + ": " + n).join(", "));
+    g.per_year.forEach(([year, n], i) => {
+      const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect"), tall = n ? Math.max(2, Math.round(h * n / most)) : 0;
+      bar.setAttribute("x", i * (w + 3)); bar.setAttribute("y", h - tall); bar.setAttribute("width", w); bar.setAttribute("height", tall); bar.setAttribute("rx", 2); bar.setAttribute("fill", "var(--accent)");
+      const tip = document.createElementNS("http://www.w3.org/2000/svg", "title"); tip.textContent = year + ": " + n + (n === 1 ? " source" : " sources"); bar.append(tip);
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text"); text.setAttribute("x", i * (w + 3) + w / 2); text.setAttribute("y", h + 11); text.setAttribute("text-anchor", "middle"); text.setAttribute("font-size", "9"); text.setAttribute("fill", "var(--muted)");
+      text.textContent = g.per_year.length > 8 ? "’" + String(year).slice(2) : year;
+      svg.append(bar, text);
+    });
+    parts.push(el("div", { className: "gl-row gl-years" }, [el("span", { className: "tagline", textContent: "per year" }), svg]));
+  }
+  if (g.topics.length) parts.push(el("div", { className: "gl-row" }, [el("span", { className: "tagline", textContent: "topics" }), ...g.topics.map((t) => {
+    const chip = el("button", { className: "gl-chip", textContent: t.label + " · " + t.count, title: t.count + " of this notebook's sources are in this topic, which holds " + t.of + ". Opens the topic in the list." });
+    chip.onclick = () => { setClusterFilter({ key: t.key, label: t.label }); $("search").value = ""; $("tab-bookmarks").click(); };
+    return chip; })]));
+  if (g.tags.length) parts.push(el("div", { className: "gl-row" }, [el("span", { className: "tagline", textContent: "tags" }), el("span", { textContent: g.tags.slice(0, 8).map(([t, n]) => t + " " + n).join(" · ") })]));
+  box.replaceChildren(...parts);
+}
+function renderRoutes() {
+  const kept = (llm.state && llm.state.kept) || [];
+  $("nb-route-box").hidden = kept.length < 2;
+  const was = $("nb-route").value;
+  $("nb-route").replaceChildren(...kept.map((k) => el("option", { value: k.active ? "" : k.slot, textContent: k.label + (k.local ? "" : " · internet") })));
+  if ([...$("nb-route").options].some((o) => o.value === was)) $("nb-route").value = was;
+}
 function renderNotebook() {
+  renderGlance(); renderRoutes();
   const book = nb.book, c = llm.state && llm.state.connection;
   $("nb-title").textContent = book.name;
   $("nb-model").textContent = c && c.connected ? (c.kind === "local" ? "Answers written by the " + c.chat_model + " model on this computer" : "Answers written by " + c.chat_model + " (" + (c.provider || c.name || "your server") + (c.provider ? ", on the internet" : "") + ")") : "No language model connected: Settings ▸ Language models";
@@ -4996,7 +5204,7 @@ function renderSources() {
   $("nb-all").checked = used === book.sources.length;
   $("nb-sources").replaceChildren(...book.sources.map((source) => {
     const tick = el("input", { type: "checkbox", checked: !!source.used }); tick.setAttribute("aria-label", "Use " + source.title);
-    tick.onchange = async () => { try { nb.book = await nbCall({ action: "sources", id: book.id, use: { [source.id]: tick.checked } }); renderSources(); } catch (error) { note("nb-sources-note", error.message, "bad"); } };
+    tick.onchange = async () => { try { nb.book = await nbCall({ action: "sources", id: book.id, use: { [source.id]: tick.checked } }); renderSources(); renderGlance(); } catch (error) { note("nb-sources-note", error.message, "bad"); } };
     const open = el("button", { className: "linkish", textContent: source.title }); open.onclick = () => openPanel(source.id);
     return el("li", { className: source.used ? "" : "unused" }, [tick, el("div", {}, [open, el("div", { className: "tagline", textContent: (source.domain || "") + (source.day ? " · " + source.day.slice(0, 10) : "") + (source.depth === "page" ? "" : source.depth === "unread" ? " · not read" : " · summary only") })])]);
   }));
@@ -5004,7 +5212,7 @@ function renderSources() {
 }
 $("nb-all").onchange = async () => {
   const use = Object.fromEntries(nb.book.sources.map((s) => [s.id, $("nb-all").checked]));
-  try { nb.book = await nbCall({ action: "sources", id: nb.book.id, use }); renderSources(); } catch (error) { note("nb-sources-note", error.message, "bad"); }
+  try { nb.book = await nbCall({ action: "sources", id: nb.book.id, use }); renderSources(); renderGlance(); } catch (error) { note("nb-sources-note", error.message, "bad"); }
 };
 $("nb-add").onclick = () => busy($("nb-add"), async () => {
   try { nb.book = await nbCall({ action: "sources", id: nb.book.id, add: [...selection] }); renderSources(); note("nb-sources-note", "Added.", "good"); } catch (error) { note("nb-sources-note", error.message, "bad"); }
@@ -5031,7 +5239,10 @@ function answerCard(message) {
       const cite = el("button", { className: "cite", textContent: statement.passage, title: passage ? passage.title : "" });
       cite.setAttribute("aria-expanded", "false"); cite.setAttribute("aria-label", "Show the words this rests on, from " + (passage ? passage.title : "the source"));
       cite.onclick = () => { proof.hidden = !proof.hidden; cite.setAttribute("aria-expanded", String(!proof.hidden)); };
-      if (passage) {
+      if (passage && passage.figures) {
+        proof.append(el("blockquote", { textContent: "“" + statement.quote + "”" }), el("div", { className: "tagline", textContent: "from the figures Atlas counted for this set (shown above the conversation), not from a page" }),
+          el("details", {}, [el("summary", { textContent: "all the figures" }), el("p", { className: "nb-passage", textContent: passage.text })]));
+      } else if (passage) {
         const open = el("button", { className: "linkish", textContent: passage.title }); open.onclick = () => openPanel(passage.bookmark_id);
         proof.append(el("blockquote", { textContent: "“" + statement.quote + "”" }), el("div", { className: "tagline" }, ["from ", open, passage.day ? " · " + passage.day : "", passage.card ? " · its summary, not its page" : ""]),
           el("details", {}, [el("summary", { textContent: "the whole passage" }), el("p", { className: "nb-passage", textContent: passage.text })]));
@@ -5048,7 +5259,11 @@ function answerCard(message) {
   }
   const keep = el("button", { className: "linkish", textContent: "keep as a note" });
   keep.onclick = async () => { try { nb.book = await nbCall({ action: "keep", id: nb.book.id, message_id: message.id }); renderNotes(); keep.textContent = "kept"; keep.disabled = true; } catch (error) { note("nb-note", error.message, "bad"); } };
-  box.append(el("div", { className: "tagline" }, [(message.model || "") + " · ", keep]));
+  // From the answer to the pictures: the sources it rests on, selected on the map.
+  const cited = a.overview !== undefined ? [] : [...new Set(a.statements.map((st) => (a.passages.find((p) => p.n === st.passage) || {}).bookmark_id).filter(Boolean))];
+  const tail = [(message.model || "") + " · ", keep];
+  if (cited.length) { const see = el("button", { className: "linkish", textContent: "see its " + (cited.length === 1 ? "source" : cited.length + " sources") + " on the map" }); see.onclick = () => showSources(cited, "map"); tail.push(" · ", see); }
+  box.append(el("div", { className: "tagline" }, tail));
   return box;
 }
 function renderMessages() {
@@ -5065,7 +5280,7 @@ async function nbAsk(body, button, waiting) {
   try {
     for (;;) {
       try {
-        const message = (await nbCall({ ...body, id: nb.book.id })).message;
+        const message = (await nbCall({ ...body, id: nb.book.id, route: $("nb-route").value })).message;
         nb.book.messages.push({ role: "user", text: message.question || body.question }, message);
         renderMessages(); note("nb-note", "", "muted"); break;
       } catch (error) {
@@ -5110,6 +5325,9 @@ $("nb-delete").onclick = () => {
 };
 $("tab-notebook").onclick = () => { showView("notebook"); loadNotebooks().catch((e) => note("nb-home-note", e.message, "bad")); };
 $("sel-notebook").onclick = () => busy($("sel-notebook"), async () => { try { await newNotebook([...selection], "Selection of " + selection.size); } catch (error) { note("sel-note", error.message, "bad"); } });
+
+// Everything is defined: open on the list, which sets the two rows of the navigation.
+showView(currentView);
 </script>
 </body>
 </html>

@@ -4,6 +4,27 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-22: v0.26.0; phases 27 and 28, stages, and the notebook tied to the pictures
+
+**Works:** `#stages` and `#subnav` with `STAGE_OF`, `renderStages`,
+`measureBars`; `#view-collect`; `notebook.glance`/`figures` and the figures
+passage in `answer`; `renderGlance`, `showSources`, `renderSelChip`;
+`llm._read`/`save`/`activate`/`forget(slot)`/`kept`/`secret_for`,
+`Connection(slot=)`, `/api/llm/use`, `route` on `/api/notebooks` ask.
+
+**Decisions:** the figures reach the model as a passage, not as a tool: one
+mechanism, one check, works with the smallest model. The interface shows the
+figures itself, so the user never depends on the model to see them. Routing
+is a choice per question made by the person, not guessed by the app.
+Connections are kept per place, not as a free list: three kinds of place are
+what people have.
+
+**Verified:** stand-ins only (see PHASES 27 and 28).
+
+**Next:** try the figures with the real light model in CI; let the other
+model jobs (notes, tag groups) choose their connection; "ask about this
+topic" directly from Clusters and the Tree.
+
 ## 2026-11-22: v0.24.0 published; phase 26, the built-in engine
 
 **Works:** `engine.CATALOGUE`, `download` (resume, hash, cancel),

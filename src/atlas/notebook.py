@@ -256,6 +256,104 @@ def find(conn: sqlite3.Connection, connection, ids: list[str], question: str, mo
     return chosen, how
 
 
+# ---- the set at a glance --------------------------------------------------------
+
+# A question about numbers, dates or the make-up of the set is better answered
+# from figures the program counted than from eight passages.
+_ABOUT_THE_SET = re.compile(
+    r"\b(how many|number of|count|when|which years?|per year|oldest|newest|earliest|latest|recent|"
+    r"most (common|frequent|used)|topics?|themes?|tags?|sites?|sources? (are|come)|"
+    r"combien|nombre|quand|quelles? années?|par an|ancien|récent|sujets?|thèmes?|étiquettes?)\b",
+    re.IGNORECASE,
+)
+
+
+def _most(counts: Counter, n: int) -> list[tuple[str, int]]:
+    """The most frequent, ties in alphabetical order: the same list every time."""
+    return sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[:n]
+
+
+def glance(conn: sqlite3.Connection, ids: list[str]) -> dict:
+    """What the visualisations show of a set of bookmarks, as figures: how
+    many, over which years, in which topics, under which tags, from which sites."""
+    out = {"sources": 0, "first_day": "", "last_day": "", "per_year": [], "topics": [],
+           "tags": [], "sites": [], "undated": 0}  # fmt: skip
+    if not ids:
+        return out
+    marks = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT id, domain, COALESCE(published_at, saved_at, '') AS day FROM bookmarks "  # noqa: S608
+        f"WHERE deleted_at IS NULL AND id IN ({marks})",
+        ids,
+    ).fetchall()
+    live = [row["id"] for row in rows]
+    out["sources"] = len(rows)
+    days = sorted(row["day"][:10] for row in rows if row["day"])
+    out["undated"] = len(rows) - len(days)
+    if days:
+        out["first_day"], out["last_day"] = days[0], days[-1]
+        years = Counter(day[:4] for day in days)
+        out["per_year"] = [
+            [y, years.get(str(y), 0)] for y in range(int(days[0][:4]), int(days[-1][:4]) + 1)
+        ]
+    out["sites"] = [
+        list(pair) for pair in _most(Counter(r["domain"] for r in rows if r["domain"]), 8)
+    ]
+    tags = assist._tags(conn)
+    out["tags"] = [
+        list(pair) for pair in _most(Counter(t for i in live for t in tags.get(i, [])), 10)
+    ]
+    from .analysis import store
+
+    run_id = store.latest_run_id(conn)
+    if run_id and live:
+        names = {c["cluster"]: c for c in store.describe_run(conn, run_id, samples=0)["clusters"]}
+        marks = ",".join("?" * len(live))
+        counts = conn.execute(
+            f"SELECT cluster, COUNT(*) AS n FROM run_items WHERE run_id = ? "  # noqa: S608
+            f"AND bookmark_id IN ({marks}) GROUP BY cluster ORDER BY n DESC LIMIT 8",
+            [run_id, *live],
+        ).fetchall()
+        out["topics"] = [
+            {
+                "key": f"{run_id}:{row['cluster']}",
+                "label": names[row["cluster"]]["label"],
+                "count": row["n"],
+                "of": names[row["cluster"]]["size"],
+            }
+            for row in counts
+            if row["cluster"] in names
+        ]
+    return out
+
+
+def figures(seen: dict) -> str:
+    """The glance as sentences a model can read and quote."""
+    if not seen["sources"]:
+        return ""
+    lines = [f"This set holds {seen['sources']} sources."]
+    if seen["first_day"]:
+        lines.append(f"Their dates run from {seen['first_day']} to {seen['last_day']}.")
+        lines.append(
+            "Sources per year: " + ", ".join(f"{y}: {n}" for y, n in seen["per_year"]) + "."
+        )
+    if seen["undated"]:
+        lines.append(f"{seen['undated']} sources have no date.")
+    if seen["topics"]:
+        lines.append(
+            "Sources per topic: "
+            + ", ".join(f"{t['label']}: {t['count']}" for t in seen["topics"])
+            + "."
+        )
+    if seen["tags"]:
+        lines.append("Most used tags: " + ", ".join(f"{t}: {n}" for t, n in seen["tags"]) + ".")
+    if seen["sites"]:
+        lines.append(
+            "Sites with the most sources: " + ", ".join(f"{d}: {n}" for d, n in seen["sites"]) + "."
+        )
+    return "\n".join(lines)
+
+
 # ---- answering ----------------------------------------------------------------
 
 RULES = (
@@ -370,6 +468,14 @@ def answer(conn: sqlite3.Connection, connection, ids: list[str], question: str, 
         raise ValueError("This notebook has no source that is ticked.")
     searched = standalone(connection, list(history), question)
     passages, how = find(conn, connection, ids, searched)
+    if _ABOUT_THE_SET.search(question):
+        # The figures the visualisations are drawn from, as one more passage to rest on.
+        counted = figures(glance(conn, ids))
+        if counted:
+            passages = [*passages[: PASSAGES_SHOWN - 1], {
+                "id": 0, "bookmark_id": None, "ord": 0, "text": counted, "url": "", "domain": "Atlas",
+                "title": "Figures counted by Atlas for this set", "day": "", "figures": True,
+            }]  # fmt: skip
     result = {
         "statements": [],
         "missing": "",
@@ -385,7 +491,8 @@ def answer(conn: sqlite3.Connection, connection, ids: list[str], question: str, 
                 "url": p["url"],
                 "day": p["day"][:10],
                 "text": p["text"],
-                "card": p["ord"] == 0,
+                "card": p["ord"] == 0 and not p.get("figures"),
+                "figures": bool(p.get("figures")),
             }
             for n, p in enumerate(passages, start=1)
         ],
@@ -554,6 +661,7 @@ def show(conn: sqlite3.Connection, notebook_id: str) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
+        "glance": glance(conn, [source["id"] for source in sources if source["used"]]),
         "sources": sources,
         "messages": messages,
         "notes": notes,
