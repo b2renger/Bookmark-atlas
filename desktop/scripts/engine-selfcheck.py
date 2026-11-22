@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Run the built-in engine for real, once, on the build machine.
 
 It downloads the light model and the vectors model as the app would, starts
