@@ -84,6 +84,24 @@
   .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .toolbar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
   .empty { color: var(--muted); padding: 30px 10px; text-align: center; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .nb-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px; margin: 0 0 12px; }
+  .nb-bar h2 { margin: 0; } .nb-bar h2 input { font: inherit; width: 22em; max-width: 60vw; }
+  .nb-grid { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(240px, 320px); gap: 16px; align-items: start; }
+  .nb-grid > .card { margin: 0; } .nb-grid h3 { margin: 0 0 6px; }
+  @media (max-width: 1250px) { .nb-grid { grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); } #nb-notes-card { grid-column: 1 / -1; } }
+  @media (max-width: 820px) { .nb-grid { grid-template-columns: 1fr; } }
+  #nb-sources { max-height: 62vh; overflow: auto; margin-top: 6px; }
+  #nb-sources li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; padding: 5px 0; border-top: 1px solid var(--line); }
+  #nb-sources li.unused { opacity: .55; } #nb-sources .linkish { text-align: left; }
+  #nb-messages { min-height: 180px; max-height: 64vh; overflow: auto; padding-right: 6px; }
+  .nb-question { font-weight: 650; margin: 18px 0 6px; padding-left: 10px; border-left: 3px solid var(--accent); }
+  .nb-answer p { margin: 0 0 8px; max-width: 76ch; line-height: 1.55; }
+  .nb-proof { margin: 0 0 12px 14px; padding: 6px 10px; border-left: 3px solid var(--line); background: var(--chip); border-radius: 0 6px 6px 0; max-width: 74ch; }
+  .nb-proof blockquote { margin: 0 0 4px; font-style: italic; } .nb-passage { white-space: pre-wrap; color: var(--muted); margin: 6px 0 0; }
+  .nb-missing, .nb-none { color: var(--muted); } .nb-ask { align-items: end; margin-top: 12px; } #nb-kinds { margin-top: 12px; }
+  .nb-note { border-top: 1px solid var(--line); padding: 6px 0; } .nb-note ul { margin: 6px 0; padding-left: 18px; } .nb-note summary { cursor: pointer; font-weight: 600; }
+  ul.nb-list li { padding: 8px 0; border-top: 1px solid var(--line); } ul.nb-list .linkish { font-size: 1.05em; font-weight: 600; }
   .answer p { margin: 0 0 10px; max-width: 78ch; line-height: 1.55; }
   .answer p.dash { padding-left: 16px; text-indent: -16px; }
   .answer p.dash::before { content: "– "; color: var(--muted); }
@@ -303,6 +321,7 @@
 <header>
   <h1>Bookmark Atlas</h1>
   <nav>
+    <button id="tab-notebook">Notebook</button>
     <button id="tab-bookmarks" aria-current="page">Bookmarks</button>
     <button id="tab-map">Map</button>
     <button id="tab-clusters">Clusters</button>
@@ -310,7 +329,7 @@
     <button id="tab-tree">Tree</button>
     <button id="tab-links">Links</button>
     <button id="tab-trends">Trends</button>
-    <button id="tab-ask">Ask</button>
+    <button id="tab-ask" hidden>Ask</button>
     <button id="tab-views">Views</button>
     <button id="tab-workspaces">Workspaces</button>
     <button id="tab-grooming">Grooming</button>
@@ -377,6 +396,7 @@
           <button class="linkish" id="sel-all" hidden></button>
           <button class="linkish" id="sel-show">show only these in the list</button>
           <button class="linkish" id="sel-clear">clear</button>
+          <button class="action" id="sel-notebook" title="Study these bookmarks with a language model">New notebook from these</button>
         </div>
         <div class="selrow" id="sel-actions">
           <input type="text" id="sel-add" placeholder="Tag to add" aria-label="Tag to add" list="sel-known">
@@ -590,6 +610,72 @@
         <div><h3>Tags fading</h3><div id="trends-tags-down"></div></div>
       </div>
     </section>
+  </div>
+
+  <div id="view-notebook" hidden>
+    <section class="card" id="nb-home">
+      <h2>Notebooks</h2>
+      <p class="help">A notebook is a set of bookmarks you want to study, a conversation with a language
+        model about them, and the notes you keep. Every statement in an answer is tied to the exact
+        words of a source: press its number to read them. What the sources do not say is said, not
+        guessed.</p>
+      <div class="note" id="nb-off" hidden>No language model is connected yet.
+        <button class="linkish" id="nb-connect">Connect one in Settings</button></div>
+      <div class="row">
+        <div><label for="nb-scope">New notebook about</label><select id="nb-scope" style="width:auto"></select></div>
+        <div id="nb-topic-box" hidden><label for="nb-topic">Topic</label><select id="nb-topic" style="width:auto"></select></div>
+        <div class="grow"><label for="nb-name">Name</label><input type="text" id="nb-name" maxlength="80" placeholder="e.g. Generative typography"></div>
+        <button class="action primary" id="nb-new">Create</button>
+      </div>
+      <div class="note muted" id="nb-home-note" role="status"></div>
+      <div id="nb-list"></div>
+    </section>
+    <div id="nb-open" hidden>
+      <div class="nb-bar">
+        <button class="linkish" id="nb-back">‹ All notebooks</button>
+        <h2 id="nb-title"></h2>
+        <button class="linkish" id="nb-rename">rename</button>
+        <button class="linkish" id="nb-delete">delete</button>
+        <span class="tagline" id="nb-model"></span>
+      </div>
+      <div class="nb-grid">
+        <section class="card" id="nb-sources-card" aria-label="Sources">
+          <h3>Sources <span class="tagline" id="nb-count"></span></h3>
+          <div class="note muted" id="nb-depth"></div>
+          <div class="row"><button class="action" id="nb-read" hidden>Read the pages</button>
+            <button class="action" id="nb-add" hidden>Add the selection</button></div>
+          <div class="note muted" id="nb-sources-note" role="status"></div>
+          <label class="check"><input type="checkbox" id="nb-all" checked> use all</label>
+          <ul class="plain" id="nb-sources"></ul>
+        </section>
+        <section class="card" id="nb-chat-card" aria-label="Conversation">
+          <div id="nb-messages" aria-live="polite"></div>
+          <div class="row" id="nb-kinds">
+            <span class="tagline">Start with:</span>
+            <button class="action" data-kind="common">What do they share?</button>
+            <button class="action" data-kind="briefing">A briefing</button>
+            <button class="action" data-kind="gaps">What is missing?</button>
+            <button class="action" data-kind="path">A reading order</button>
+          </div>
+          <div class="row nb-ask">
+            <div class="grow"><label for="nb-question" class="sr">Your question</label>
+              <textarea id="nb-question" rows="2" maxlength="1000" placeholder="Ask about these sources…"></textarea></div>
+            <button class="action primary" id="nb-go">Ask</button>
+          </div>
+          <div class="note muted" id="nb-note" role="status"></div>
+          <div class="row"><button class="linkish" id="nb-clear">clear the conversation</button></div>
+        </section>
+        <section class="card" id="nb-notes-card" aria-label="Notes">
+          <h3>Notes <span class="tagline" id="nb-notes-count"></span></h3>
+          <p class="tagline">Keep an answer with “keep as a note”, or write your own.</p>
+          <div id="nb-notes"></div>
+          <label for="nb-own" class="sr">A note of your own</label>
+          <textarea id="nb-own" rows="3" placeholder="A note of your own…"></textarea>
+          <div class="row"><button class="action" id="nb-own-add">Add the note</button>
+            <button class="action" id="nb-export">Save the notes as a document</button></div>
+        </section>
+      </div>
+    </div>
   </div>
 
   <div id="view-ask" hidden>
@@ -836,6 +922,44 @@
         <div class="where"><button class="linkish" data-go="trends">Open Trends</button></div>
       </div></details>
 
+      <details id="guide-notebook"><summary>Notebooks: study a set of bookmarks with a language model</summary><div>
+        <p>A notebook is three things side by side: the <strong>sources</strong> you chose, a
+          <strong>conversation</strong> about them, and the <strong>notes</strong> you keep. It needs
+          a language model (see the next section); which one is written at the top of the notebook.</p>
+        <h4>In five steps</h4>
+        <ol>
+          <li><strong>Choose what it is about.</strong> In Notebook, pick “one topic”, “the selection”
+            or “what passes the filter”, name it, press <em>Create</em>. Or tick bookmarks in the
+            list and press <em>New notebook from these</em>.</li>
+          <li><strong>Read the pages.</strong> A source that was never read is known only by its title,
+            summary and tags. Press <em>Read the pages</em> so answers can rest on the pages
+            themselves. Sources say “not read” or “summary only” until then.</li>
+          <li><strong>Start wide.</strong> “What do they share?”, “A briefing”, “What is missing?” and
+            “A reading order” read the whole set at once, from summaries.</li>
+          <li><strong>Then ask.</strong> Type a question. Atlas finds the passages closest to it, the
+            model answers from those only, and each statement ends with a number: press it to read
+            the exact words it rests on, and open the source. Follow-up questions work (“and the
+            second one?”).</li>
+          <li><strong>Keep what matters.</strong> “keep as a note” under an answer, or write your own.
+            <em>Save the notes as a document</em> gives a Markdown file with each statement, its
+            quote and the list of sources.</li>
+        </ol>
+        <h4>Why you can lean on an answer, and where to stay careful</h4>
+        <ul>
+          <li><strong>Every statement is checked.</strong> The model must copy the words it relies on;
+            Atlas looks for those words in the source and sets the statement aside if they are not
+            there. The answer says how many were set aside.</li>
+          <li><strong>“Not in the sources”</strong> tells you what your question asked that the
+            sources do not say. An empty answer is a real result, not a failure.</li>
+          <li><strong>The check proves the words exist, not that the model read them rightly.</strong>
+            Open the quote when a statement matters.</li>
+          <li><strong>Only the passages found are read</strong>, eight at most, three per source. A
+            fact that sits in a passage the search did not find is missed: ask again in other
+            words, or untick sources to narrow the set.</li>
+          <li><strong>Finding passages happens on this computer.</strong> Only the passages found
+            and the conversation go to the model, wherever it runs.</li>
+        </ul>
+      </div></details>
       <details id="guide-models"><summary>A language model on your network (Settings, Ask, Grooming)</summary><div>
         <p>Optional. Atlas can use a language model that runs on a machine of yours: a
           <strong>LlmOnLan farm</strong>, which it finds by itself, or any server that speaks the OpenAI
@@ -1388,7 +1512,7 @@ let lastWorkView = "bookmarks";   // what "Save view" captures
 function showView(name) {
   currentView = name;
   if (["bookmarks", "map", "clusters", "grid", "tree", "links", "trends"].includes(name)) lastWorkView = name;
-  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "ask", "views", "workspaces", "grooming", "settings", "guide"]) {
+  for (const view of ["bookmarks", "map", "clusters", "grid", "tree", "links", "trends", "ask", "notebook", "views", "workspaces", "grooming", "settings", "guide"]) {
     $("view-" + view).hidden = view !== name;
     if (view === name) $("tab-" + view).setAttribute("aria-current", "page");
     else $("tab-" + view).removeAttribute("aria-current");
@@ -4287,7 +4411,7 @@ $("tab-settings").onclick = () => { showView("settings"); loadLlm().catch((e) =>
 let helpFrom = "bookmarks";
 function openGuide(section) {
   showView("guide");
-  const target = $("guide-" + ({ ask: "models" }[section] || section)) || $("guide-start");
+  const target = $("guide-" + ({ ask: "notebook" }[section] || section)) || $("guide-start");
   for (const part of document.querySelectorAll(".guide details")) part.open = part === target;
   target.scrollIntoView({ block: "start" }); window.scrollBy(0, -80);
   target.querySelector("summary").focus({ preventScroll: true });
@@ -4332,7 +4456,7 @@ function renderModelTour() {
     ["connected", "Connect a model on your network", "A LlmOnLan farm is found by itself; any OpenAI-compatible server works with its address. Test, then Connect.", "Open Settings", settings],
     ["meaning", "Place bookmarks by meaning", "Compute the vectors, choose “meaning”, then run Clusters and redraw the Map: bookmarks on one subject meet, whatever their words or language.", "Open Settings", settings],
     ["notes", "Rewrite a few summaries", "Select ten bookmarks, then in Grooming: read the pages, let the model write, and preview the result before applying.", "Open Grooming", () => { $("tab-grooming").click(); setTimeout(() => $("assist-card").scrollIntoView({ block: "start" }), 200); }],
-    ["asked", "Ask about a topic", "Pick a topic and press “What do they share?”. Numbers in the answer open the bookmarks.", "Open Ask", () => $("tab-ask").click()],
+    ["asked", "Open a notebook on a topic", "Notebook ▸ New notebook about one topic ▸ Create, then ask. Every statement of the answer shows the words of the source it rests on.", "Open Notebook", () => $("tab-notebook").click()],
   ];
   const next = steps.find(([key]) => !tour[key]), done = steps.filter(([key]) => tour[key]).length;
   $("start-model-help").textContent = !next ? "All four done. The guide lists what else the model can do: compare then and now, find tags that mean the same, suggest topic names." : done === 0 ? "Optional. If a language model runs on a machine of yours, Atlas can use it. Nothing leaves your network, and nothing it writes changes a bookmark without a preview."
@@ -4729,6 +4853,173 @@ function whyButton(firstId, other) {
   return el("span", {}, [" · ", why, out]);
 }
 loadLlm().catch(() => {});
+
+/* ---- notebooks ---- */
+// A set of sources, a conversation whose every statement shows the words it rests on, and notes.
+const nb = { book: null, busy: false };
+async function nbCall(body) { return api("POST", "/api/notebooks", body); }
+async function loadNotebooks() {
+  await loadLlm().catch(() => {});
+  $("nb-off").hidden = llmOn();
+  scopeOptions($("nb-scope"), "every bookmark", true); $("nb-scope").onchange();
+  if (nb.book) { await openNotebook(nb.book.id).catch(() => closeNotebook()); return; }
+  const list = (await api("GET", "/api/notebooks")).notebooks;
+  $("nb-list").replaceChildren(list.length ? el("ul", { className: "plain nb-list" }, list.map((item) => {
+    const open = el("button", { className: "linkish", textContent: item.name }); open.onclick = () => openNotebook(item.id).catch((e) => note("nb-home-note", e.message, "bad"));
+    return el("li", {}, [open, el("div", { className: "tagline", textContent: item.sources + " sources · " + item.questions + " questions · " + item.notes + " notes · " + item.updated_at.slice(0, 10) })]);
+  })) : el("p", { className: "tagline", textContent: "No notebook yet. Choose what it is about above and press Create." }));
+}
+$("nb-scope").onchange = () => { $("nb-topic-box").hidden = $("nb-scope").value !== "topic"; if ($("nb-scope").value === "topic") topicOptions($("nb-topic")); };
+$("nb-connect").onclick = () => { showView("settings"); loadLlm().catch(() => {}); $("llm-card").scrollIntoView(); };
+async function newNotebook(ids, name) {
+  const book = await nbCall({ action: "create", name, ids });
+  nb.book = book; showView("notebook"); await loadNotebooks();
+}
+$("nb-new").onclick = () => busy($("nb-new"), async () => {
+  try {
+    const scope = $("nb-scope").value, topic = $("nb-topic");
+    const ids = scope === "all" ? (await api("GET", "/api/bookmarks/ids?q=")).ids : await scopeIds(scope, topic.value);
+    const fallback = scope === "topic" && topic.selectedOptions[0] ? topic.selectedOptions[0].textContent.replace(/ \(\d+\)$/, "") : scope === "selection" ? "Selection" : scope === "filter" ? "Filtered bookmarks" : "Whole collection";
+    await newNotebook(ids, $("nb-name").value.trim() || fallback); $("nb-name").value = "";
+  } catch (error) { note("nb-home-note", error.message, "bad"); }
+});
+function closeNotebook() { nb.book = null; $("nb-open").hidden = true; $("nb-home").hidden = false; loadNotebooks().catch(() => {}); }
+$("nb-back").onclick = closeNotebook;
+async function openNotebook(id) {
+  nb.book = await nbCall({ action: "show", id });
+  $("nb-home").hidden = true; $("nb-open").hidden = false;
+  renderNotebook();
+}
+function renderNotebook() {
+  const book = nb.book, c = llm.state && llm.state.connection;
+  $("nb-title").textContent = book.name;
+  $("nb-model").textContent = c && c.connected ? "Answers written by " + c.chat_model + " (" + (c.provider || c.name || "your server") + (c.provider ? ", on the internet" : "") + ")" : "No language model connected: Settings ▸ Language models";
+  renderSources(); renderMessages(); renderNotes();
+}
+function renderSources() {
+  const book = nb.book, used = book.sources.filter((s) => s.used).length, depth = book.depth;
+  $("nb-count").textContent = used === book.sources.length ? book.sources.length : used + " of " + book.sources.length + " used";
+  const thin = (depth.unread || 0) + (depth.summary || 0);
+  $("nb-depth").textContent = (depth.page || 0) + " read in full" + (depth.unread ? " · " + depth.unread + " not read yet: only their title, summary and tags are known" : "") + (depth.summary ? " · " + depth.summary + " whose page gave no text" : "") + ".";
+  $("nb-read").hidden = !depth.unread; $("nb-add").hidden = !selection.size;
+  $("nb-add").textContent = "Add the selection (" + selection.size + ")";
+  $("nb-all").checked = used === book.sources.length;
+  $("nb-sources").replaceChildren(...book.sources.map((source) => {
+    const tick = el("input", { type: "checkbox", checked: !!source.used }); tick.setAttribute("aria-label", "Use " + source.title);
+    tick.onchange = async () => { try { nb.book = await nbCall({ action: "sources", id: book.id, use: { [source.id]: tick.checked } }); renderSources(); } catch (error) { note("nb-sources-note", error.message, "bad"); } };
+    const open = el("button", { className: "linkish", textContent: source.title }); open.onclick = () => openPanel(source.id);
+    return el("li", { className: source.used ? "" : "unused" }, [tick, el("div", {}, [open, el("div", { className: "tagline", textContent: (source.domain || "") + (source.day ? " · " + source.day.slice(0, 10) : "") + (source.depth === "page" ? "" : source.depth === "unread" ? " · not read" : " · summary only") })])]);
+  }));
+  void thin;
+}
+$("nb-all").onchange = async () => {
+  const use = Object.fromEntries(nb.book.sources.map((s) => [s.id, $("nb-all").checked]));
+  try { nb.book = await nbCall({ action: "sources", id: nb.book.id, use }); renderSources(); } catch (error) { note("nb-sources-note", error.message, "bad"); }
+};
+$("nb-add").onclick = () => busy($("nb-add"), async () => {
+  try { nb.book = await nbCall({ action: "sources", id: nb.book.id, add: [...selection] }); renderSources(); note("nb-sources-note", "Added.", "good"); } catch (error) { note("nb-sources-note", error.message, "bad"); }
+});
+// Reading the pages of this notebook's sources, so answers can rest on more than summaries.
+const nbRead = { running: false, stop: false, finished: (r) => r.status.remaining === 0 || r.read === 0 };
+$("nb-read").onclick = async () => {
+  const ids = nb.book.sources.map((s) => s.id); $("nb-read").disabled = true;
+  const problem = await inBatches(nbRead, () => api("POST", "/api/pages", { ids, limit: 12 }),
+    (r) => note("nb-sources-note", "Reading… " + (r.status.total - r.status.remaining) + " of " + r.status.total + ".", "muted"));
+  $("nb-read").disabled = false;
+  try { nb.book = await nbCall({ action: "show", id: nb.book.id }); renderSources(); } catch (error) { /* shown below */ }
+  note("nb-sources-note", problem || "Pages read.", problem ? "bad" : "good");
+};
+// One answer: statements with the words they rest on, what is missing, and what was set aside.
+function answerCard(message) {
+  const a = message.answer, box = el("div", { className: "nb-answer" });
+  if (a.overview !== undefined) {
+    box.append(...answerNodes(a.overview, a.bookmarks), el("div", { className: "tagline", textContent: "A reading of the " + a.read + " sources' titles, summaries and tags, not of their pages. Numbers open the sources." }));
+  } else {
+    const byNumber = new Map(a.passages.map((p) => [p.n, p]));
+    for (const statement of a.statements) {
+      const passage = byNumber.get(statement.passage), proof = el("div", { className: "nb-proof", hidden: true });
+      const cite = el("button", { className: "cite", textContent: statement.passage, title: passage ? passage.title : "" });
+      cite.setAttribute("aria-expanded", "false"); cite.setAttribute("aria-label", "Show the words this rests on, from " + (passage ? passage.title : "the source"));
+      cite.onclick = () => { proof.hidden = !proof.hidden; cite.setAttribute("aria-expanded", String(!proof.hidden)); };
+      if (passage) {
+        const open = el("button", { className: "linkish", textContent: passage.title }); open.onclick = () => openPanel(passage.bookmark_id);
+        proof.append(el("blockquote", { textContent: "“" + statement.quote + "”" }), el("div", { className: "tagline" }, ["from ", open, passage.day ? " · " + passage.day : "", passage.card ? " · its summary, not its page" : ""]),
+          el("details", {}, [el("summary", { textContent: "the whole passage" }), el("p", { className: "nb-passage", textContent: passage.text })]));
+      }
+      box.append(el("p", {}, [statement.text + " ", cite]), proof);
+    }
+    if (!a.statements.length) box.append(el("p", { className: "nb-none", textContent: "Nothing in these sources answers this." }));
+    if (a.missing) box.append(el("p", { className: "nb-missing" }, [el("strong", { textContent: "Not in the sources: " }), a.missing]));
+    const facts = [];
+    if (a.dropped) facts.push(a.dropped + (a.dropped === 1 ? " statement was" : " statements were") + " set aside: the model's quoted words were not in the source");
+    facts.push("passages found by " + a.found_by);
+    if (a.searched_for) facts.push("searched as “" + a.searched_for + "”");
+    box.append(el("div", { className: "tagline", textContent: facts.join(" · ") + "." }));
+  }
+  const keep = el("button", { className: "linkish", textContent: "keep as a note" });
+  keep.onclick = async () => { try { nb.book = await nbCall({ action: "keep", id: nb.book.id, message_id: message.id }); renderNotes(); keep.textContent = "kept"; keep.disabled = true; } catch (error) { note("nb-note", error.message, "bad"); } };
+  box.append(el("div", { className: "tagline" }, [(message.model || "") + " · ", keep]));
+  return box;
+}
+function renderMessages() {
+  const list = nb.book.messages;
+  $("nb-messages").replaceChildren(...(list.length ? list.map((m) => m.role === "user" ? el("p", { className: "nb-question", textContent: m.text }) : answerCard(m))
+    : [el("p", { className: "tagline", textContent: "Ask a question below, or start with one of the readings of the whole set." })]));
+  $("nb-clear").hidden = !list.length;
+  const last = $("nb-messages").lastElementChild; if (last) last.scrollIntoView({ block: "nearest" });
+}
+async function nbAsk(body, button, waiting) {
+  if (nb.busy) return;
+  if (!llmOn()) { note("nb-note", "Connect a language model first: Settings ▸ Language models.", "bad"); return; }
+  nb.busy = true; button.disabled = true; note("nb-note", waiting, "muted");
+  try {
+    for (;;) {
+      try {
+        const message = (await nbCall({ ...body, id: nb.book.id })).message;
+        nb.book.messages.push({ role: "user", text: message.question || body.question }, message);
+        renderMessages(); note("nb-note", "", "muted"); break;
+      } catch (error) {
+        const full = /seats|full|busy|overloaded|rate limit/i.test(error.message) && nbAsk.tries < 6;
+        if (!full) throw error;
+        nbAsk.tries += 1; note("nb-note", error.message + " Trying again in 20 s…", "muted"); await new Promise((r) => setTimeout(r, 20000));
+      }
+    }
+  } catch (error) { note("nb-note", error.message, "bad"); }
+  nbAsk.tries = 0; nb.busy = false; button.disabled = false;
+}
+nbAsk.tries = 0;
+$("nb-go").onclick = () => { const question = $("nb-question").value.trim(); if (!question) { note("nb-note", "Type a question.", "bad"); return; }
+  nbAsk({ action: "ask", question }, $("nb-go"), "Finding passages, then writing… this can take a minute.").then(() => { if (!$("nb-note").textContent) $("nb-question").value = ""; }); };
+$("nb-question").onkeydown = (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("nb-go").click(); } };
+for (const button of $("nb-kinds").querySelectorAll("button")) button.onclick = () => nbAsk({ action: "overview", kind: button.dataset.kind }, button, "Reading the sources…");
+$("nb-clear").onclick = async () => { try { nb.book = await nbCall({ action: "clear", id: nb.book.id }); renderMessages(); } catch (error) { note("nb-note", error.message, "bad"); } };
+function renderNotes() {
+  const notes = nb.book.notes;
+  $("nb-notes-count").textContent = notes.length || "";
+  $("nb-notes").replaceChildren(...notes.map((item) => {
+    const drop = el("button", { className: "linkish", textContent: "remove" });
+    drop.onclick = async () => { try { nb.book = await nbCall({ action: "drop_note", id: nb.book.id, note_id: item.id }); renderNotes(); } catch (error) { note("nb-note", error.message, "bad"); } };
+    const b = item.body, body = b.statements ? el("ul", {}, b.statements.map((s) => el("li", { textContent: s.text })))
+      : el("p", { textContent: b.overview !== undefined ? b.overview.slice(0, 400) + (b.overview.length > 400 ? "…" : "") : b.text });
+    return el("details", { className: "nb-note", open: notes.length < 4 }, [el("summary", { textContent: item.title }), body, el("div", { className: "tagline" }, [item.created_at.slice(0, 10) + " · ", drop])]);
+  }));
+  $("nb-export").hidden = !notes.length;
+}
+$("nb-own-add").onclick = async () => { try { nb.book = await nbCall({ action: "keep", id: nb.book.id, title: $("nb-own").value.trim().split("\n")[0].slice(0, 60), text: $("nb-own").value }); $("nb-own").value = ""; renderNotes(); } catch (error) { note("nb-note", error.message, "bad"); } };
+$("nb-export").onclick = async () => { try { const text = (await nbCall({ action: "markdown", id: nb.book.id })).markdown; download(nb.book.name.replace(/[^\w -]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() + ".md", new Blob([text], { type: "text/markdown" })); } catch (error) { note("nb-note", error.message, "bad"); } };
+$("nb-rename").onclick = () => {
+  const field = el("input", { type: "text", value: nb.book.name, maxLength: 80 }); field.setAttribute("aria-label", "Notebook name");
+  const done = async () => { try { if (field.value.trim() && field.value.trim() !== nb.book.name) nb.book.name = (await nbCall({ action: "rename", id: nb.book.id, name: field.value })).name; } catch (error) { note("nb-note", error.message, "bad"); } $("nb-title").textContent = nb.book.name; };
+  $("nb-title").replaceChildren(field); field.focus(); field.select();
+  field.onblur = done; field.onkeydown = (event) => { if (event.key === "Enter") field.blur(); if (event.key === "Escape") { field.value = nb.book.name; field.blur(); } };
+};
+$("nb-delete").onclick = () => {
+  if ($("nb-delete").dataset.sure !== "1") { $("nb-delete").dataset.sure = "1"; $("nb-delete").textContent = "press again to delete this notebook, its conversation and notes"; setTimeout(() => { $("nb-delete").dataset.sure = ""; $("nb-delete").textContent = "delete"; }, 5000); return; }
+  $("nb-delete").dataset.sure = ""; $("nb-delete").textContent = "delete";
+  nbCall({ action: "delete", id: nb.book.id }).then(closeNotebook, (error) => note("nb-note", error.message, "bad"));
+};
+$("tab-notebook").onclick = () => { showView("notebook"); loadNotebooks().catch((e) => note("nb-home-note", e.message, "bad")); };
+$("sel-notebook").onclick = () => busy($("sel-notebook"), async () => { try { await newNotebook([...selection], "Selection of " + selection.size); } catch (error) { note("sel-note", error.message, "bad"); } });
 </script>
 </body>
 </html>

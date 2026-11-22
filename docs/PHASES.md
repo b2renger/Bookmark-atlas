@@ -551,3 +551,30 @@ in [DEVLOG.md](DEVLOG.md); the road ahead is in
   `max_completion_tokens`. Mistral's address and all model names are not
   checked: models are read from each provider's own list at Test.
 - **Tested against stand-ins, not the real providers.**
+
+## Phase 25: notebooks, a research conversation that rests on the sources
+
+- **Direction set by the user:** steer towards a research notebook: talk
+  with a model about a subset of the data, text only, answers with facts,
+  workable with a small model on any machine, then routed to LlmOnLan or a
+  cloud provider. Decisions taken: llama.cpp bundled (next phase), three
+  model sizes, the Notebook replaces Ask as the main screen.
+- **`atlas.notebook`** and migration 0008. Pages are cut into passages
+  (about 700 characters, at paragraph then sentence ends; passage 0 is the
+  bookmark's own card). For a question, passages are found on this computer
+  by words (BM25) and, when a vector model is there, by meaning; at most
+  eight, three per source. In a large notebook only the sixty sources that
+  look closest have their passages embedded.
+- **Checked answers.** The model answers as statements, each naming one
+  passage and copying the words it rests on. `supported()` looks for those
+  words in the passage (case, spacing and punctuation aside, one gap
+  allowed) and the statement is dropped when they are not there. The answer
+  reports what is missing from the sources and how many statements were set
+  aside. A follow-up question is first rewritten to stand alone.
+- **The view:** sources (tick, read the pages, add the selection),
+  conversation (statements with their evidence, four readings of the whole
+  set), notes (kept answers, own notes, export to Markdown with quotes and
+  sources). "New notebook from these" in the selection bar.
+- **Ask** is hidden: its four questions live in the notebook.
+- **Tested against the stand-in model**, including one that invents
+  statements: they do not get through.

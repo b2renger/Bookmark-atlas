@@ -183,6 +183,16 @@ platforms and fix dates. Every script shows a preview first, makes a backup
 before writing, and can be undone. You can add your own scripts: see
 [docs/GROOMING.md](docs/GROOMING.md).
 
+### Notebooks
+
+Choose a set of bookmarks (a topic, a selection, the filter) and study it
+with a language model: sources on the left, the conversation in the middle,
+your notes on the right. Atlas finds the passages closest to each question on
+your own computer; the model answers from those only and must quote the words
+each statement rests on; Atlas checks the quote is really in the source and
+sets aside what fails. What the sources do not say is said, not guessed.
+Notes export as a Markdown document with quotes and sources.
+
 ### A language model on your network (optional)
 
 Atlas can use a model that runs on a machine of yours: a

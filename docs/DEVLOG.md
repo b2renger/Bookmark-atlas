@@ -4,6 +4,33 @@ Where the project stands, newest entry first. Each entry says what works, what
 was decided and what comes next. Commit messages carry the same information in
 short form, so `git log` reads as a history of the project's state.
 
+## 2026-11-22: v0.23.0 published; phase 25, notebooks
+
+**Direction:** research notebook (see PHASES 25). After the local engine,
+the user wants the whole interface rebuilt around the flow of the data, and
+the conversation tied to the visualisations (use them to answer, point the
+reader at them).
+
+**Works:** `notebook.cut`, `prepare`, `find`, `supported`, `standalone`,
+`answer`, `create`/`show`/`set_sources`/`ask`/`overview`/`keep`/
+`as_markdown`; one route `/api/notebooks` with an `action`; the Notebook view.
+
+**Decisions:** retrieval is code, never the model. Structured answers
+(statement, passage number, quote) so each can be checked mechanically; a
+statement without a verified quote is not shown at all. Passage vectors are
+cached per model in `passage_vectors`. The old Ask view and `llm_answers`
+stay in place, unreachable, until the interface is rebuilt.
+
+**Verified:** 331 Python tests (8 new); browser walk at two widths, light
+and dark: create from a selection and from a topic, read pages, ask, follow
+up, nothing found, overview, evidence, notes, export, rename, delete.
+
+**Not verified:** a real model's ability to follow the statement/quote
+format, above all a small one. That is the point of the next phase.
+
+**Next:** phase 26, the local engine (llama.cpp in the app, three model
+sizes, routing). Then the interface rebuild and chat-to-visualisation links.
+
 ## 2026-11-18: v0.22.0 published; phase 24, providers with an API key
 
 **Works:** `llm.PROVIDERS`, `Connection.api` ("local", "openai",

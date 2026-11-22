@@ -456,6 +456,50 @@ class App:
             model=True,
         )
 
+    def notebooks(self, body: dict | None = None) -> dict:
+        """Everything a notebook does, by ``action``; without one, the list."""
+        from atlas import notebook
+
+        body = body or {}
+        action = str(body.get("action") or "list")
+        book = str(body.get("id") or "")
+        if action in ("ask", "overview"):
+            work = (
+                (lambda c, m: notebook.ask(c, m, book, str(body.get("question") or "")))
+                if action == "ask"
+                else (lambda c, m: notebook.overview(c, m, book, str(body.get("kind") or "")))
+            )
+            return {"message": self._with(work, model=True)}
+        actions = {
+            "list": lambda c: {"notebooks": notebook.list_all(c)},
+            "create": lambda c: notebook.create(
+                c, str(body.get("name") or ""), self._ids(body) or []
+            ),
+            "show": lambda c: notebook.show(c, book),
+            "rename": lambda c: notebook.rename(c, book, str(body.get("name") or "")),
+            "delete": lambda c: notebook.delete(c, book) or {"notebooks": notebook.list_all(c)},
+            "sources": lambda c: notebook.set_sources(
+                c,
+                book,
+                add=[str(i) for i in body.get("add") or []],
+                remove=[str(i) for i in body.get("remove") or []],
+                use={str(k): bool(v) for k, v in (body.get("use") or {}).items()},
+            ),
+            "clear": lambda c: notebook.clear(c, book),
+            "keep": lambda c: notebook.keep(
+                c,
+                book,
+                message_id=body.get("message_id"),
+                title=str(body.get("title") or ""),
+                text=str(body.get("text") or ""),
+            ),
+            "drop_note": lambda c: notebook.drop_note(c, book, str(body.get("note_id") or "")),
+            "markdown": lambda c: {"markdown": notebook.as_markdown(c, book)},
+        }
+        if action not in actions:
+            raise ValueError("Unknown notebook action.")
+        return self._with(actions[action])
+
     def tag_groups(self, body: dict) -> dict:
         from atlas import assist
 
@@ -1052,7 +1096,8 @@ def _model_progress(conn) -> dict:
         "connected": bool(llm.load().get("base_url")),
         "meaning": assist.vector_status(conn)["in_use"] == "model",
         "notes": count("SELECT COUNT(*) FROM llm_notes WHERE kind = 'summary'") > 0,
-        "asked": count("SELECT COUNT(*) FROM llm_answers") > 0,
+        "asked": count("SELECT COUNT(*) FROM llm_answers") > 0
+        or count("SELECT COUNT(*) FROM notebook_messages") > 0,
         "hidden": bool(put_away and put_away[0] == "1"),
     }
 
@@ -1193,6 +1238,8 @@ def make_handler(app: App):
                 ("POST", "/api/pages"): lambda: app.pages(self._body()),
                 ("POST", "/api/notes"): lambda: app.notes(self._body()),
                 ("POST", "/api/ask"): lambda: app.ask(self._body()),
+                ("GET", "/api/notebooks"): lambda: app.notebooks(),
+                ("POST", "/api/notebooks"): lambda: app.notebooks(self._body()),
                 ("POST", "/api/tags/groups"): lambda: app.tag_groups(self._body()),
                 ("POST", "/api/compare"): lambda: app.compare(self._body()),
                 ("GET", "/api/answers"): lambda: app.answers(),

@@ -236,6 +236,40 @@ class FakeFarm:
             return (
                 '{"verdict": "changed", "note": "The page no longer mentions what the note says."}'
             )
+        if "research assistant" in system:
+            question = user.rsplit("Question: ", 1)[-1].lower()
+            blocks = re.findall(
+                r"\[(\d+)\] from “[^\n]*\n(.*?)(?=\n\n\[\d+\] from “|\nPASSAGES>>>)", user, re.S
+            )
+            asked = set(re.findall(r"[a-zà-ÿ]{5,}", question))
+            statements = []
+            for number, text in blocks:
+                if asked & set(re.findall(r"[a-zà-ÿ]{5,}", text.lower())):
+                    words = text.split()
+                    statements.append(
+                        {
+                            "text": f"Passage {number} speaks of this.",
+                            "passage": int(number),
+                            "quote": " ".join(words[:8]).upper(),
+                        }
+                    )
+            if "invent" in question:  # a model that makes things up: these must not get through
+                statements.append(
+                    {
+                        "text": "The moon is made of cheese.",
+                        "passage": 1,
+                        "quote": "the moon is made entirely of green cheese",
+                    }
+                )
+                statements.append(
+                    {"text": "No such passage.", "passage": 99, "quote": "nothing at all here"}
+                )
+            missing = "" if statements else "The passages do not speak of this."
+            return json.dumps({"statements": statements[:6], "missing": missing})
+        if "Rewrite the last question" in system:
+            last = user.rsplit("Last question: ", 1)[-1]
+            first = re.search(r"user: (.*)", user).group(1)
+            return json.dumps({"question": f"{last} (about: {first})"})
         if "single word: ready" in user:
             return "ready"
         numbers = re.findall(r"^\[(\d+)\]", user, re.M) or re.findall(r"\[(\d+)\]", user)
