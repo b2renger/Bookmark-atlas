@@ -1,4 +1,8 @@
-"""No test may reach this computer's real keychain or settings folder."""
+"""No test may reach this computer's real keychain or settings folder, and all
+run as on a computer with no proxy: a proxy changes which machine a request
+reaches, and with it what the checks on that machine see."""
+
+import urllib.request
 
 import pytest
 
@@ -9,3 +13,4 @@ def _own_settings(monkeypatch, tmp_path_factory):
     monkeypatch.delenv("ATLAS_SECRETS_DIR", raising=False)
     monkeypatch.delenv("NOTION_TOKEN", raising=False)
     monkeypatch.setenv("ATLAS_CONFIG_DIR", str(tmp_path_factory.mktemp("settings")))
+    monkeypatch.setattr(urllib.request, "getproxies", lambda: {})

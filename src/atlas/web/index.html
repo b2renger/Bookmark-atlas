@@ -5065,7 +5065,7 @@ async function loadAnswers() {
     const title = item.kind === "question" ? item.question : ASK_TITLES[item.kind] || item.kind;
     const forget = el("button", { className: "linkish", textContent: "forget" });
     forget.onclick = async () => { try { await api("POST", "/api/answers", { delete: item.id }); loadAnswers(); } catch (error) { note("ask-note", error.message, "bad"); } };
-    return el("details", {}, [el("summary", { textContent: item.created_at.slice(0, 10) + " · " + title + " · " + item.bookmarks.length + " bookmarks" }),
+    return el("details", {}, [el("summary", { textContent: item.created_at.slice(0, 10) + " · " + title + " · " + item.bookmarks.length + (item.bookmarks.length === 1 ? " bookmark" : " bookmarks") }),
       el("div", { className: "answer" }, answerNodes(item.answer, item.bookmarks)), el("div", { className: "tagline" }, [item.model + " · ", forget])]);
   }) : [el("p", { className: "tagline", textContent: "None yet." })]));
 }

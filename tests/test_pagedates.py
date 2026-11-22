@@ -239,8 +239,11 @@ def test_lookup_through_the_api(conn, path, monkeypatch):  # noqa: F811
     assert "published-from-page" in names and "clear-published-dates" in names
 
 
-def test_http_get_reads_a_real_page_and_reports_failures():
+def test_http_get_reads_a_real_page_and_reports_failures(monkeypatch):
     import threading
+
+    # The page server of this test is on this computer: let it pass for a public one.
+    monkeypatch.setattr(pagedates, "_public", lambda address: True)
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     class Handler(BaseHTTPRequestHandler):
@@ -353,7 +356,6 @@ def test_the_machine_really_reached_must_be_public_and_so_must_every_hop(monkeyp
             self.end_headers()
 
     hop = _Site(Hop)
-    monkeypatch.setattr(pagedates.urllib.request, "getproxies", lambda: {})
     try:
         # 1. A public name that points inside: the name passes, the machine reached does not.
         real = pagedates.refused
